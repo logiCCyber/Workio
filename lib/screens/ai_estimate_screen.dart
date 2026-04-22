@@ -69,10 +69,20 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   List<_PromptSuggestion> _promptSuggestions = [];
   EstimatePriceRuleModel? _activePromptRule;
 
+  bool _isGuidedMode = false;
+
+  final TextEditingController _guidedServiceController = TextEditingController();
+  final FocusNode _guidedServiceFocusNode = FocusNode();
+  final Map<String, dynamic> _guidedAnswers = {};
+  final TextEditingController _guidedQuantityController = TextEditingController();
+  final FocusNode _guidedQuantityFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
     _promptController.addListener(_onPromptChanged);
+    _guidedServiceController.addListener(_onGuidedServiceChanged);
+    _guidedQuantityController.addListener(_onGuidedQuantityChanged);
     _loadClients();
   }
 
@@ -81,6 +91,15 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     _promptController.removeListener(_onPromptChanged);
     _promptController.dispose();
     _promptFocusNode.dispose();
+
+    _guidedServiceController.removeListener(_onGuidedServiceChanged);
+    _guidedServiceController.dispose();
+    _guidedServiceFocusNode.dispose();
+
+    _guidedQuantityController.removeListener(_onGuidedQuantityChanged);
+    _guidedQuantityController.dispose();
+    _guidedQuantityFocusNode.dispose();
+
     super.dispose();
   }
 
@@ -111,6 +130,8 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     await _loadHistory();
     _showSnack('Property created');
   }
+
+
 
   String _normalizePromptSearch(String value) {
     return value
@@ -389,6 +410,163 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     _promptController.text = next;
     _promptController.selection = TextSelection.fromPosition(
       TextPosition(offset: _promptController.text.length),
+    );
+  }
+
+  void _onGuidedServiceChanged() {
+    final text = _guidedServiceController.text.trim();
+
+    if (text.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _promptSuggestions = [];
+        _activePromptRule = null;
+      });
+      return;
+    }
+
+    final suggestions = _buildPromptSuggestions(text);
+
+    if (!mounted) return;
+    setState(() {
+      _promptSuggestions = suggestions;
+      _activePromptRule = suggestions.length == 1 ||
+          (suggestions.isNotEmpty && suggestions.first.score >= 0.92)
+          ? suggestions.first.rule
+          : null;
+    });
+  }
+
+  void _toggleGuidedMode(bool value) {
+    setState(() {
+      _isGuidedMode = value;
+      _promptSuggestions = [];
+      _activePromptRule = null;
+      _guidedServiceController.clear();
+      _guidedQuantityController.clear();
+      _guidedAnswers.clear();
+    });
+  }
+
+  void _setGuidedAnswer(String key, dynamic value) {
+    setState(() {
+      _guidedAnswers[key] = value;
+    });
+  }
+
+  void _onGuidedQuantityChanged() {
+    final text = _guidedQuantityController.text.trim();
+
+    setState(() {
+      _guidedAnswers['quantity_value'] = text;
+    });
+  }
+
+  String _guidedQuantityLabel() {
+    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
+
+    switch (unit) {
+      case 'item':
+        return 'Quantity';
+      case 'sqft':
+        return 'Square Footage';
+      case 'room':
+        return 'Rooms';
+      default:
+        return 'Size';
+    }
+  }
+
+  String _guidedQuantityHint() {
+    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
+
+    switch (unit) {
+      case 'item':
+        return '2';
+      case 'sqft':
+        return '1200';
+      case 'room':
+        return '3';
+      default:
+        return 'Enter value';
+    }
+  }
+
+  String _buildGuidedPreviewPrompt() {
+    if (_activePromptRule == null) return '';
+
+    final serviceLabel =
+    _activePromptRule!.displayName?.trim().isNotEmpty == true
+        ? _activePromptRule!.displayName!.trim()
+        : _activePromptRule!.serviceType.trim();
+
+    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
+    final quantityValue =
+    (_guidedAnswers['quantity_value'] ?? '').toString().trim();
+
+    final parts = <String>[serviceLabel];
+
+    if (quantityValue.isNotEmpty) {
+      if (unit == 'item') {
+        parts.add('$quantityValue item${quantityValue == '1' ? '' : 's'}');
+      } else if (unit == 'sqft') {
+        parts.add('$quantityValue sqft');
+      } else if (unit == 'room') {
+        parts.add('$quantityValue room${quantityValue == '1' ? '' : 's'}');
+      }
+    }
+
+    final materialsMode =
+    (_guidedAnswers['materials_mode'] ?? '').toString().trim();
+
+    switch (materialsMode) {
+      case 'labor_only':
+        parts.add('labor only');
+        break;
+      case 'materials_included':
+        parts.add('materials included');
+        break;
+      case 'customer_provides':
+        parts.add('customer provides materials');
+        break;
+      case 'after_inspection':
+        parts.add('materials/parts after inspection');
+        break;
+      case 'detailed_list':
+        parts.add('materials included with detailed list');
+        break;
+    }
+
+    return parts.join(', ');
+  }
+
+  Widget _buildGuidedChoiceChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF5B8CFF) : const Color(0xFF101117),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFF5B8CFF)
+                : const Color(0xFF23252E),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : const Color(0xFFB6BCD0),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 
@@ -1050,6 +1228,295 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     );
   }
 
+  Widget _buildModeSwitch() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _toggleGuidedMode(false),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: !_isGuidedMode
+                      ? const Color(0xFF5B8CFF)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Manual',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: !_isGuidedMode ? Colors.white : const Color(0xFFB6BCD0),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _toggleGuidedMode(true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: _isGuidedMode
+                      ? const Color(0xFF5B8CFF)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Guided',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _isGuidedMode ? Colors.white : const Color(0xFFB6BCD0),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuidedMaterialsStep() {
+    final selected = (_guidedAnswers['materials_mode'] ?? '').toString();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text(
+          'Workio says: are materials included?',
+          style: TextStyle(
+            color: Color(0xFF8E93A6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildGuidedChoiceChip(
+              label: 'Labor Only',
+              selected: selected == 'labor_only',
+              onTap: () => _setGuidedAnswer('materials_mode', 'labor_only'),
+            ),
+            _buildGuidedChoiceChip(
+              label: 'Materials Included',
+              selected: selected == 'materials_included',
+              onTap: () => _setGuidedAnswer('materials_mode', 'materials_included'),
+            ),
+            _buildGuidedChoiceChip(
+              label: 'Customer Provides',
+              selected: selected == 'customer_provides',
+              onTap: () => _setGuidedAnswer('materials_mode', 'customer_provides'),
+            ),
+            _buildGuidedChoiceChip(
+              label: 'After Inspection',
+              selected: selected == 'after_inspection',
+              onTap: () => _setGuidedAnswer('materials_mode', 'after_inspection'),
+            ),
+            _buildGuidedChoiceChip(
+              label: 'Detailed List',
+              selected: selected == 'detailed_list',
+              onTap: () => _setGuidedAnswer('materials_mode', 'detailed_list'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGuidedQuantityStep() {
+    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
+
+    if (unit != 'item' && unit != 'sqft' && unit != 'room') {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Text(
+          'Workio says: now add ${_guidedQuantityLabel().toLowerCase()}.',
+          style: const TextStyle(
+            color: Color(0xFF8E93A6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _PremiumTextField(
+          controller: _guidedQuantityController,
+          focusNode: _guidedQuantityFocusNode,
+          label: _guidedQuantityLabel(),
+          hintText: _guidedQuantityHint(),
+          maxLines: 1,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGuidedModeStub() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Workio says: start typing the service you want.',
+          style: TextStyle(
+            color: Color(0xFF8E93A6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _PremiumTextField(
+          controller: _guidedServiceController,
+          focusNode: _guidedServiceFocusNode,
+          label: 'Service',
+          hintText: 'Electrical repair, plumbing, fridge repair...',
+          maxLines: 1,
+        ),
+        if (_promptSuggestions.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text(
+            'Suggestions',
+            style: TextStyle(
+              color: Color(0xFFB6BCD0),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Column(
+            children: _promptSuggestions.map((suggestion) {
+              final subtitle = suggestion.matchText.trim().isEmpty
+                  ? suggestion.rule.serviceType
+                  : '${suggestion.rule.category} • ${suggestion.matchText}';
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: GestureDetector(
+                  onTap: () {
+                    _guidedServiceController.text = suggestion.label;
+                    _guidedServiceController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: _guidedServiceController.text.length),
+                    );
+
+                    setState(() {
+                      _activePromptRule = suggestion.rule;
+                      _promptSuggestions = [];
+                    });
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF101117),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF23252E)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          suggestion.label,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+        if (_activePromptRule != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF101117),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF23252E)),
+            ),
+            child: Text(
+              'Selected: ${_activePromptRule!.displayName?.trim().isNotEmpty == true ? _activePromptRule!.displayName! : _activePromptRule!.serviceType}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          _buildGuidedMaterialsStep(),
+          _buildGuidedQuantityStep(),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF101117),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF23252E)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Preview Prompt',
+                  style: TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _buildGuidedPreviewPrompt(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildSmartInsightsCard() {
     final result = _smartResult;
 
@@ -1515,124 +1982,156 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _buildWorkioHint(),
-                      style: const TextStyle(
-                        color: Color(0xFF8E93A6),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _PremiumTextField(
-                    controller: _promptController,
-                    focusNode: _promptFocusNode,
-                    label: 'Prompt',
-                    hintText: 'Describe the job, issue, quantity, or materials',
-                    maxLines: 6,
-                  ),
-                  if (_promptSuggestions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Suggestions',
-                        style: TextStyle(
-                          color: Color(0xFFB6BCD0),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                  _buildModeSwitch(),
+                  const SizedBox(height: 12),
+                  _isGuidedMode ? _buildGuidedModeStub() : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _buildWorkioHint(),
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Column(
-                      children: _promptSuggestions.map((suggestion) {
-                        final subtitle = suggestion.matchText.trim().isEmpty
-                            ? suggestion.rule.serviceType
-                            : '${suggestion.rule.category} • ${suggestion.matchText}';
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: GestureDetector(
-                            onTap: () => _applyPromptSuggestion(suggestion),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF101117),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFF23252E)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    suggestion.label,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    subtitle,
-                                    style: const TextStyle(
-                                      color: Color(0xFF8E93A6),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                      const SizedBox(height: 8),
+                      _PremiumTextField(
+                        controller: _promptController,
+                        focusNode: _promptFocusNode,
+                        label: 'Prompt',
+                        hintText: 'Electrical repair, 2 outlets, labor only',
+                        maxLines: 6,
+                      ),
+                      if (_promptSuggestions.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Suggestions',
+                            style: TextStyle(
+                              color: Color(0xFFB6BCD0),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _QuickPromptChip(
-                        label: 'Painting 1200 sqft',
-                        onTap: () => _applyQuickPrompt(
-                          'Painting basement 1200 sqft, walls and ceiling, 2 coats, materials included',
                         ),
-                      ),
-                      _QuickPromptChip(
-                        label: 'Drywall repair',
-                        onTap: () => _applyQuickPrompt(
-                          'Drywall repair 600 sqft with prep and materials included',
+                        const SizedBox(height: 10),
+                        Column(
+                          children: _promptSuggestions.map((suggestion) {
+                            final subtitle = suggestion.matchText.trim().isEmpty
+                                ? suggestion.rule.serviceType
+                                : '${suggestion.rule.category} • ${suggestion.matchText}';
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: GestureDetector(
+                                onTap: () => _applyPromptSuggestion(suggestion),
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF101117),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: const Color(0xFF23252E)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        suggestion.label,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        subtitle,
+                                        style: const TextStyle(
+                                          color: Color(0xFF8E93A6),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
+                      ],
+                      if (_activePromptRule != null) ...[
+                        const SizedBox(height: 12),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Quick Add',
+                            style: TextStyle(
+                              color: Color(0xFFB6BCD0),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _buildPromptChips(_activePromptRule).map((chip) {
+                            return _QuickPromptChip(
+                              label: chip,
+                              onTap: () => _appendPromptToken(chip),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _QuickPromptChip(
+                            label: 'Painting 1200 sqft',
+                            onTap: () => _applyQuickPrompt(
+                              'Painting basement 1200 sqft, walls and ceiling, 2 coats, materials included',
+                            ),
+                          ),
+                          _QuickPromptChip(
+                            label: 'Drywall repair',
+                            onTap: () => _applyQuickPrompt(
+                              'Drywall repair 600 sqft with prep and materials included',
+                            ),
+                          ),
+                          _QuickPromptChip(
+                            label: 'Cleaning job',
+                            onTap: () => _applyQuickPrompt(
+                              'Cleaning 3 bedroom condo 1100 sqft, materials included',
+                            ),
+                          ),
+                        ],
                       ),
-                      _QuickPromptChip(
-                        label: 'Cleaning job',
-                        onTap: () => _applyQuickPrompt(
-                          'Cleaning 3 bedroom condo 1100 sqft, materials included',
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: CupertinoButton(
+                          color: const Color(0xFF5B8CFF),
+                          borderRadius: BorderRadius.circular(16),
+                          onPressed: _isGenerating ? null : _generateDraft,
+                          child: _isGenerating
+                              ? const CupertinoActivityIndicator(color: Colors.white)
+                              : const Text(
+                            'Generate Draft',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: CupertinoButton(
-                      color: const Color(0xFF5B8CFF),
-                      borderRadius: BorderRadius.circular(16),
-                      onPressed: _isGenerating ? null : _generateDraft,
-                      child: _isGenerating
-                          ? const CupertinoActivityIndicator(color: Colors.white)
-                          : const Text(
-                        'Generate Draft',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
                   ),
                 ],
               ),

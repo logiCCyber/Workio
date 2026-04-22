@@ -239,6 +239,69 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     );
   }
 
+  void _openSavedDocumentsSheet() {
+    if (_documents.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) {
+        return FractionallySizedBox(
+          heightFactor: 0.75,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: Column(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Saved Documents',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _documents.length,
+                      itemBuilder: (context, index) {
+                        final document = _documents[index];
+                        return _SavedDocumentTile(
+                          document: document,
+                          onOpen: () => _openSavedDocument(document),
+                          onDelete: () => _deleteSavedDocument(document),
+                        );
+                      },
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _convertToInvoice() async {
     final estimate = _estimate;
 
@@ -1633,20 +1696,47 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   : _documents.isEmpty
                   ? const _EmptyDocumentsState()
                   : Column(
-                children: List.generate(_documents.length, (index) {
-                  final document = _documents[index];
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ...List.generate(
+                    _documents.length > 3 ? 3 : _documents.length,
+                        (index) {
+                      final document = _documents[index];
+                      final visibleCount = _documents.length > 3 ? 3 : _documents.length;
 
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: index == _documents.length - 1 ? 0 : 10,
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: index == visibleCount - 1 ? 0 : 10,
+                        ),
+                        child: _SavedDocumentTile(
+                          document: document,
+                          onOpen: () => _openSavedDocument(document),
+                          onDelete: () => _deleteSavedDocument(document),
+                        ),
+                      );
+                    },
+                  ),
+                  if (_documents.length > 3) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        color: const Color(0xFF101117),
+                        borderRadius: BorderRadius.circular(16),
+                        onPressed: _openSavedDocumentsSheet,
+                        child: Text(
+                          'View all documents (${_documents.length})',
+                          style: const TextStyle(
+                            color: Color(0xFFB6BCD0),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
-                    child: _SavedDocumentTile(
-                      document: document,
-                      onOpen: () => _openSavedDocument(document),
-                      onDelete: () => _deleteSavedDocument(document),
-                    ),
-                  );
-                }),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 14),
