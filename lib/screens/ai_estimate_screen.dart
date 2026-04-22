@@ -161,6 +161,12 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     if (c.startsWith(q)) return 0.95;
     if (c.contains(q)) return 0.85;
 
+    final candidateAsWholeWordInQuery =
+    RegExp('(^|\\s)${RegExp.escape(c)}(\\s|\$)').hasMatch(q);
+    if (candidateAsWholeWordInQuery) {
+      return 0.82;
+    }
+
     final qWords = q.split(' ').where((e) => e.isNotEmpty).toList();
     final cWords = c.split(' ').where((e) => e.isNotEmpty).toList();
 
@@ -184,32 +190,63 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     final normalizedQuery = _normalizePromptSearch(query);
     if (normalizedQuery.isEmpty) return const [];
 
+    final queryWords = normalizedQuery
+        .split(' ')
+        .where((e) => e.isNotEmpty)
+        .toList();
+
     final suggestions = <_PromptSuggestion>[];
 
     for (final rule in _rules) {
-      final candidates = <String>{
-        rule.serviceType.trim(),
-        (rule.displayName ?? '').trim(),
-        ...rule.aliases.map((e) => e.trim()),
-        ...rule.aiKeywords.map((e) => e.trim()),
-      }.where((e) => e.isNotEmpty).toList();
+      final label = (rule.displayName ?? '').trim().isNotEmpty
+          ? rule.displayName!.trim()
+          : rule.serviceType.trim();
+
+      final candidates = <({String text, double weight})>[
+        (text: rule.serviceType.trim(), weight: 1.00),
+        if ((rule.displayName ?? '').trim().isNotEmpty)
+          (text: rule.displayName!.trim(), weight: 0.97),
+        ...rule.aliases
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .map((e) => (text: e, weight: 0.92)),
+      ];
 
       double bestScore = 0;
       String bestMatch = '';
 
       for (final candidate in candidates) {
-        final score = _scorePromptCandidate(normalizedQuery, candidate);
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = candidate;
+        final candidateText = _normalizePromptSearch(candidate.text);
+        if (candidateText.isEmpty) continue;
+
+        final baseScore = _scorePromptCandidate(normalizedQuery, candidateText);
+        if (baseScore <= 0) continue;
+
+        final candidateWords = candidateText
+            .split(' ')
+            .where((e) => e.isNotEmpty)
+            .toList();
+
+        int overlapCount = 0;
+        for (final word in queryWords) {
+          if (candidateWords.contains(word)) {
+            overlapCount++;
+          }
+        }
+
+        final overlapBoost = queryWords.isEmpty
+            ? 0.0
+            : (overlapCount / queryWords.length) * 0.08;
+
+        final finalScore = (baseScore + overlapBoost) * candidate.weight;
+
+        if (finalScore > bestScore) {
+          bestScore = finalScore;
+          bestMatch = candidate.text;
         }
       }
 
-      if (bestScore <= 0) continue;
-
-      final label = (rule.displayName ?? '').trim().isNotEmpty
-          ? rule.displayName!.trim()
-          : rule.serviceType.trim();
+      if (bestScore < 0.78) continue;
 
       suggestions.add(
         _PromptSuggestion(
@@ -221,15 +258,45 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       );
     }
 
-    suggestions.sort((a, b) => b.score.compareTo(a.score));
+    suggestions.sort((a, b) {
+      final byScore = b.score.compareTo(a.score);
+      if (byScore != 0) return byScore;
+      return a.label.length.compareTo(b.label.length);
+    });
 
     final unique = <String, _PromptSuggestion>{};
     for (final item in suggestions) {
-      final key = '${item.rule.serviceType}_${item.rule.category}'.toLowerCase();
-      unique[key] = item;
+      final key =
+      '${item.rule.serviceType}_${item.rule.category}'.toLowerCase();
+      unique.putIfAbsent(key, () => item);
     }
 
     return unique.values.take(6).toList();
+  }
+
+  String _buildWorkioHint() {
+    final text = _promptController.text.trim();
+
+    if (text.isEmpty) {
+      return 'Workio says: describe the job in your own words.';
+    }
+
+    if (_promptSuggestions.isNotEmpty && _activePromptRule == null) {
+      return 'Workio says: pick the closest service or keep typing.';
+    }
+
+    if (_activePromptRule == null) {
+      return 'Workio says: keep typing so I can find the closest service.';
+    }
+
+    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
+    final hasNumber = RegExp(r'\b\d+\b').hasMatch(text);
+
+    if ((unit == 'item' || unit == 'room' || unit == 'sqft') && !hasNumber) {
+      return 'Workio says: good. Now add quantity or size.';
+    }
+
+    return 'Workio says: looks good. You can generate the draft now.';
   }
 
   void _onPromptChanged() {
@@ -249,7 +316,10 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     if (!mounted) return;
     setState(() {
       _promptSuggestions = suggestions;
-      _activePromptRule = suggestions.isNotEmpty ? suggestions.first.rule : null;
+      _activePromptRule = suggestions.length == 1 ||
+          (suggestions.isNotEmpty && suggestions.first.score >= 0.92)
+          ? suggestions.first.rule
+          : null;
     });
   }
 
@@ -1445,11 +1515,11 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Align(
+                  Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Workio says: describe the work, quantity, and materials.',
-                      style: TextStyle(
+                      _buildWorkioHint(),
+                      style: const TextStyle(
                         color: Color(0xFF8E93A6),
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -1461,7 +1531,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                     controller: _promptController,
                     focusNode: _promptFocusNode,
                     label: 'Prompt',
-                    hintText: 'Electrical repair, 2 outlets, labor only',
+                    hintText: 'Describe the job, issue, quantity, or materials',
                     maxLines: 6,
                   ),
                   if (_promptSuggestions.isNotEmpty) ...[
@@ -1520,31 +1590,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                               ),
                             ),
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                  if (_activePromptRule != null) ...[
-                    const SizedBox(height: 12),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Quick Add',
-                        style: TextStyle(
-                          color: Color(0xFFB6BCD0),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _buildPromptChips(_activePromptRule).map((chip) {
-                        return _QuickPromptChip(
-                          label: chip,
-                          onTap: () => _appendPromptToken(chip),
                         );
                       }).toList(),
                     ),

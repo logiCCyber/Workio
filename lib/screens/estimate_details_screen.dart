@@ -181,6 +181,64 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     await _loadEmailLogs();
   }
 
+  void _openEmailHistorySheet() {
+    if (_emailLogs.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) {
+        return FractionallySizedBox(
+          heightFactor: 0.75,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: Column(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Email History',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: _emailLogs.length,
+                      itemBuilder: (context, index) {
+                        return _EmailLogTile(log: _emailLogs[index]);
+                      },
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _convertToInvoice() async {
     final estimate = _estimate;
 
@@ -1616,16 +1674,42 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   ? const _EmptyEmailLogsState()
                   : Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: List.generate(_emailLogs.length, (index) {
-                  final log = _emailLogs[index];
+                children: [
+                  ...List.generate(
+                    _emailLogs.length > 2 ? 2 : _emailLogs.length,
+                        (index) {
+                      final log = _emailLogs[index];
+                      final visibleCount = _emailLogs.length > 2 ? 2 : _emailLogs.length;
 
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: index == _emailLogs.length - 1 ? 0 : 10,
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: index == visibleCount - 1 ? 0 : 10,
+                        ),
+                        child: _EmailLogTile(log: log),
+                      );
+                    },
+                  ),
+                  if (_emailLogs.length > 2) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        color: const Color(0xFF101117),
+                        borderRadius: BorderRadius.circular(16),
+                        onPressed: _openEmailHistorySheet,
+                        child: Text(
+                          'View all history (${_emailLogs.length})',
+                          style: const TextStyle(
+                            color: Color(0xFFB6BCD0),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
-                    child: _EmailLogTile(log: log),
-                  );
-                }),
+                  ],
+                ],
               ),
             ),
             const SizedBox(height: 18),
