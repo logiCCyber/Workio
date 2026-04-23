@@ -6719,8 +6719,7 @@ String fmtCompactHours(double hours) {
 
   String core;
   if (v < 1000) {
-    core = v.toStringAsFixed(1);
-    core = core.replaceAll(RegExp(r'\.?0+$'), '');
+    core = v.toStringAsFixed(0);
   } else if (v < 10000) {
     core = (v / 1000).toStringAsFixed(1);
     core = core.replaceAll(RegExp(r'\.?0+$'), '');
@@ -7191,9 +7190,37 @@ List<Map<String, dynamic>> _groupHistoryCardsByDay(
     }
 
     final merged = Map<String, dynamic>.from(bucket.first);
+
+    double totalPayment = 0;
+    double totalHours = 0;
+
+    bool allPaid = true;
+    DateTime? latestPaidAt;
+
+    for (final row in bucket) {
+      totalPayment += ((row['total_payment'] ?? 0) as num).toDouble();
+      totalHours += ((row['total_hours'] ?? 0) as num).toDouble();
+
+      if (row['paid_at'] == null) {
+        allPaid = false;
+      } else {
+        try {
+          final paidAt = DateTime.parse(row['paid_at'].toString()).toLocal();
+          if (latestPaidAt == null || paidAt.isAfter(latestPaidAt)) {
+            latestPaidAt = paidAt;
+          }
+        } catch (_) {}
+      }
+    }
+
+    merged['total_payment'] = totalPayment;
+    merged['total_hours'] = totalHours;
+    merged['paid_at'] = allPaid ? latestPaidAt?.toIso8601String() : null;
+
     merged['__group_rows'] =
         bucket.map((e) => Map<String, dynamic>.from(e)).toList();
     merged['__group_count'] = bucket.length;
+
     result.add(merged);
   }
 
@@ -7429,6 +7456,35 @@ class _YearInnerGroups extends StatefulWidget {
 
 class _YearInnerGroupsState extends State<_YearInnerGroups> {
   String? _openKey;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.active.isNotEmpty) {
+      _openKey = 'active';
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _YearInnerGroups oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final activeAppeared =
+        oldWidget.active.isEmpty && widget.active.isNotEmpty;
+
+    final autoOpenChanged =
+        oldWidget.autoOpenVersion != widget.autoOpenVersion;
+
+    if ((activeAppeared || autoOpenChanged) && widget.active.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _openKey = 'active';
+        });
+      });
+    }
+  }
 
   double _sumAmount(List<Map<String, dynamic>> rows) => rows.fold<double>(
     0,

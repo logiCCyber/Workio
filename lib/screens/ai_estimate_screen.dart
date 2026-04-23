@@ -719,6 +719,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return GuidedEstimateFlowService.canGenerate(
       rule: _activePromptRule,
       answers: _guidedAnswers,
+      suppressedQuestionKeys: _suppressedFollowupKeys,
     );
   }
 
@@ -726,6 +727,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return GuidedEstimateFlowService.buildPrompt(
       rule: _activePromptRule,
       answers: _guidedAnswers,
+      suppressedQuestionKeys: _suppressedFollowupKeys,
     );
   }
 

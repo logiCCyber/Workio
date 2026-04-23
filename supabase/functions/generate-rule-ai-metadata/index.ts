@@ -332,6 +332,23 @@ function sanitizeFollowupQuestions(
     return result.slice(0, 4);
 }
 
+function sanitizeNormalizedServiceType(
+    value: unknown,
+    fallback: string,
+): string {
+    const text = normalizeText(value).toLowerCase();
+    return text || fallback.toLowerCase();
+}
+
+function sanitizeSuggestedDisplayName(
+    value: unknown,
+    fallback: string,
+): string {
+    const text = normalizeText(value);
+    if (!text) return toTitleCase(fallback);
+    return toTitleCase(text);
+}
+
 serve(async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, {
@@ -428,6 +445,19 @@ ALIASES RULES:
 - Do NOT include "remodel", "renovation", "new build", "fit-out", "full install" unless the input clearly means that.
 - Good aliases are near-synonyms, wording variations, and common search variations.
 
+DISPLAY NAME RULES:
+- suggestedDisplayName must be short, clean, and admin-friendly.
+- It should look good in UI.
+- Prefer title case.
+- Do not make it too broad.
+- Do not make it too long.
+
+SERVICE TYPE RULES:
+- normalizedServiceType should be lowercase.
+- Keep it close to the actual service meaning.
+- Do not over-expand the scope.
+- It should be stable and reusable as the canonical service key.
+
 AI KEYWORDS RULES:
 - 6 to 10 max.
 - Helpful for prompt matching.
@@ -509,6 +539,8 @@ existingAliases: ${aliases.join(", ")}
                 type: "object",
                 additionalProperties: false,
                 properties: {
+                    normalizedServiceType: { type: "string" },
+                    suggestedDisplayName: { type: "string" },
                     aliases: {
                         type: "array",
                         items: { type: "string" },
@@ -568,6 +600,8 @@ existingAliases: ${aliases.join(", ")}
                     "aiRushTitle",
                     "aiRushDescription",
                     "aiFollowupQuestions",
+                    "normalizedServiceType",
+                    "suggestedDisplayName",
                 ],
             },
             strict: true,
@@ -657,6 +691,14 @@ existingAliases: ${aliases.join(", ")}
                 unit,
                 intent,
             }),
+            normalizedServiceType: sanitizeNormalizedServiceType(
+                parsed.normalizedServiceType,
+                serviceType,
+            ),
+            suggestedDisplayName: sanitizeSuggestedDisplayName(
+                parsed.suggestedDisplayName,
+                effectiveDisplayName,
+            ),
         };
 
         return json(result, 200);

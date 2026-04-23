@@ -289,15 +289,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               Column(
                                 children: [
                                   Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.only(bottom: 2),
                                     child: Image.asset(
                                       'assets/images/workio.png',
-                                      height: 70,
+                                      height: 160,
                                       fit: BoxFit.contain,
                                       filterQuality: FilterQuality.high,
                                     ),
                                   ),
-                                  const SizedBox(height: 14),
+                                  // const SizedBox(height: 8),
 
                                   Text(
                                     isRegister ? 'Create admin' : 'Sign in',

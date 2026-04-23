@@ -97,6 +97,7 @@ class GuidedEstimateFlowService {
   static bool canGenerate({
     required EstimatePriceRuleModel? rule,
     required Map<String, dynamic> answers,
+    Set<String> suppressedQuestionKeys = const {},
   }) {
     if (rule == null) return false;
 
@@ -106,9 +107,17 @@ class GuidedEstimateFlowService {
     final materialsMode = (answers['materials_mode'] ?? '').toString().trim();
     if (materialsMode.isEmpty) return false;
 
-    if (materialsMode == 'detailed_list') {
-      final materialsList = (answers['materials_list'] ?? '').toString().trim();
-      if (materialsList.isEmpty) return false;
+    if (materialsMode == 'materials_included') {
+      final materialsDetail =
+      (answers['materials_detail'] ?? '').toString().trim();
+
+      if (materialsDetail.isEmpty) return false;
+
+      if (materialsDetail == 'detailed_list') {
+        final materialsList =
+        (answers['materials_list'] ?? '').toString().trim();
+        if (materialsList.isEmpty) return false;
+      }
     }
 
     if (requiresQuantity(rule)) {
@@ -118,10 +127,11 @@ class GuidedEstimateFlowService {
 
     final questions = followupQuestions(rule);
     for (final question in questions) {
-      final key = (question['key'] ?? '').toString().trim();
+      final key = (question['key'] ?? '').toString().trim().toLowerCase();
       final isRequired = question['isRequired'] == true;
 
       if (!isRequired || key.isEmpty) continue;
+      if (suppressedQuestionKeys.contains(key)) continue;
 
       final value = (answers[key] ?? '').toString().trim();
       if (value.isEmpty) return false;
@@ -133,6 +143,7 @@ class GuidedEstimateFlowService {
   static String buildPrompt({
     required EstimatePriceRuleModel? rule,
     required Map<String, dynamic> answers,
+    Set<String> suppressedQuestionKeys = const {},
   }) {
     if (rule == null) return '';
 
@@ -158,6 +169,8 @@ class GuidedEstimateFlowService {
     }
 
     final materialsMode = (answers['materials_mode'] ?? '').toString().trim();
+    final materialsDetail =
+    (answers['materials_detail'] ?? '').toString().trim();
 
     switch (materialsMode) {
       case 'labor_only':
@@ -165,6 +178,9 @@ class GuidedEstimateFlowService {
         break;
       case 'materials_included':
         parts.add('materials included');
+        if (materialsDetail == 'standard_included') {
+          parts.add('standard included materials');
+        }
         break;
       case 'customer_provides':
         parts.add('customer provides materials');
@@ -172,20 +188,20 @@ class GuidedEstimateFlowService {
       case 'after_inspection':
         parts.add('materials/parts after inspection');
         break;
-      case 'detailed_list':
-        parts.add('materials included');
-        break;
     }
 
     final materialsList = (answers['materials_list'] ?? '').toString().trim();
-    if (materialsMode == 'detailed_list' && materialsList.isNotEmpty) {
+    if (materialsMode == 'materials_included' &&
+        materialsDetail == 'detailed_list' &&
+        materialsList.isNotEmpty) {
       parts.add(materialsList);
     }
 
     final questions = followupQuestions(rule);
     for (final question in questions) {
-      final key = (question['key'] ?? '').toString().trim();
+      final key = (question['key'] ?? '').toString().trim().toLowerCase();
       if (key.isEmpty) continue;
+      if (suppressedQuestionKeys.contains(key)) continue;
 
       final value = (answers[key] ?? '').toString().trim();
       if (value.isEmpty) continue;
