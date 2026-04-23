@@ -3349,6 +3349,12 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
 
     final canRestoreAll = visible.isEmpty && hiddenNow.isNotEmpty;
 
+    final warningBadgeText = has
+        ? (visible.length == 1 ? 'WARNING' : 'WARNINGS')
+        : 'ALL GOOD';
+
+    final warningBadgeColor = has ? AppPalette.orange : AppPalette.green;
+
     return AnimatedBuilder(
       animation: _restoreFx,
       builder: (context, child) {
@@ -3356,70 +3362,134 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
 
         return Transform.scale(
           scale: _panelScale.value,
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color.lerp(bgBase, Colors.white, 0.04)!,
-                  Color.lerp(bgBase, Colors.black, 0.06)!,
-                ],
-              ),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(22),
-                bottomRight: Radius.circular(22),
-              ),
-              border: Border(
-                top: BorderSide(
-                  color: Color.lerp(
-                    Colors.white.withOpacity(0.06),
-                    AppPalette.green.withOpacity(0.30),
-                    glow,
-                  )!,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.topCenter,
+            children: [
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color.lerp(bgBase, Colors.white, 0.04)!,
+                      Color.lerp(bgBase, Colors.black, 0.06)!,
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(22),
+                    bottomRight: Radius.circular(22),
+                  ),
+                  border: Border(
+                    top: BorderSide(
+                      color: Color.lerp(
+                        Colors.white.withOpacity(0.06),
+                        AppPalette.green.withOpacity(0.30),
+                        glow,
+                      )!,
+                    ),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppPalette.green.withOpacity(0.10 * glow),
+                      blurRadius: 18 + (18 * glow),
+                      spreadRadius: 0.5 + (0.8 * glow),
+                      offset: const Offset(0, 0),
+                    ),
+                  ],
                 ),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppPalette.green.withOpacity(0.10 * glow),
-                  blurRadius: 18 + (18 * glow),
-                  spreadRadius: 0.5 + (0.8 * glow),
-                  offset: const Offset(0, 0),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-            child: visible.isEmpty
-                ? _OkFooter(
-              canRestoreAll: canRestoreAll,
-              onRestoreAll: canRestoreAll ? _restoreAllHiddenWarnings : null,
-            )
-                : _FooterWarningsCarousel(
-              items: visible,
-              onIndexChanged: (i) {
-                if (!mounted) return;
-                if (i == _index) return;
+                padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    visible.isEmpty
+                        ? _OkFooter(
+                      canRestoreAll: canRestoreAll,
+                      onRestoreAll: canRestoreAll ? _restoreAllHiddenWarnings : null,
+                    )
+                        : _FooterWarningsCarousel(
+                      items: visible,
+                      onIndexChanged: (i) {
+                        if (!mounted) return;
+                        if (i == _index) return;
 
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!mounted) return;
-                  setState(() => _index = i);
-                });
-              },
-              onAck: (item) async {
-                await _openWarningActionsSheet(context, item);
-              },
-              onDetails: (item) async {
-                await _showWarningDetailsDialog(context, item);
-              },
-              onDismiss: (item) async {
-                if (!mounted) return;
-                setState(() {
-                  _ackedLocal.add(item.warningKey);
-                  _index = 0;
-                });
-              },
-            ),
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          setState(() => _index = i);
+                        });
+                      },
+                      onAck: (item) async {
+                        await _openWarningActionsSheet(context, item);
+                      },
+                      onDetails: (item) async {
+                        await _showWarningDetailsDialog(context, item);
+                      },
+                      onDismiss: (item) async {
+                        if (!mounted) return;
+                        setState(() {
+                          _ackedLocal.add(item.warningKey);
+                          _index = 0;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Container(
+                      width: double.infinity,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: Colors.white.withOpacity(0.06),
+                          ),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 18,
+                        color: Colors.white.withOpacity(0.42),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Positioned(
+                top: -8,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppPalette.cardBottom,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: warningBadgeColor.withOpacity(0.24),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.20),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      warningBadgeText,
+                      style: TextStyle(
+                        color: warningBadgeColor.withOpacity(0.94),
+                        fontSize: 10.2,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },

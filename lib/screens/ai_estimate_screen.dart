@@ -233,6 +233,27 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return 0;
   }
 
+  EstimatePriceRuleModel? _findExactGuidedRule(String query) {
+    final normalizedQuery = _normalizePromptSearch(query);
+    if (normalizedQuery.isEmpty) return null;
+
+    for (final rule in _rules) {
+      final candidates = <String>[
+        rule.serviceType.trim(),
+        (rule.displayName ?? '').trim(),
+        ...rule.aliases.map((e) => e.trim()),
+      ].where((e) => e.isNotEmpty).toList();
+
+      for (final candidate in candidates) {
+        if (_normalizePromptSearch(candidate) == normalizedQuery) {
+          return rule;
+        }
+      }
+    }
+
+    return null;
+  }
+
   List<_PromptSuggestion> _buildPromptSuggestions(String query) {
     final normalizedQuery = _normalizePromptSearch(query);
     if (normalizedQuery.isEmpty) return const [];
@@ -442,11 +463,32 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   void _onGuidedServiceChanged() {
     final text = _guidedServiceController.text.trim();
 
+    for (final controller in _guidedFollowupControllers.values) {
+      controller.dispose();
+    }
+    _guidedFollowupControllers.clear();
+
+    _guidedQuantityController.clear();
+    _guidedMaterialsListController.clear();
+
     if (text.isEmpty) {
       if (!mounted) return;
       setState(() {
         _promptSuggestions = [];
         _activePromptRule = null;
+        _guidedAnswers.clear();
+      });
+      return;
+    }
+
+    final exactRule = _findExactGuidedRule(text);
+
+    if (exactRule != null) {
+      if (!mounted) return;
+      setState(() {
+        _promptSuggestions = [];
+        _activePromptRule = exactRule;
+        _guidedAnswers.clear();
       });
       return;
     }
@@ -456,10 +498,8 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     if (!mounted) return;
     setState(() {
       _promptSuggestions = suggestions;
-      _activePromptRule = suggestions.length == 1 ||
-          (suggestions.isNotEmpty && suggestions.first.score >= 0.92)
-          ? suggestions.first.rule
-          : null;
+      _activePromptRule = null;
+      _guidedAnswers.clear();
     });
   }
 
@@ -836,6 +876,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         propertyCity: _selectedProperty?.city,
         clientId: _selectedClient?.id,
         propertyId: _selectedProperty?.id,
+        ruleUnit: _activePromptRule?.unit,
       );
 
       if (!mounted) return;
@@ -1493,27 +1534,104 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
             _buildGuidedChoiceChip(
               label: 'Labor Only',
               selected: selected == 'labor_only',
-              onTap: () => _setGuidedAnswer('materials_mode', 'labor_only'),
+              onTap: () {
+                setState(() {
+                  _guidedAnswers['materials_mode'] = 'labor_only';
+                  _guidedAnswers.remove('materials_detail');
+                  _guidedAnswers.remove('materials_list');
+                  _guidedMaterialsListController.clear();
+                });
+              },
             ),
             _buildGuidedChoiceChip(
               label: 'Materials Included',
               selected: selected == 'materials_included',
-              onTap: () => _setGuidedAnswer('materials_mode', 'materials_included'),
+              onTap: () {
+                setState(() {
+                  _guidedAnswers['materials_mode'] = 'materials_included';
+                  _guidedAnswers.remove('materials_detail');
+                  _guidedAnswers.remove('materials_list');
+                  _guidedMaterialsListController.clear();
+                });
+              },
             ),
             _buildGuidedChoiceChip(
               label: 'Customer Provides',
               selected: selected == 'customer_provides',
-              onTap: () => _setGuidedAnswer('materials_mode', 'customer_provides'),
+              onTap: () {
+                setState(() {
+                  _guidedAnswers['materials_mode'] = 'customer_provides';
+                  _guidedAnswers.remove('materials_detail');
+                  _guidedAnswers.remove('materials_list');
+                  _guidedMaterialsListController.clear();
+                });
+              },
             ),
             _buildGuidedChoiceChip(
               label: 'After Inspection',
               selected: selected == 'after_inspection',
-              onTap: () => _setGuidedAnswer('materials_mode', 'after_inspection'),
+              onTap: () {
+                setState(() {
+                  _guidedAnswers['materials_mode'] = 'after_inspection';
+                  _guidedAnswers.remove('materials_detail');
+                  _guidedAnswers.remove('materials_list');
+                  _guidedMaterialsListController.clear();
+                });
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGuidedMaterialsDetailStep() {
+    final materialsMode =
+    (_guidedAnswers['materials_mode'] ?? '').toString().trim();
+
+    if (materialsMode != 'materials_included') {
+      return const SizedBox.shrink();
+    }
+
+    final selected =
+    (_guidedAnswers['materials_detail'] ?? '').toString().trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text(
+          'Workio says: how should materials be handled?',
+          style: TextStyle(
+            color: Color(0xFF8E93A6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildGuidedChoiceChip(
+              label: 'Standard Included',
+              selected: selected == 'standard_included',
+              onTap: () {
+                setState(() {
+                  _guidedAnswers['materials_detail'] = 'standard_included';
+                  _guidedAnswers.remove('materials_list');
+                  _guidedMaterialsListController.clear();
+                });
+              },
             ),
             _buildGuidedChoiceChip(
               label: 'Detailed List',
               selected: selected == 'detailed_list',
-              onTap: () => _setGuidedAnswer('materials_mode', 'detailed_list'),
+              onTap: () {
+                setState(() {
+                  _guidedAnswers['materials_detail'] = 'detailed_list';
+                });
+              },
             ),
           ],
         ),
@@ -1555,8 +1673,11 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   Widget _buildGuidedDetailedMaterialsStep() {
     final materialsMode =
     (_guidedAnswers['materials_mode'] ?? '').toString().trim();
+    final materialsDetail =
+    (_guidedAnswers['materials_detail'] ?? '').toString().trim();
 
-    if (materialsMode != 'detailed_list') {
+    if (materialsMode != 'materials_included' ||
+        materialsDetail != 'detailed_list') {
       return const SizedBox.shrink();
     }
 
@@ -1748,9 +1869,18 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                       TextPosition(offset: _guidedServiceController.text.length),
                     );
 
+                    for (final controller in _guidedFollowupControllers.values) {
+                      controller.dispose();
+                    }
+                    _guidedFollowupControllers.clear();
+
+                    _guidedQuantityController.clear();
+                    _guidedMaterialsListController.clear();
+
                     setState(() {
                       _activePromptRule = suggestion.rule;
                       _promptSuggestions = [];
+                      _guidedAnswers.clear();
                     });
                   },
                   child: Container(
@@ -1809,6 +1939,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
             ),
           ),
           _buildGuidedMaterialsStep(),
+          _buildGuidedMaterialsDetailStep(),
           _buildGuidedDetailedMaterialsStep(),
           _buildGuidedQuantityStep(),
           _buildGuidedFollowupStep(),
