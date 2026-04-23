@@ -1,6 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'dart:async';
+
 import '../models/client_model.dart';
 import '../models/estimate_model.dart';
 import '../models/property_model.dart';
@@ -20,6 +22,7 @@ import '../services/estimate_template_service.dart';
 import '../services/company_settings_service.dart';
 import '../services/smart_estimate_service.dart';
 import '../services/guided_estimate_flow_service.dart';
+import '../services/estimate_rule_resolution_service.dart';
 
 import '../utils/estimate_calculator.dart';
 import '../utils/estimate_formatters.dart';
@@ -45,6 +48,12 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   bool _isSaving = false;
   bool _isHistoryLoading = false;
   bool _isTemplatesLoading = false;
+
+  Timer? _guidedResolveDebounce;
+  bool _isResolvingGuidedRule = false;
+  int _guidedResolveRequestId = 0;
+  Set<String> _suppressedFollowupKeys = {};
+  String? _guidedResolverHint;
 
   List<EstimateModel> _clientHistory = [];
   List<EstimateModel> _propertyHistory = [];
@@ -76,6 +85,9 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   final TextEditingController _guidedServiceController = TextEditingController();
   final FocusNode _guidedServiceFocusNode = FocusNode();
   final Map<String, dynamic> _guidedAnswers = {};
+  final TextEditingController _guidedWorkDetailsController =
+  TextEditingController();
+  final FocusNode _guidedWorkDetailsFocusNode = FocusNode();
   final TextEditingController _guidedQuantityController = TextEditingController();
   final FocusNode _guidedQuantityFocusNode = FocusNode();
   final TextEditingController _guidedMaterialsListController =
@@ -87,6 +99,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     super.initState();
     _promptController.addListener(_onPromptChanged);
     _guidedServiceController.addListener(_onGuidedServiceChanged);
+    _guidedWorkDetailsController.addListener(_onGuidedWorkDetailsChanged);
     _guidedQuantityController.addListener(_onGuidedQuantityChanged);
     _guidedMaterialsListController.addListener(_onGuidedMaterialsListChanged);
     _loadClients();
@@ -110,10 +123,15 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     _guidedMaterialsListController.dispose();
     _guidedMaterialsListFocusNode.dispose();
 
+    _guidedWorkDetailsController.removeListener(_onGuidedWorkDetailsChanged);
+    _guidedWorkDetailsController.dispose();
+    _guidedWorkDetailsFocusNode.dispose();
+
     for (final controller in _guidedFollowupControllers.values) {
       controller.dispose();
     }
     _guidedFollowupControllers.clear();
+    _guidedResolveDebounce?.cancel();
 
     super.dispose();
   }
@@ -342,6 +360,117 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return unique.values.take(6).toList();
   }
 
+  List<Map<String, dynamic>> _buildResolverCandidates(
+      List<_PromptSuggestion> suggestions,
+      ) {
+    return suggestions.take(5).map((item) {
+      return {
+        'ruleId': item.rule.id,
+        'serviceType': item.rule.serviceType,
+        'displayName': item.rule.displayName ?? '',
+        'unit': item.rule.unit,
+        'category': item.rule.category,
+        'aliases': item.rule.aliases,
+        'aiKeywords': item.rule.aiKeywords,
+        'negativeKeywords': const <String>[],
+        'followupQuestions': item.rule.aiFollowupQuestions,
+      };
+    }).toList();
+  }
+
+  EstimatePriceRuleModel? _findRuleById(String? ruleId) {
+    final id = (ruleId ?? '').trim();
+    if (id.isEmpty) return null;
+
+    for (final rule in _rules) {
+      if (rule.id == id) return rule;
+    }
+
+    return null;
+  }
+
+  Future<void> _resolveGuidedRuleWithEdge(
+      String text,
+      List<_PromptSuggestion> suggestions,
+      ) async {
+    _guidedResolveDebounce?.cancel();
+
+    if (text.trim().length < 4 || suggestions.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _isResolvingGuidedRule = false;
+        _guidedResolverHint = null;
+        _suppressedFollowupKeys = {};
+      });
+      return;
+    }
+
+    final requestId = ++_guidedResolveRequestId;
+
+    _guidedResolveDebounce = Timer(const Duration(milliseconds: 350), () async {
+      if (!mounted) return;
+
+      setState(() {
+        _isResolvingGuidedRule = true;
+        _guidedResolverHint = null;
+        _suppressedFollowupKeys = {};
+      });
+
+      try {
+        final result = await EstimateRuleResolutionService.resolve(
+          prompt: text,
+          guidedAnswers: Map<String, dynamic>.from(_guidedAnswers),
+          candidates: _buildResolverCandidates(suggestions),
+        );
+
+        if (!mounted) return;
+        if (requestId != _guidedResolveRequestId) return;
+
+        final resolvedRule = _findRuleById(result.selectedRuleId);
+
+        if (resolvedRule != null) {
+          final normalizedWork = result.normalizedRequestedWork.trim();
+
+          if (_guidedWorkDetailsController.text.trim().isEmpty &&
+              normalizedWork.isNotEmpty) {
+            _guidedWorkDetailsController.text = normalizedWork;
+            _guidedWorkDetailsController.selection = TextSelection.fromPosition(
+              TextPosition(offset: _guidedWorkDetailsController.text.length),
+            );
+          }
+
+          setState(() {
+            _activePromptRule = resolvedRule;
+            _promptSuggestions = [];
+            _suppressedFollowupKeys = result.suppressQuestionKeys.toSet();
+            _guidedResolverHint = null;
+            _isResolvingGuidedRule = false;
+          });
+
+          return;
+        }
+
+        setState(() {
+          _activePromptRule = null;
+          _suppressedFollowupKeys = result.suppressQuestionKeys.toSet();
+          _guidedResolverHint = result.shouldAskClarifyingQuestion
+              ? result.clarifyingQuestion
+              : null;
+          _isResolvingGuidedRule = false;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        if (requestId != _guidedResolveRequestId) return;
+
+        setState(() {
+          _isResolvingGuidedRule = false;
+          _guidedResolverHint = null;
+          _suppressedFollowupKeys = {};
+        });
+      }
+    });
+  }
+
   String _buildWorkioHint() {
     final text = _promptController.text.trim();
 
@@ -470,6 +599,8 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
     _guidedQuantityController.clear();
     _guidedMaterialsListController.clear();
+    _guidedWorkDetailsController.clear();
+    _guidedResolveDebounce?.cancel();
 
     if (text.isEmpty) {
       if (!mounted) return;
@@ -477,18 +608,23 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         _promptSuggestions = [];
         _activePromptRule = null;
         _guidedAnswers.clear();
+        _suppressedFollowupKeys = {};
+        _guidedResolverHint = null;
+        _isResolvingGuidedRule = false;
       });
       return;
     }
 
     final exactRule = _findExactGuidedRule(text);
-
     if (exactRule != null) {
       if (!mounted) return;
       setState(() {
         _promptSuggestions = [];
         _activePromptRule = exactRule;
         _guidedAnswers.clear();
+        _suppressedFollowupKeys = {};
+        _guidedResolverHint = null;
+        _isResolvingGuidedRule = false;
       });
       return;
     }
@@ -500,7 +636,11 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       _promptSuggestions = suggestions;
       _activePromptRule = null;
       _guidedAnswers.clear();
+      _suppressedFollowupKeys = {};
+      _guidedResolverHint = null;
     });
+
+    _resolveGuidedRuleWithEdge(text, suggestions);
   }
 
   void _toggleGuidedMode(bool value) {
@@ -516,6 +656,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       _guidedQuantityController.clear();
       _guidedAnswers.clear();
       _guidedMaterialsListController.clear();
+      _guidedWorkDetailsController.clear();
     });
   }
 
@@ -541,6 +682,14 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     });
   }
 
+  void _onGuidedWorkDetailsChanged() {
+    final text = _guidedWorkDetailsController.text.trim();
+
+    setState(() {
+      _guidedAnswers['requested_work'] = text;
+    });
+  }
+
   String _guidedQuantityLabel() {
     return GuidedEstimateFlowService.quantityLabel(_activePromptRule);
   }
@@ -550,7 +699,16 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   }
 
   List<Map<String, dynamic>> _guidedFollowupQuestions() {
-    return GuidedEstimateFlowService.followupQuestions(_activePromptRule);
+    final questions = GuidedEstimateFlowService.followupQuestions(_activePromptRule);
+
+    if (_suppressedFollowupKeys.isEmpty) {
+      return questions;
+    }
+
+    return questions.where((q) {
+      final key = (q['key'] ?? '').toString().trim().toLowerCase();
+      return !_suppressedFollowupKeys.contains(key);
+    }).toList();
   }
 
   bool _guidedRequiresQuantity() {
@@ -1511,6 +1669,35 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     );
   }
 
+  Widget _buildGuidedWorkDetailsStep() {
+    if (_activePromptRule == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text(
+          'Workio says: briefly describe the issue or requested work.',
+          style: TextStyle(
+            color: Color(0xFF8E93A6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _PremiumTextField(
+          controller: _guidedWorkDetailsController,
+          focusNode: _guidedWorkDetailsFocusNode,
+          label: 'Work Details',
+          hintText: 'Outlet replacement, new outlet installation, breaker inspection...',
+          maxLines: 2,
+        ),
+      ],
+    );
+  }
+
   Widget _buildGuidedMaterialsStep() {
     final selected = (_guidedAnswers['materials_mode'] ?? '').toString();
 
@@ -1843,6 +2030,36 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
           hintText: 'Electrical repair, plumbing, fridge repair...',
           maxLines: 1,
         ),
+        if (_isResolvingGuidedRule) ...[
+          const SizedBox(height: 8),
+          const Row(
+            children: [
+              CupertinoActivityIndicator(radius: 8),
+              SizedBox(width: 8),
+              Text(
+                'Workio is matching the best service...',
+                style: TextStyle(
+                  color: Color(0xFF8E93A6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ],
+
+        if ((_guidedResolverHint ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            _guidedResolverHint!,
+            style: const TextStyle(
+              color: Color(0xFF8E93A6),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+        ],
         if (_promptSuggestions.isNotEmpty) ...[
           const SizedBox(height: 12),
           const Text(
@@ -1876,11 +2093,14 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
                     _guidedQuantityController.clear();
                     _guidedMaterialsListController.clear();
+                    _guidedWorkDetailsController.clear();
 
                     setState(() {
                       _activePromptRule = suggestion.rule;
                       _promptSuggestions = [];
                       _guidedAnswers.clear();
+                      _suppressedFollowupKeys = {};
+                      _guidedResolverHint = null;
                     });
                   },
                   child: Container(
@@ -1938,6 +2158,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
               ),
             ),
           ),
+          _buildGuidedWorkDetailsStep(),
           _buildGuidedMaterialsStep(),
           _buildGuidedMaterialsDetailStep(),
           _buildGuidedDetailedMaterialsStep(),

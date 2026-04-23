@@ -6,8 +6,6 @@ import '../ui/app_toast.dart';
 import 'worker_screen.dart';
 import 'admin_panel.dart';
 
-import '../utils/company_logo_helper.dart';
-
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -292,12 +290,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 children: [
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 6),
-                                    child: Image.network(
-                                      CompanyLogoHelper.defaultLogoUrl,
+                                    child: Image.asset(
+                                      'assets/images/workio.png',
                                       height: 70,
                                       fit: BoxFit.contain,
                                       filterQuality: FilterQuality.high,
-                                    )
+                                    ),
                                   ),
                                   const SizedBox(height: 14),
 

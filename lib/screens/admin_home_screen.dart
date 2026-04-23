@@ -1360,6 +1360,7 @@ class _SolidPanel extends StatelessWidget {
                     const SizedBox(height: 10),
                   ],
                   child,
+                  if (footer != null) const SizedBox(height: 8),
                 ],
               ),
             ),
@@ -1764,6 +1765,8 @@ class _FooterWarningsCarousel extends StatefulWidget {
   final Future<void> Function(_WarningItem item)? onAck;
   final Future<void> Function(_WarningItem item)? onDetails;
   final Future<void> Function(_WarningItem item)? onDismiss;
+  final bool expanded;
+  final bool autoplay;
 
   const _FooterWarningsCarousel({
     required this.items,
@@ -1771,6 +1774,8 @@ class _FooterWarningsCarousel extends StatefulWidget {
     this.onAck,
     this.onDetails,
     this.onDismiss,
+    this.expanded = false,
+    this.autoplay = true,
   });
 
   @override
@@ -1790,15 +1795,22 @@ class _FooterWarningsCarouselState extends State<_FooterWarningsCarousel> {
   @override
   void didUpdateWidget(covariant _FooterWarningsCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
+
     if (oldWidget.items.length != widget.items.length) {
       index = 0;
       widget.onIndexChanged?.call(index);
+      _start();
+      return;
+    }
+
+    if (oldWidget.autoplay != widget.autoplay) {
       _start();
     }
   }
 
   void _start() {
     timer?.cancel();
+    if (!widget.autoplay) return;
     if (widget.items.length <= 1) return;
 
     timer = Timer.periodic(const Duration(seconds: 3), (_) {
@@ -1845,6 +1857,7 @@ class _FooterWarningsCarouselState extends State<_FooterWarningsCarousel> {
         item: item,
         index: index,
         total: widget.items.length,
+        expanded: widget.expanded,
         onAck: widget.onAck,
         onDetails: widget.onDetails,
       );
@@ -1898,24 +1911,19 @@ class _OkFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 44,
+      height: 50,
       child: Row(
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppPalette.green.withOpacity(0.20)),
-            ),
+          SizedBox(
+            width: 22,
+            height: 22,
             child: Icon(
               Icons.check_circle_rounded,
               color: AppPalette.green.withOpacity(0.95),
               size: 18,
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
 
           Expanded(
             child: Text(
@@ -2059,11 +2067,10 @@ String _warningDateFull(_WarningItem item) {
 class _WarningFooter extends StatelessWidget {
   final Future<void> Function(_WarningItem item)? onAck;
   final _WarningItem item;
-
   final Future<void> Function(_WarningItem item)? onDetails;
-
-  final int index;   // ✅ добавили
-  final int total;   // ✅ добавили
+  final int index;
+  final int total;
+  final bool expanded;
 
   const _WarningFooter({
     required this.item,
@@ -2071,67 +2078,103 @@ class _WarningFooter extends StatelessWidget {
     required this.total,
     this.onAck,
     this.onDetails,
+    this.expanded = true,
   });
 
-  String _footerSubtitle() {
-    final type = (item.details?['type'] ?? '').toString().trim();
+  String _workerName() {
+    final w = item.workerData ?? <String, dynamic>{};
+    return (w['name'] ?? '').toString().trim();
+  }
 
-    if (type == 'calendar_note') {
-      final text = (item.details?['note_text'] ?? item.message ?? '')
-          .toString()
-          .trim();
-      if (text.isNotEmpty) return text;
-      return 'Note item';
+  String _workerEmail() {
+    final w = item.workerData ?? <String, dynamic>{};
+    return (w['email'] ?? '').toString().trim();
+  }
+
+  String _personLine() {
+    final name = _workerName();
+    final email = _workerEmail();
+
+    if (name.isNotEmpty && email.isNotEmpty) {
+      return '$name • $email';
     }
-
-    if (type == 'calendar_reminder') {
-      final reminderAt = item.details?['reminder_at'];
-      if (reminderAt != null) {
-        try {
-          final dt = DateTime.parse(reminderAt.toString()).toLocal();
-          return 'Due ${DateFormat('MMM d • HH:mm').format(dt)}';
-        } catch (_) {}
-      }
-
-      final text = (item.details?['note_text'] ?? '').toString().trim();
-      if (text.isNotEmpty) return text;
-      return 'Reminder item';
-    }
-
-    final email = (item.workerData?['email'] ?? '').toString().trim();
+    if (name.isNotEmpty) return name;
     if (email.isNotEmpty) return email;
-
     return item.message;
   }
 
-  IconData _footerSubtitleIcon() {
-    final type = (item.details?['type'] ?? '').toString().trim();
+  String _reasonLine() {
+    final d = item.details ?? <String, dynamic>{};
+    final type = (d['type'] ?? '').toString().trim();
 
-    if (type == 'calendar_note') return Icons.notes_rounded;
-    if (type == 'calendar_reminder') return Icons.notifications_active_outlined;
+    switch (type) {
+      case 'unpaid':
+        final raw = d['balance'];
+        final balance = raw is num
+            ? raw.toDouble()
+            : double.tryParse(raw?.toString() ?? '');
+        if (balance != null) {
+          return 'Unpaid balance • \$${balance.toStringAsFixed(2)}';
+        }
+        return 'Unpaid balance';
 
-    return Icons.alternate_email_rounded;
+      case 'view_only':
+        return 'Worker has view-only access';
+
+      case 'suspended':
+        return 'Worker access is suspended';
+
+      case 'multi_starts_today':
+        final starts = d['starts_today'];
+        if (starts != null) {
+          return 'Started shift $starts times today';
+        }
+        return 'Multiple starts detected today';
+
+      case 'long_shift':
+        final workedMinutes = d['worked_minutes'];
+        if (workedMinutes is int) {
+          final h = workedMinutes ~/ 60;
+          final m = workedMinutes % 60;
+          return 'Worked time • ${h}h ${m}m';
+        }
+        return 'Long shift detected';
+
+      case 'calendar_note':
+        final note = (d['note_text'] ?? item.message ?? '').toString().trim();
+        return note.isNotEmpty ? note : 'Note item';
+
+      case 'calendar_reminder':
+        final note = (d['note_text'] ?? '').toString().trim();
+        if (note.isNotEmpty) return note;
+        return 'Reminder item';
+
+      default:
+        return item.message;
+    }
   }
 
-  IconData _footerDateIcon() {
+  IconData _reasonIcon() {
     final type = (item.details?['type'] ?? '').toString().trim();
 
-    if (type == 'calendar_reminder') return Icons.schedule_rounded;
-    return Icons.event_rounded;
-  }
-
-  Color _footerSubtitleColor() {
-    final type = (item.details?['type'] ?? '').toString().trim();
-
-    if (type == 'calendar_note') {
-      return Colors.white.withOpacity(0.78);
+    switch (type) {
+      case 'unpaid':
+        return Icons.payments_outlined;
+      case 'view_only':
+        return Icons.visibility_outlined;
+      case 'suspended':
+        return Icons.block_outlined;
+      case 'multi_starts_today':
+        return Icons.multiple_stop_rounded;
+      case 'long_shift':
+        return Icons.timer_outlined;
+      case 'calendar_note':
+        return Icons.notes_rounded;
+      case 'calendar_reminder':
+        return Icons.notifications_active_outlined;
+      default:
+        return Icons.info_outline_rounded;
     }
-
-    if (type == 'calendar_reminder') {
-      return const Color(0xFF8DB8FF);
-    }
-
-    return AppPalette.textSoft.withOpacity(0.86);
   }
 
   String _statusChipText() {
@@ -2198,166 +2241,159 @@ class _WarningFooter extends StatelessWidget {
     );
   }
 
+  Widget _ackButton() {
+    return InkWell(
+      onTap: (onAck == null) ? null : () => onAck!(item),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 4,
+          vertical: 3,
+        ),
+        child: Icon(
+          Icons.check_rounded,
+          size: 18,
+          color: (onAck == null)
+              ? Colors.white.withOpacity(0.18)
+              : Colors.white.withOpacity(0.55),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 68,
-      child: Row(
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Transform.translate(
-            offset: const Offset(0, -4),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: item.accent.withOpacity(0.22),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                child: Icon(
+                  item.icon,
+                  color: item.accent.withOpacity(0.95),
+                  size: 18,
                 ),
               ),
-              child: Icon(
-                item.icon,
-                color: item.accent.withOpacity(0.95),
-                size: 18,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: (onDetails == null) ? null : () => onDetails!(item),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ===== TOP ROW =====
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: AppPalette.textMain.withOpacity(0.95),
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12.8,
-                                height: 1.0,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _statusTag(),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${index + 1}/$total',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.45),
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 10.5,
-                                    letterSpacing: 0.6,
-                                    height: 1.0,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                            // ===== MIDDLE ROW =====
-                      Row(
-                        children: [
-                          Icon(
-                            _footerSubtitleIcon(),
-                            size: 12,
-                            color: Colors.white.withOpacity(0.42),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _footerSubtitle(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.72),
-                                fontWeight: FontWeight.w700,
-                                fontSize: 11,
-                                height: 1.0,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 2),
-
-                      // ===== BOTTOM ROW =====
-                      Row(
-                        children: [
-                          Icon(
-                            _footerDateIcon(),
-                            size: 12,
-                            color: Colors.white.withOpacity(0.38),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _warningDateShort(item),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.42),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 10,
-                                height: 1.0,
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: InkWell(
-                              onTap: (onAck == null) ? null : () => onAck!(item),
-                              borderRadius: BorderRadius.circular(10),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 3,
-                                ),
-                                child: Icon(
-                                  Icons.check_rounded,
-                                  size: 18,
-                                  color: (onAck == null)
-                                      ? Colors.white.withOpacity(0.18)
-                                      : Colors.white.withOpacity(0.55),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppPalette.textMain.withOpacity(0.95),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12.8,
+                    height: 1.0,
                   ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              if (expanded)
+                Text(
+                  _warningDateShort(item),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.45),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 10.2,
+                    height: 1.0,
+                  ),
+                )
+              else
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _statusTag(),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${index + 1}/$total',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.45),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 10.5,
+                        letterSpacing: 0.5,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              const SizedBox(width: 8),
+              _ackButton(),
+            ],
           ),
+
+          if (expanded) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.person_outline_rounded,
+                        size: 12,
+                        color: Colors.white.withOpacity(0.42),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _personLine(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.74),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 11,
+                            height: 1.0,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        _reasonIcon(),
+                        size: 12,
+                        color: Colors.white.withOpacity(0.38),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _reasonLine(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.48),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 10.4,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2386,9 +2422,11 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
 
   List<_WarningItem> _calendarWarningItems = [];
   Timer? _calendarWarningsTimer;
+  Timer? _autoCollapseTimer;
 
   bool _loadingDb = false;
   int _index = 0;
+  bool _expanded = false;
   late final int _bgSeed;
   late final List<Color> _bgShuffled;
 
@@ -2440,6 +2478,23 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
     } catch (_) {
       return '—';
     }
+  }
+
+  void _restartAutoCollapse() {
+    _autoCollapseTimer?.cancel();
+
+    if (!_expanded) return;
+
+    _autoCollapseTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted) return;
+      setState(() {
+        _expanded = false;
+      });
+    });
+  }
+
+  void _stopAutoCollapse() {
+    _autoCollapseTimer?.cancel();
   }
 
   Future<void> _loadCalendarWarningItems() async {
@@ -2537,6 +2592,7 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
   void dispose() {
     _calendarWarningsTimer?.cancel();
     _restoreFx.dispose();
+    _autoCollapseTimer?.cancel();
     super.dispose();
   }
 
@@ -3345,9 +3401,10 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
     final has = visible.isNotEmpty;
     final bgBase = has
         ? _bgShuffled[_index % _bgShuffled.length]
-        : Colors.white.withOpacity(0.035);
+        : Color.lerp(AppPalette.cardBottom, Colors.black, 0.12)!;
 
     final canRestoreAll = visible.isEmpty && hiddenNow.isNotEmpty;
+
 
     final warningBadgeText = has
         ? (visible.length == 1 ? 'WARNING' : 'WARNINGS')
@@ -3399,69 +3456,97 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    visible.isEmpty
-                        ? _OkFooter(
-                      canRestoreAll: canRestoreAll,
-                      onRestoreAll: canRestoreAll ? _restoreAllHiddenWarnings : null,
-                    )
-                        : _FooterWarningsCarousel(
-                      items: visible,
-                      onIndexChanged: (i) {
-                        if (!mounted) return;
-                        if (i == _index) return;
-
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: visible.isEmpty
+                          ? _OkFooter(
+                        canRestoreAll: canRestoreAll,
+                        onRestoreAll:
+                        canRestoreAll ? _restoreAllHiddenWarnings : null,
+                      )
+                          : _FooterWarningsCarousel(
+                        items: visible,
+                        expanded: _expanded,
+                        autoplay: !_expanded,
+                        onIndexChanged: (i) {
                           if (!mounted) return;
-                          setState(() => _index = i);
-                        });
-                      },
-                      onAck: (item) async {
-                        await _openWarningActionsSheet(context, item);
-                      },
-                      onDetails: (item) async {
-                        await _showWarningDetailsDialog(context, item);
-                      },
-                      onDismiss: (item) async {
-                        if (!mounted) return;
-                        setState(() {
-                          _ackedLocal.add(item.warningKey);
-                          _index = 0;
-                        });
-                      },
+                          if (i == _index) return;
+
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted) return;
+                            setState(() {
+                              _index = i;
+                              _expanded = false;
+                            });
+                            _stopAutoCollapse();
+                          });
+                        },
+                        onAck: (item) async {
+                          if (mounted) {
+                            setState(() {
+                              _expanded = false;
+                            });
+                          }
+                          _stopAutoCollapse();
+                          await _openWarningActionsSheet(context, item);
+                        },
+                        onDetails: (item) async {
+                          await _showWarningDetailsDialog(context, item);
+                        },
+                        onDismiss: (item) async {
+                          if (!mounted) return;
+                          setState(() {
+                            _ackedLocal.add(item.warningKey);
+                            _index = 0;
+                            _expanded = false;
+                          });
+                          _stopAutoCollapse();
+                        },
+                      ),
                     ),
+                    if (has) ...[
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _expanded = !_expanded;
+                          });
 
-                    const SizedBox(height: 8),
-
-                    Container(
-                      width: double.infinity,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        border: Border(
-                          top: BorderSide(
-                            color: Colors.white.withOpacity(0.06),
+                          if (_expanded) {
+                            _restartAutoCollapse();
+                          } else {
+                            _stopAutoCollapse();
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(999),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 18,
+                          child: Center(
+                            child: Icon(
+                              _expanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              size: 18,
+                              color: Colors.white.withOpacity(0.42),
+                            ),
                           ),
                         ),
                       ),
-                      alignment: Alignment.center,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 18,
-                        color: Colors.white.withOpacity(0.42),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-
               Positioned(
-                top: -8,
+                top: -10,
                 child: IgnorePointer(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                     decoration: BoxDecoration(
                       color: AppPalette.cardBottom,
                       borderRadius: BorderRadius.circular(999),
@@ -7862,7 +7947,7 @@ class _CardShell extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
         decoration: BoxDecoration(
           color: base,
           borderRadius: BorderRadius.circular(18),

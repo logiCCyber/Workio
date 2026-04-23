@@ -100,6 +100,9 @@ class GuidedEstimateFlowService {
   }) {
     if (rule == null) return false;
 
+    final requestedWork = (answers['requested_work'] ?? '').toString().trim();
+    if (requestedWork.isEmpty) return false;
+
     final materialsMode = (answers['materials_mode'] ?? '').toString().trim();
     if (materialsMode.isEmpty) return false;
 
@@ -135,6 +138,11 @@ class GuidedEstimateFlowService {
 
     final parts = <String>[];
     parts.add(serviceLabel(rule));
+
+    final requestedWork = (answers['requested_work'] ?? '').toString().trim();
+    if (requestedWork.isNotEmpty) {
+      parts.add(requestedWork);
+    }
 
     final quantityValue = (answers['quantity_value'] ?? '').toString().trim();
     final currentUnit = unit(rule);
