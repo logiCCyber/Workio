@@ -5,9 +5,13 @@ import '../models/ai_parsed_request_model.dart';
 class EstimatePromptParserService {
   EstimatePromptParserService._();
 
-  static AiParsedRequestModel parse(String prompt) {
+  static AiParsedRequestModel parse(
+      String prompt, {
+        String? ruleUnit,
+      }) {
     final rawPrompt = prompt.trim();
     final normalizedPrompt = _normalize(rawPrompt);
+    final normalizedRuleUnit = (ruleUnit ?? '').trim().toLowerCase();
 
     String? serviceType = _detectServiceType(normalizedPrompt);
     double? sqft = _extractSquareFootage(normalizedPrompt);
@@ -108,7 +112,12 @@ class EstimatePromptParserService {
     }
 
     final hasAreaInfo = (sqft ?? 0) > 0 || (rooms ?? 0) > 0;
-    if (!hasAreaInfo) {
+    final requiresProjectSize = _requiresProjectSize(
+      normalizedPrompt: normalizedPrompt,
+      ruleUnit: normalizedRuleUnit,
+    );
+
+    if (requiresProjectSize && !hasAreaInfo) {
       missingFields.add(
         const AiMissingFieldModel(
           key: 'project_size',
@@ -263,6 +272,24 @@ class EstimatePromptParserService {
     }
 
     return null;
+  }
+
+  static bool _requiresProjectSize({
+    required String normalizedPrompt,
+    required String ruleUnit,
+  }) {
+    if (ruleUnit.isNotEmpty) {
+      return ruleUnit == 'sqft' || ruleUnit == 'room';
+    }
+
+    final hasExplicitSqft = _extractSquareFootage(normalizedPrompt) != null;
+    final hasExplicitRooms = _extractRooms(normalizedPrompt) != null;
+
+    if (hasExplicitSqft || hasExplicitRooms) {
+      return true;
+    }
+
+    return false;
   }
 
   static double? _extractSquareFootage(String text) {

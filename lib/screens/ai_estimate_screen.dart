@@ -19,6 +19,7 @@ import '../services/property_service.dart';
 import '../services/estimate_template_service.dart';
 import '../services/company_settings_service.dart';
 import '../services/smart_estimate_service.dart';
+import '../services/guided_estimate_flow_service.dart';
 
 import '../utils/estimate_calculator.dart';
 import '../utils/estimate_formatters.dart';
@@ -51,6 +52,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   List<ClientModel> _clients = [];
   List<PropertyModel> _properties = [];
   List<EstimateTemplateModel> _templates = [];
+  final Map<String, TextEditingController> _guidedFollowupControllers = {};
 
   ClientModel? _selectedClient;
   PropertyModel? _selectedProperty;
@@ -76,6 +78,9 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   final Map<String, dynamic> _guidedAnswers = {};
   final TextEditingController _guidedQuantityController = TextEditingController();
   final FocusNode _guidedQuantityFocusNode = FocusNode();
+  final TextEditingController _guidedMaterialsListController =
+  TextEditingController();
+  final FocusNode _guidedMaterialsListFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -83,6 +88,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     _promptController.addListener(_onPromptChanged);
     _guidedServiceController.addListener(_onGuidedServiceChanged);
     _guidedQuantityController.addListener(_onGuidedQuantityChanged);
+    _guidedMaterialsListController.addListener(_onGuidedMaterialsListChanged);
     _loadClients();
   }
 
@@ -99,6 +105,15 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     _guidedQuantityController.removeListener(_onGuidedQuantityChanged);
     _guidedQuantityController.dispose();
     _guidedQuantityFocusNode.dispose();
+
+    _guidedMaterialsListController.removeListener(_onGuidedMaterialsListChanged);
+    _guidedMaterialsListController.dispose();
+    _guidedMaterialsListFocusNode.dispose();
+
+    for (final controller in _guidedFollowupControllers.values) {
+      controller.dispose();
+    }
+    _guidedFollowupControllers.clear();
 
     super.dispose();
   }
@@ -170,6 +185,17 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
 
     return matrix[a.length][b.length];
+  }
+
+  TextEditingController _followupControllerFor(String key) {
+    final existing = _guidedFollowupControllers[key];
+    if (existing != null) return existing;
+
+    final initialValue = (_guidedAnswers[key] ?? '').toString();
+
+    final controller = TextEditingController(text: initialValue);
+    _guidedFollowupControllers[key] = controller;
+    return controller;
   }
 
   double _scorePromptCandidate(String query, String candidate) {
@@ -438,6 +464,10 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   }
 
   void _toggleGuidedMode(bool value) {
+    for (final controller in _guidedFollowupControllers.values) {
+      controller.dispose();
+    }
+    _guidedFollowupControllers.clear();
     setState(() {
       _isGuidedMode = value;
       _promptSuggestions = [];
@@ -445,6 +475,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       _guidedServiceController.clear();
       _guidedQuantityController.clear();
       _guidedAnswers.clear();
+      _guidedMaterialsListController.clear();
     });
   }
 
@@ -462,82 +493,99 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     });
   }
 
-  String _guidedQuantityLabel() {
-    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
+  void _onGuidedMaterialsListChanged() {
+    final text = _guidedMaterialsListController.text.trim();
 
-    switch (unit) {
-      case 'item':
-        return 'Quantity';
-      case 'sqft':
-        return 'Square Footage';
-      case 'room':
-        return 'Rooms';
-      default:
-        return 'Size';
-    }
+    setState(() {
+      _guidedAnswers['materials_list'] = text;
+    });
+  }
+
+  String _guidedQuantityLabel() {
+    return GuidedEstimateFlowService.quantityLabel(_activePromptRule);
   }
 
   String _guidedQuantityHint() {
-    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
+    return GuidedEstimateFlowService.quantityHint(_activePromptRule);
+  }
 
-    switch (unit) {
-      case 'item':
-        return '2';
-      case 'sqft':
-        return '1200';
-      case 'room':
-        return '3';
-      default:
-        return 'Enter value';
-    }
+  List<Map<String, dynamic>> _guidedFollowupQuestions() {
+    return GuidedEstimateFlowService.followupQuestions(_activePromptRule);
+  }
+
+  bool _guidedRequiresQuantity() {
+    return GuidedEstimateFlowService.requiresQuantity(_activePromptRule);
+  }
+
+  bool _canGenerateGuidedDraft() {
+    return GuidedEstimateFlowService.canGenerate(
+      rule: _activePromptRule,
+      answers: _guidedAnswers,
+    );
   }
 
   String _buildGuidedPreviewPrompt() {
-    if (_activePromptRule == null) return '';
+    return GuidedEstimateFlowService.buildPrompt(
+      rule: _activePromptRule,
+      answers: _guidedAnswers,
+    );
+  }
 
-    final serviceLabel =
-    _activePromptRule!.displayName?.trim().isNotEmpty == true
-        ? _activePromptRule!.displayName!.trim()
-        : _activePromptRule!.serviceType.trim();
+  Future<void> _generateGuidedDraft() async {
+    final prompt = _buildGuidedPreviewPrompt().trim();
 
-    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
-    final quantityValue =
-    (_guidedAnswers['quantity_value'] ?? '').toString().trim();
-
-    final parts = <String>[serviceLabel];
-
-    if (quantityValue.isNotEmpty) {
-      if (unit == 'item') {
-        parts.add('$quantityValue item${quantityValue == '1' ? '' : 's'}');
-      } else if (unit == 'sqft') {
-        parts.add('$quantityValue sqft');
-      } else if (unit == 'room') {
-        parts.add('$quantityValue room${quantityValue == '1' ? '' : 's'}');
-      }
+    if (_activePromptRule == null) {
+      _showSnack('Choose a service first');
+      return;
     }
 
-    final materialsMode =
-    (_guidedAnswers['materials_mode'] ?? '').toString().trim();
-
-    switch (materialsMode) {
-      case 'labor_only':
-        parts.add('labor only');
-        break;
-      case 'materials_included':
-        parts.add('materials included');
-        break;
-      case 'customer_provides':
-        parts.add('customer provides materials');
-        break;
-      case 'after_inspection':
-        parts.add('materials/parts after inspection');
-        break;
-      case 'detailed_list':
-        parts.add('materials included with detailed list');
-        break;
+    if (!_canGenerateGuidedDraft()) {
+      _showSnack('Complete the guided answers first');
+      return;
     }
 
-    return parts.join(', ');
+    if (_selectedClient == null) {
+      _showSnack('Select a client first');
+      return;
+    }
+
+    if (_selectedProperty == null) {
+      _showSnack('Select a property first');
+      return;
+    }
+
+    _promptController.text = prompt;
+    _promptController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _promptController.text.length),
+    );
+
+    setState(() {
+      _isGenerating = true;
+    });
+
+    try {
+      final result = await SmartEstimateService.generate(
+        prompt: prompt,
+        propertyCity: _selectedProperty?.city,
+        clientId: _selectedClient?.id,
+        propertyId: _selectedProperty?.id,
+        ruleUnit: _activePromptRule?.unit,
+      );
+
+      if (!mounted) return;
+
+      _applySmartResult(result);
+      _showSmartResultMessage(result);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Failed to generate guided draft');
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        _isGenerating = false;
+      });
+    }
   }
 
   Widget _buildGuidedChoiceChip({
@@ -1012,6 +1060,139 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     await _usePreviousEstimate(matchedEstimate);
   }
 
+  Widget _buildHistorySuggestionTile(AiHistorySuggestionModel suggestion) {
+    final createdAt = suggestion.createdAt;
+    final dateText = createdAt == null
+        ? 'Unknown date'
+        : '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+
+    final scorePercent = (suggestion.score * 100).round();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            suggestion.title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${suggestion.reason} • $dateText',
+            style: const TextStyle(
+              color: Color(0xFF8E93A6),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _MiniInfo(
+                  label: 'Match',
+                  value: '$scorePercent%',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MiniInfo(
+                  label: 'Total',
+                  value: EstimateFormatters.formatCurrency(
+                    suggestion.total,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _HistoryActionButton(
+                  icon: CupertinoIcons.arrow_turn_down_right,
+                  label: 'Use as Baseline',
+                  onTap: () => _applyHistorySuggestion(suggestion),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openSimilarSuggestionsSheet() {
+    final suggestions = _smartResult?.historyContext?.suggestions ?? const [];
+
+    if (suggestions.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) {
+        return FractionallySizedBox(
+          heightFactor: 0.78,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: Column(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Similar Estimates',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: suggestions.length,
+                      itemBuilder: (context, index) {
+                        return _buildHistorySuggestionTile(suggestions[index]);
+                      },
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _reloadTemplates() async {
     setState(() {
       _isTemplatesLoading = true;
@@ -1371,6 +1552,156 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     );
   }
 
+  Widget _buildGuidedDetailedMaterialsStep() {
+    final materialsMode =
+    (_guidedAnswers['materials_mode'] ?? '').toString().trim();
+
+    if (materialsMode != 'detailed_list') {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text(
+          'Workio says: add the materials list.',
+          style: TextStyle(
+            color: Color(0xFF8E93A6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _PremiumTextField(
+          controller: _guidedMaterialsListController,
+          focusNode: _guidedMaterialsListFocusNode,
+          label: 'Materials List',
+          hintText:
+          '1 sheet drywall at \$45 each\n2 pcs outlet at \$12 each\n1 box screws at \$9 each',
+          maxLines: 4,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGuidedFollowupStep() {
+    final questions = _guidedFollowupQuestions();
+    if (questions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text(
+          'Workio says: answer a few more details.',
+          style: TextStyle(
+            color: Color(0xFF8E93A6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Column(
+          children: questions.map((question) {
+            final key = (question['key'] ?? '').toString().trim();
+            final title = (question['question'] ?? '').toString().trim();
+            final hint = (question['hint'] ?? '').toString().trim();
+            final answerType = (question['answerType'] ?? 'text')
+                .toString()
+                .trim()
+                .toLowerCase();
+
+            final options = question['options'] is List
+                ? (question['options'] as List)
+                .map((e) => e.toString().trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+                : <String>[];
+
+            final selectedValue =
+            (_guidedAnswers[key] ?? '').toString().trim();
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101117),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF23252E)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (hint.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        hint,
+                        style: const TextStyle(
+                          color: Color(0xFF8E93A6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    if (answerType == 'single_select' && options.isNotEmpty)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: options.map((option) {
+                          return _buildGuidedChoiceChip(
+                            label: option,
+                            selected: selectedValue == option,
+                            onTap: () => _setGuidedAnswer(key, option),
+                          );
+                        }).toList(),
+                      )
+                    else
+                      TextField(
+                        controller: _followupControllerFor(key),
+                        onChanged: (value) => _setGuidedAnswer(key, value),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        cursorColor: const Color(0xFF5B8CFF),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: 'Enter answer',
+                          hintStyle: TextStyle(
+                            color: Color(0xFF697086),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      )
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildGuidedModeStub() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1478,7 +1809,9 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
             ),
           ),
           _buildGuidedMaterialsStep(),
+          _buildGuidedDetailedMaterialsStep(),
           _buildGuidedQuantityStep(),
+          _buildGuidedFollowupStep(),
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
@@ -1510,6 +1843,34 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          if (!_canGenerateGuidedDraft()) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'Complete all required guided answers to continue.',
+              style: TextStyle(
+                color: Color(0xFF8E93A6),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: CupertinoButton(
+              color: const Color(0xFF5B8CFF),
+              borderRadius: BorderRadius.circular(16),
+              onPressed: _isGenerating || !_canGenerateGuidedDraft()
+                  ? null
+                  : _generateGuidedDraft,
+              child: _isGenerating
+                  ? const CupertinoActivityIndicator(color: Colors.white)
+                  : const Text(
+                'Generate Guided Draft',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],
@@ -1686,85 +2047,47 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       title: 'Similar Estimates',
       subtitle: 'Suggestions based on previous estimates',
       child: Column(
-        children: List.generate(historyContext.suggestions.length, (index) {
-          final suggestion = historyContext.suggestions[index];
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...List.generate(
+            historyContext.suggestions.length > 3
+                ? 3
+                : historyContext.suggestions.length,
+                (index) {
+              final suggestion = historyContext.suggestions[index];
+              final visibleCount = historyContext.suggestions.length > 3
+                  ? 3
+                  : historyContext.suggestions.length;
 
-          final createdAt = suggestion.createdAt;
-          final dateText = createdAt == null
-              ? 'Unknown date'
-              : '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
-
-          final scorePercent = (suggestion.score * 100).round();
-
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: index == historyContext.suggestions.length - 1 ? 0 : 10,
-            ),
-            child: Container(
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: index == visibleCount - 1 ? 0 : 10,
+                ),
+                child: _buildHistorySuggestionTile(suggestion),
+              );
+            },
+          ),
+          if (historyContext.suggestions.length > 3) ...[
+            const SizedBox(height: 10),
+            SizedBox(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 color: const Color(0xFF101117),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF23252E)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    suggestion.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
+                onPressed: _openSimilarSuggestionsSheet,
+                child: Text(
+                  'View all suggestions (${historyContext.suggestions.length})',
+                  style: const TextStyle(
+                    color: Color(0xFFB6BCD0),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${suggestion.reason} • $dateText',
-                    style: const TextStyle(
-                      color: Color(0xFF8E93A6),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _MiniInfo(
-                          label: 'Match',
-                          value: '$scorePercent%',
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _MiniInfo(
-                          label: 'Total',
-                          value: EstimateFormatters.formatCurrency(
-                            suggestion.total,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _HistoryActionButton(
-                          icon: CupertinoIcons.arrow_turn_down_right,
-                          label: 'Use as Baseline',
-                          onTap: () => _applyHistorySuggestion(suggestion),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
-          );
-        }),
+          ],
+        ],
       ),
     );
   }

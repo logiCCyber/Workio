@@ -17,6 +17,7 @@ class SmartEstimateService {
     String? propertyCity,
     String? clientId,
     String? propertyId,
+    String? ruleUnit,
     bool useFallbackOnError = true,
   }) async {
     final trimmedPrompt = prompt.trim();
@@ -39,7 +40,10 @@ class SmartEstimateService {
     }
 
     try {
-      final localParsed = EstimatePromptParserService.parse(trimmedPrompt);
+      final localParsed = EstimatePromptParserService.parse(
+        trimmedPrompt,
+        ruleUnit: ruleUnit,
+      );
 
       final mergedParsed = await _applyMiniParseIfNeeded(
         prompt: trimmedPrompt,
@@ -94,7 +98,10 @@ class SmartEstimateService {
         rethrow;
       }
 
-      final parsed = await _safeParse(trimmedPrompt);
+      final parsed = await _safeParse(
+        trimmedPrompt,
+        ruleUnit: ruleUnit,
+      );
       final historyContext = await EstimateHistorySuggestionService.buildContext(
         prompt: trimmedPrompt,
         clientId: clientId,
@@ -119,6 +126,7 @@ class SmartEstimateService {
     String? propertyCity,
     String? clientId,
     String? propertyId,
+    String? ruleUnit,
     bool useFallbackOnError = true,
   }) async {
     final trimmedPrompt = prompt.trim();
@@ -134,7 +142,10 @@ class SmartEstimateService {
     }
 
     try {
-      final localParsed = EstimatePromptParserService.parse(trimmedPrompt);
+      final localParsed = EstimatePromptParserService.parse(
+        trimmedPrompt,
+        ruleUnit: ruleUnit,
+      );
 
       final mergedParsed = await _applyMiniParseIfNeeded(
         prompt: trimmedPrompt,
@@ -190,7 +201,10 @@ class SmartEstimateService {
         rethrow;
       }
 
-      final parsed = await _safeParse(trimmedPrompt);
+      final parsed = await _safeParse(
+        trimmedPrompt,
+        ruleUnit: ruleUnit,
+      );
       final historyContext = await EstimateHistorySuggestionService.buildContext(
         prompt: trimmedPrompt,
         clientId: clientId,
@@ -251,9 +265,15 @@ class SmartEstimateService {
     );
   }
 
-  static Future<AiParsedRequestModel> _safeParse(String prompt) async {
+  static Future<AiParsedRequestModel> _safeParse(
+      String prompt, {
+        String? ruleUnit,
+      }) async {
     try {
-      final localParsed = EstimatePromptParserService.parse(prompt);
+      final localParsed = EstimatePromptParserService.parse(
+        prompt,
+        ruleUnit: ruleUnit,
+      );
       final mergedParsed = await _applyMiniParseIfNeeded(
         prompt: prompt,
         localParsed: localParsed,
