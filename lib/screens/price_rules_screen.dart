@@ -340,6 +340,11 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                           aliases: _parseAliases(aliasesController.text),
                         );
 
+                        displayNameController.text =
+                        result.suggestedDisplayName.trim().isEmpty
+                            ? displayNameController.text.trim()
+                            : result.suggestedDisplayName.trim();
+
                         aiKeywordsController.text = result.aiKeywords.join(', ');
                         aiScopeTemplateController.text = result.aiScopeTemplate;
                         aiNotesTemplateController.text = result.aiNotesTemplate;
@@ -726,6 +731,16 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                           unit: unit,
                           aliases: _parseAliases(aliasesController.text),
                         );
+
+                        serviceTypeController.text =
+                        result.normalizedServiceType.trim().isEmpty
+                            ? serviceTypeController.text.trim().toLowerCase()
+                            : result.normalizedServiceType.trim().toLowerCase();
+
+                        displayNameController.text =
+                        result.suggestedDisplayName.trim().isEmpty
+                            ? displayNameController.text.trim()
+                            : result.suggestedDisplayName.trim();
 
                         aiKeywordsController.text = result.aiKeywords.join(', ');
                         aiScopeTemplateController.text = result.aiScopeTemplate;
@@ -1510,16 +1525,21 @@ class AliasesAutoCommaFormatter extends TextInputFormatter {
       ) {
     var text = newValue.text;
 
+    // Разрешаем разделять элементы только запятой / новой строкой / ;
     text = text.replaceAll('\n', ', ');
     text = text.replaceAll(';', ', ');
+
+    // Нормализуем пробелы вокруг запятых
     text = text.replaceAll(RegExp(r'\s*,\s*'), ', ');
-    text = text.replaceAll(RegExp(r',\s*,+'), ', ');
-    text = text.replaceAllMapped(
-      RegExp(r'([^\s,])\s+([^\s,])'),
-          (m) => '${m.group(1)}, ${m.group(2)}',
-    );
-    text = text.replaceAll(RegExp(r',\s+,'), ', ');
-    text = text.replaceAll(RegExp(r'\s{2,}'), ' ');
+
+    // Убираем повторные запятые
+    text = text.replaceAll(RegExp(r'(,\s*){2,}'), ', ');
+
+    // Схлопываем лишние пробелы, НО не режем фразы по словам
+    text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+
+    // Чистим запятые в начале
+    text = text.replaceAll(RegExp(r'^(,\s*)+'), '');
 
     return TextEditingValue(
       text: text,

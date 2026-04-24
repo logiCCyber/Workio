@@ -13,6 +13,8 @@ class RuleAiMetadataResult {
   final String aiPrepDescription;
   final String aiRushTitle;
   final String aiRushDescription;
+  final String normalizedServiceType;
+  final String suggestedDisplayName;
   final List<Map<String, dynamic>> aiFollowupQuestions;
 
   const RuleAiMetadataResult({
@@ -29,6 +31,8 @@ class RuleAiMetadataResult {
     required this.aiRushTitle,
     required this.aiRushDescription,
     required this.aiFollowupQuestions,
+    required this.normalizedServiceType,
+    required this.suggestedDisplayName,
   });
 
   factory RuleAiMetadataResult.fromMap(Map<String, dynamic> map) {
@@ -64,6 +68,8 @@ class RuleAiMetadataResult {
       aiRushTitle: toText(map['aiRushTitle']),
       aiRushDescription: toText(map['aiRushDescription']),
       aiFollowupQuestions: toMapList(map['aiFollowupQuestions']),
+      normalizedServiceType: toText(map['normalizedServiceType']),
+      suggestedDisplayName: toText(map['suggestedDisplayName']),
     );
   }
 }

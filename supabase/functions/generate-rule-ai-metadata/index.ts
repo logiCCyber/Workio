@@ -336,17 +336,37 @@ function sanitizeNormalizedServiceType(
     value: unknown,
     fallback: string,
 ): string {
-    const text = normalizeText(value).toLowerCase();
-    return text || fallback.toLowerCase();
+    const raw = normalizeText(value || fallback).toLowerCase();
+
+    const cleaned = raw
+        .replace(/\b(service|work|job|help|general|standard|minor|onsite|requested)\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const words = cleaned.split(/\s+/).filter(Boolean);
+
+    if (words.length == 0) {
+        return normalizeText(fallback).toLowerCase();
+    }
+
+    return words.slice(0, 2).join(" ");
 }
 
 function sanitizeSuggestedDisplayName(
     value: unknown,
     fallback: string,
 ): string {
-    const text = normalizeText(value);
-    if (!text) return toTitleCase(fallback);
-    return toTitleCase(text);
+    const raw = normalizeText(value || fallback);
+
+    const cleaned = raw
+        .replace(/\b(service|work|job|help|general|standard|minor|onsite|requested)\b/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!cleaned) return toTitleCase(fallback);
+
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    return toTitleCase(words.slice(0, 2).join(" "));
 }
 
 serve(async (req) => {
@@ -407,6 +427,13 @@ GENERAL RULES:
 - Avoid broad unrelated aliases.
 - Avoid inflated phrases like "full renovation", "fit-out", "new build" unless the serviceType explicitly says that.
 
+DO NOT OVER-SPECIALIZE RULE MEANING:
+- If the input is broad, keep the output broad.
+- Do NOT turn generic "electrical repair" into "service panel repair", "meter repair", "service entrance repair", or "main breaker repair" unless those are explicitly mentioned in the input.
+- Do NOT infer panel, meter, main breaker, utility coordination, or service entrance work from the word "service" alone.
+- If the input says "electrical repair", stay with broad electrical repair.
+- Only specialize into panel, breaker, meter, or service entrance if the input explicitly contains those words.
+
 SERVICE MEANING RULES:
 - serviceType is the main truth.
 - displayName is supporting context.
@@ -444,19 +471,28 @@ ALIASES RULES:
 - Do NOT include unrelated scope expansion.
 - Do NOT include "remodel", "renovation", "new build", "fit-out", "full install" unless the input clearly means that.
 - Good aliases are near-synonyms, wording variations, and common search variations.
+- Do NOT expand a broad rule into narrower specialty aliases unless explicitly supported by the input.
+- Example: "electrical repair" should not automatically generate "meter socket repair" or "service panel repair".
 
 DISPLAY NAME RULES:
 - suggestedDisplayName must be short, clean, and admin-friendly.
+- Prefer 1 to 2 words.
 - It should look good in UI.
 - Prefer title case.
+- Remove filler words like service, work, job, help.
 - Do not make it too broad.
 - Do not make it too long.
 
 SERVICE TYPE RULES:
 - normalizedServiceType should be lowercase.
+- Prefer 1 to 2 words.
+- Remove generic filler words like service, work, job, help.
 - Keep it close to the actual service meaning.
 - Do not over-expand the scope.
 - It should be stable and reusable as the canonical service key.
+- Good example: "electric service repair" -> "electrical repair"
+- Good example: "outlet troubleshoot" -> "electrical repair"
+- Good example: "basement floor painting service" -> "painting"
 
 AI KEYWORDS RULES:
 - 6 to 10 max.
@@ -476,6 +512,8 @@ SCOPE TEMPLATE RULES:
 - Prefer simple structure:
   "Complete the requested {service_label} work. {materials}. {prep}. Final cleanup upon completion."
 - Only mention size when unit really depends on size.
+- For broad repair rules, keep the scope generic.
+- Do NOT mention panel, meter, service entrance, utility company coordination, or main breaker unless explicitly supported by the input.
 
 NOTES TEMPLATE RULES:
 - Reusable.

@@ -1384,7 +1384,7 @@ class _AdminWorkerDetailsScreenState
         '${DateFormat.Hm().format(rangeStart)} → ${status == ShiftStatus.active ? 'now' : DateFormat.Hm().format(rangeEnd)}';
 
     final workedText =
-        '${totalWorked.inHours}:${(totalWorked.inMinutes % 60).toString().padLeft(2, '0')}';
+        '${totalWorked.inHours.toString().padLeft(2, '0')}:${(totalWorked.inMinutes % 60).toString().padLeft(2, '0')}';
 
     final accent = status == ShiftStatus.active
         ? Colors.orangeAccent
@@ -1764,7 +1764,7 @@ class _AdminWorkerDetailsScreenState
                         total += now.difference(rowStart);
                       }
 
-                      final h = total.inHours;
+                      final h = total.inHours.toString().padLeft(2, '0');
                       final m = (total.inMinutes % 60).toString().padLeft(2, '0');
 
                       return Row(
@@ -6688,7 +6688,7 @@ String _fmtHmFromHours(double hours) {
   final totalMinutes = (hours * 60).round();
   final h = totalMinutes ~/ 60;
   final m = totalMinutes % 60;
-  return '$h:${m.toString().padLeft(2, '0')}';
+  return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
 }
 
 String fmtCompactInt(num value) {

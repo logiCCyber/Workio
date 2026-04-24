@@ -973,9 +973,9 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          const Color(0xFF232833).withOpacity(0.97),
-                          const Color(0xFF1A1F28).withOpacity(0.985),
-                          const Color(0xFF141922).withOpacity(0.99),
+                          const Color(0xFF2A2E35).withOpacity(0.97),
+                          const Color(0xFF23272E).withOpacity(0.985),
+                          const Color(0xFF1B1F26).withOpacity(0.99),
                         ],
                       ),
                       border: Border.all(
@@ -1090,116 +1090,126 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                             ),
                           ),
 
-                          Container(
-                            width: double.infinity,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF171B22).withOpacity(0.92),
-                              border: Border(
-                                top: BorderSide(color: Colors.white.withOpacity(0.06)),
-                                bottom: BorderSide(color: Colors.white.withOpacity(0.06)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Container(
+                              height: 58,
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    const Color(0xFF151A21).withOpacity(0.98),
+                                    const Color(0xFF0F141B).withOpacity(0.98),
+                                  ],
+                                ),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.26),
+                                    blurRadius: 18,
+                                    spreadRadius: -6,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
                               ),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Center(
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          _taskStatusIcon(status),
-                                          size: 14,
-                                          color: _taskStatusColor(status),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            status.replaceAll('_', ' '),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(0.78),
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 12.2,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Center(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            _taskStatusIcon(status),
+                                            size: 14,
+                                            color: _taskStatusColor(status),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              status.replaceAll('_', ' '),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Colors.white.withOpacity(0.82),
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 12.4,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Container(
-                                  width: 1,
-                                  height: 18,
-                                  color: Colors.white.withOpacity(0.08),
-                                ),
-                                Expanded(
-                                  child: Center(
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          priority == 'urgent'
-                                              ? Icons.priority_high_rounded
-                                              : priority == 'high'
-                                              ? Icons.keyboard_double_arrow_up_rounded
-                                              : priority == 'low'
-                                              ? Icons.south_rounded
-                                              : Icons.flag_rounded,
-                                          size: 14,
-                                          color: _taskPriorityColor(priority),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            priority,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: _taskPriorityColor(priority),
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 12.2,
+                                  const _TaskMetaDivider(),
+                                  Expanded(
+                                    child: Center(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            priority == 'urgent'
+                                                ? Icons.priority_high_rounded
+                                                : priority == 'high'
+                                                ? Icons.keyboard_double_arrow_up_rounded
+                                                : priority == 'low'
+                                                ? Icons.south_rounded
+                                                : Icons.flag_rounded,
+                                            size: 14,
+                                            color: _taskPriorityColor(priority),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              priority,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: _taskPriorityColor(priority),
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 12.4,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                                Container(
-                                  width: 1,
-                                  height: 18,
-                                  color: Colors.white.withOpacity(0.08),
-                                ),
-                                Expanded(
-                                  child: Center(
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.schedule_rounded,
-                                          size: 14,
-                                          color: Color(0xFFF59E0B),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            dueText.isEmpty ? 'No date' : dueText,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(0.70),
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 12.2,
+                                  const _TaskMetaDivider(),
+                                  Expanded(
+                                    child: Center(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(
+                                            Icons.schedule_rounded,
+                                            size: 14,
+                                            color: Color(0xFFF59E0B),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              dueText.isEmpty ? 'No date' : dueText,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Colors.white.withOpacity(0.74),
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 12.4,
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
 
@@ -1514,9 +1524,9 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                       colors: [
-                                        Color(0xFF232833),
-                                        Color(0xFF1A1F28),
-                                        Color(0xFF141922),
+                                        Color(0xFF2B2F36),
+                                        Color(0xFF23272E),
+                                        Color(0xFF1C2026),
                                       ],
                                     ),
                                     border: Border.all(
@@ -1541,8 +1551,8 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                             begin: Alignment.topCenter,
                                             end: Alignment.bottomCenter,
                                             colors: [
-                                              Color(0xFF343A47),
-                                              Color(0xFF2A303B),
+                                              Color(0xFF3A3E46),
+                                              Color(0xFF2D3138),
                                             ],
                                           ),
                                           border: Border.all(
@@ -2723,60 +2733,39 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
 
                     if (!hasContent)
                       Container(
-                        padding: const EdgeInsets.fromLTRB(18, 22, 18, 22),
+                        padding: const EdgeInsets.fromLTRB(18, 24, 18, 24),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(24),
                           gradient: const LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFF232833),
-                              Color(0xFF1A1F28),
-                              Color(0xFF141922),
+                              Color(0xFF2C3038),
+                              Color(0xFF232730),
+                              Color(0xFF1C2027),
                             ],
                           ),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.08),
+                            color: Colors.white.withOpacity(0.07),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.22),
-                              blurRadius: 14,
-                              offset: const Offset(0, 8),
+                              color: Colors.black.withOpacity(0.24),
+                              blurRadius: 16,
+                              offset: const Offset(0, 10),
                             ),
                           ],
                         ),
                         child: Column(
                           children: [
-                            Container(
+                            SizedBox(
                               width: 54,
                               height: 54,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Color(0xFF343A47),
-                                    Color(0xFF2A303B),
-                                  ],
-                                ),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.10),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.20),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 5),
-                                  ),
-                                ],
-                              ),
                               child: Icon(
                                 _showArchived
                                     ? Icons.archive_outlined
                                     : Icons.task_alt_rounded,
-                                size: 28,
+                                size: 30,
                                 color: Colors.white.withOpacity(0.72),
                               ),
                             ),
@@ -3256,17 +3245,17 @@ class _AdminTasksTopPanel extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color(0xFF232833),
-                Color(0xFF1A1F28),
-                Color(0xFF141922),
+                Color(0xFF2E3139),
+                Color(0xFF252830),
+                Color(0xFF1F2229),
               ],
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withOpacity(0.07),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.30),
+                color: Colors.black.withOpacity(0.26),
                 blurRadius: 22,
                 offset: const Offset(0, 12),
               ),
@@ -3326,16 +3315,16 @@ class _AdminTasksTopPanel extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF2B313D),
-                      Color(0xFF242A35),
+                      Color(0xFF343842),
+                      Color(0xFF2B2F38),
                     ],
                   ),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.08),
+                    color: Colors.white.withOpacity(0.07),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.20),
+                      color: Colors.black.withOpacity(0.18),
                       blurRadius: 14,
                       offset: const Offset(0, 8),
                     ),
@@ -3970,12 +3959,12 @@ class _TaskCard extends StatelessWidget {
 
     final List<Color> cardGradient = alternate
         ? const [
-      Color(0xFF3A414E),
-      Color(0xFF2D3440),
+      Color(0xFF3A3E45),
+      Color(0xFF2E3239),
     ]
         : const [
-      Color(0xFF2A303B),
-      Color(0xFF1C222D),
+      Color(0xFF30343B),
+      Color(0xFF24282F),
     ];
 
     final List<Color> sideBtnGradient = alternate
@@ -3995,27 +3984,38 @@ class _TaskCard extends StatelessWidget {
         onTap: onTap,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(0, 16, 0, 16),
+          padding: const EdgeInsets.fromLTRB(0, 14, 0, 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: cardGradient,
+              colors: [
+                cardGradient.first.withOpacity(1.0),
+                cardGradient.last.withOpacity(1.0),
+              ],
             ),
             border: Border.all(
-              color: Colors.white.withOpacity(0.10),
+              color: Colors.white.withOpacity(0.11),
+              width: 1.1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.26),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+                color: Colors.black.withOpacity(0.34),
+                blurRadius: 20,
+                spreadRadius: 1,
+                offset: const Offset(0, 10),
               ),
               BoxShadow(
-                color: Colors.white.withOpacity(0.035),
-                blurRadius: 10,
-                spreadRadius: -6,
+                color: Colors.black.withOpacity(0.16),
+                blurRadius: 8,
+                spreadRadius: -2,
+                offset: const Offset(0, 3),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.045),
+                blurRadius: 12,
+                spreadRadius: -7,
                 offset: const Offset(0, -2),
               ),
             ],
@@ -4117,111 +4117,135 @@ class _TaskCard extends StatelessWidget {
 
               const SizedBox(height: 10),
 
-              Container(
-                width: double.infinity,
-                height: 52,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF171B22).withOpacity(0.92),
-                  border: Border(
-                    top: BorderSide(color: Colors.white.withOpacity(0.06)),
-                    bottom: BorderSide(color: Colors.white.withOpacity(0.06)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Container(
+                  width: double.infinity,
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFF20252D).withOpacity(0.98),
+                        const Color(0xFF171B22).withOpacity(0.96),
+                        const Color(0xFF11151B).withOpacity(0.98),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.06),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.28),
+                        blurRadius: 14,
+                        offset: const Offset(0, 7),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.035),
+                        blurRadius: 10,
+                        spreadRadius: -6,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _statusIcon(status),
-                              size: 14,
-                              color: _statusColor(status),
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                _statusLabel(status),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.78),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12.2,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _statusIcon(status),
+                                size: 14,
+                                color: _statusColor(status),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  _statusLabel(status),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.78),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.2,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 18,
-                      color: Colors.white.withOpacity(0.08),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _priorityIcon(priority),
-                              size: 14,
-                              color: _priorityColor(priority),
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                _priorityLabel(priority),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: _priorityColor(priority),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12.2,
+                      Container(
+                        width: 1,
+                        height: 16,
+                        color: Colors.white.withOpacity(0.06),
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _priorityIcon(priority),
+                                size: 14,
+                                color: _priorityColor(priority),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  _priorityLabel(priority),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: _priorityColor(priority),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.2,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 18,
-                      color: Colors.white.withOpacity(0.08),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.schedule_rounded,
-                              size: 14,
-                              color: Color(0xFFF59E0B),
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                dueText.isEmpty ? 'No date' : dueText,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.70),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12.2,
+                      Container(
+                        width: 1,
+                        height: 16,
+                        color: Colors.white.withOpacity(0.06),
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.schedule_rounded,
+                                size: 14,
+                                color: Color(0xFFF59E0B),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  dueText.isEmpty ? 'No date' : dueText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.70),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.2,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
 
@@ -4241,9 +4265,9 @@ class _TaskCard extends StatelessWidget {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            const Color(0xFF232833).withOpacity(0.94),
-                            const Color(0xFF1A1F28).withOpacity(0.97),
-                            const Color(0xFF141922).withOpacity(0.99),
+                            const Color(0xFF252A32).withOpacity(0.92),
+                            const Color(0xFF1D2128).withOpacity(0.96),
+                            const Color(0xFF171B21).withOpacity(0.98),
                           ],
                         ),
                         border: Border.all(
@@ -4546,12 +4570,12 @@ class _TaskChecklistPreview extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(0xFF232833).withOpacity(0.94),
-                        const Color(0xFF1A1F28).withOpacity(0.98),
+                        const Color(0xFF2D3138).withOpacity(0.94),
+                        const Color(0xFF23272E).withOpacity(0.98),
                       ],
                     ),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.07),
+                      color: Colors.white.withOpacity(0.08),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -4633,9 +4657,9 @@ class _TaskChecklistPreview extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                const Color(0xFF232833).withOpacity(0.92),
-                const Color(0xFF1A1F28).withOpacity(0.96),
-                const Color(0xFF141922).withOpacity(0.98),
+                const Color(0xFF252930).withOpacity(0.92),
+                const Color(0xFF1E2229).withOpacity(0.96),
+                const Color(0xFF171B21).withOpacity(0.98),
               ],
             ),
             border: Border.all(
@@ -4794,9 +4818,9 @@ class _AdminTaskWorkerPickerSheetState extends State<_AdminTaskWorkerPickerSheet
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF232833).withOpacity(0.97),
-                  const Color(0xFF1A1F28).withOpacity(0.985),
-                  const Color(0xFF141922).withOpacity(0.99),
+                  const Color(0xFF2C3037).withOpacity(0.97),
+                  const Color(0xFF24282F).withOpacity(0.985),
+                  const Color(0xFF1D2128).withOpacity(0.99),
                 ],
               ),
               border: Border.all(
@@ -5164,8 +5188,8 @@ class _SheetSearchBar extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                const Color(0xFF232833).withOpacity(0.94),
-                const Color(0xFF1A1F28).withOpacity(0.97),
+                const Color(0xFF252930).withOpacity(0.94),
+                const Color(0xFF1D2128).withOpacity(0.97),
               ],
             ),
             border: Border.all(
@@ -5422,6 +5446,11 @@ class _CreateTaskSheetState extends State<_CreateTaskSheet> {
           physics: const BouncingScrollPhysics(),
           child: _TaskFormShell(
             title: 'New task',
+            panelColors: const [
+              Color(0xFF2C3037),
+              Color(0xFF24282F),
+              Color(0xFF1D2128),
+            ],
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -5529,8 +5558,8 @@ class _CreateTaskSheetState extends State<_CreateTaskSheet> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Color(0xFF2B313D),
-                            Color(0xFF222833),
+                            Color(0xFF232833),
+                            Color(0xFF1A1F28),
                           ],
                         ),
                         border: Border.all(
@@ -5977,14 +6006,22 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
 class _TaskFormShell extends StatelessWidget {
   final String title;
   final Widget child;
+  final List<Color>? panelColors;
 
   const _TaskFormShell({
     required this.title,
     required this.child,
+    this.panelColors,
   });
 
   @override
   Widget build(BuildContext context) {
+    final resolvedPanelColors = panelColors ??
+        const [
+          Color(0xFF232833),
+          Color(0xFF1A1F28),
+          Color(0xFF141922),
+        ];
     return ClipRRect(
       borderRadius: BorderRadius.circular(30),
       child: BackdropFilter(
@@ -5996,11 +6033,7 @@ class _TaskFormShell extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF232833).withOpacity(0.97),
-                const Color(0xFF1A1F28).withOpacity(0.985),
-                const Color(0xFF141922).withOpacity(0.99),
-              ],
+              colors: resolvedPanelColors,
             ),
             border: Border.all(color: Colors.white.withOpacity(0.08)),
             boxShadow: [
@@ -6074,9 +6107,9 @@ class _SheetSectionCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF232833).withOpacity(0.92),
-            const Color(0xFF1A1F28).withOpacity(0.96),
-            const Color(0xFF141922).withOpacity(0.98),
+            const Color(0xFF2A2E35).withOpacity(0.92),
+            const Color(0xFF23272E).withOpacity(0.96),
+            const Color(0xFF1B1F26).withOpacity(0.98),
           ],
         ),
         border: Border.all(
@@ -6373,8 +6406,8 @@ class _MediaCapsuleAction extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF232833),
-                  Color(0xFF1A1F28),
+                  Color(0xFF2A2E35),
+                  Color(0xFF20242B),
                 ],
               ),
               border: Border.all(
@@ -7640,8 +7673,8 @@ class _FormButtons extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF262C37),
-                      Color(0xFF1E242D),
+                      Color(0xFF232833),
+                      Color(0xFF1A1F28),
                     ],
                   ),
                   border: Border.all(
@@ -8641,13 +8674,13 @@ class _TaskDaySection extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _TaskPalette.cardTop.withOpacity(0.97),
-            _TaskPalette.cardBottom.withOpacity(0.96),
-            const Color(0xFF171A22).withOpacity(0.97),
+            Color(0xFF2B2F36),
+            Color(0xFF23272E),
+            Color(0xFF1C2026),
           ],
         ),
         border: Border.all(
@@ -8670,7 +8703,7 @@ class _TaskDaySection extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF232830),
+                color: const Color(0xFF262A31),
                 border: Border(
                   bottom: BorderSide(
                     color: Colors.white.withOpacity(0.07),
@@ -8707,12 +8740,12 @@ class _TaskDaySection extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               child: Column(
                 children: [
                   for (int i = 0; i < children.length; i++) ...[
                     children[i],
-                    if (i != children.length - 1) const SizedBox(height: 10),
+                    if (i != children.length - 1) const SizedBox(height: 12),
                   ],
                 ],
               ),
