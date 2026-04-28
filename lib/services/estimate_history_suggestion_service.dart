@@ -73,11 +73,11 @@ class EstimateHistorySuggestionService {
     );
 
     final suggestions = rawSuggestions
-        .where((suggestion) => suggestion.score > 0.20)
+        .where((suggestion) => suggestion.score >= 0.40)
         .toList()
       ..sort((a, b) => b.score.compareTo(a.score));
 
-    final topSuggestions = suggestions.take(5).toList();
+    final topSuggestions = suggestions.take(3).toList();
 
     return AiHistoryContextModel(
       rawPrompt: rawPrompt,
@@ -111,6 +111,31 @@ class EstimateHistorySuggestionService {
     final estimateServiceType =
     estimateParsedWithDynamicType.serviceType?.trim().toLowerCase();
 
+    final isCompatibleService =
+    _isCompatibleServiceType(detectedServiceType, estimateServiceType);
+
+    if ((detectedServiceType ?? '').isNotEmpty &&
+        (estimateServiceType ?? '').isNotEmpty &&
+        !isCompatibleService) {
+      return AiHistorySuggestionModel(
+        estimateId: estimate.id,
+        title: estimate.title,
+        serviceType: estimateServiceType,
+        sourceType: _resolveSourceType(
+          isSameClient: isSameClient,
+          isSameProperty: isSameProperty,
+        ),
+        reason: 'Different service type',
+        score: 0,
+        total: estimate.total,
+        createdAt: estimate.createdAt,
+        isSameClient: isSameClient,
+        isSameProperty: isSameProperty,
+        matchedFields: const ['different_service_type'],
+        suggestedAction: 'use_as_baseline',
+      );
+    }
+
     final estimateRule = await _loadMainRule(estimateServiceType);
     final estimateIntentKeywords = _extractIntentKeywords(
       normalizedText: estimateText,
@@ -121,18 +146,17 @@ class EstimateHistorySuggestionService {
     double score = 0;
 
     if (isSameClient) {
-      score += 0.25;
+      score += 0.12;
       matchedFields.add('same_client');
     }
 
     if (isSameProperty) {
-      score += 0.30;
+      score += 0.18;
       matchedFields.add('same_property');
     }
 
-    if ((detectedServiceType ?? '').isNotEmpty &&
-        detectedServiceType == estimateServiceType) {
-      score += 0.25;
+    if ((detectedServiceType ?? '').isNotEmpty && isCompatibleService) {
+      score += 0.40;
       matchedFields.add('service_type');
     }
 
@@ -185,6 +209,33 @@ class EstimateHistorySuggestionService {
       matchedFields: matchedFields,
       suggestedAction: 'use_as_baseline',
     );
+  }
+
+  static bool _isCompatibleServiceType(String? promptType, String? estimateType) {
+    final left = _normalize(promptType ?? '');
+    final right = _normalize(estimateType ?? '');
+
+    if (left.isEmpty || right.isEmpty) return true;
+    if (left == right) return true;
+    if (left.startsWith('$right ') || right.startsWith('$left ')) return true;
+
+    final leftAnchor = _serviceAnchor(left);
+    final rightAnchor = _serviceAnchor(right);
+
+    if (leftAnchor.isEmpty || rightAnchor.isEmpty) return false;
+    return leftAnchor == rightAnchor;
+  }
+
+  static String _serviceAnchor(String value) {
+    final words = value
+        .split(' ')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .where((e) => !_genericServiceWords.contains(e))
+        .toList();
+
+    if (words.isEmpty) return '';
+    return words.first;
   }
 
   static String _resolveSourceType({
@@ -363,6 +414,23 @@ class EstimateHistorySuggestionService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
+
+  static const Set<String> _genericServiceWords = {
+    'repair',
+    'replacement',
+    'replace',
+    'installation',
+    'install',
+    'inspection',
+    'diagnostic',
+    'diagnostics',
+    'troubleshooting',
+    'service',
+    'work',
+    'general',
+    'main',
+    'minor',
+  };
 
   static const Set<String> _stopWords = {
     'the',

@@ -117,11 +117,18 @@ Your job:
 - Return only structured JSON.
 
 Rules:
-- Prefer realistic service type detection from the whole prompt.
-- If the local parser likely overfit to one material word like "drywall sheet", correct it if the full prompt suggests a broader job like bathroom repair.
+- If the prompt contains "service_type: X", return exactly X as serviceType. Do not translate it, rename it, or replace it with another trade.
+- If the prompt contains "service_label: X", use it only as display/context. The serviceType must still come from "service_type" when present.
+- If there is no explicit service_type, infer serviceType only when the full prompt clearly describes a service. If unsure, return null.
+- Never use a material/product word as serviceType. Materials like sheet, wire, pipe, screw, outlet, paint, tile, board, box, bag are not service types.
+- If the local parser likely overfit to one material word, correct it if the full prompt suggests a broader service request.
 - If detailed materials are present, parse them carefully.
-- If prompt clearly contains a material list, set materialsIncluded=true unless the prompt clearly says labor only.
-- If prompt contains detailed materials, project_size_required can be false even if sqft/rooms are missing.
+- If prompt clearly contains a material list, set materialsIncluded=true unless the prompt clearly says labor only, customer provides materials, materials not included, or materials after inspection.
+- If prompt says labor only, set laborOnly=true and materialsIncluded=false.
+- If prompt says customer provides materials, set laborOnly=false and materialsIncluded=false.
+- If prompt says materials/parts after inspection, set laborOnly=false and materialsIncluded=null.
+- If prompt contains detailed materials, projectSizeRequired can be false even if sqft/rooms are missing.
+- Do NOT calculate prices, taxes, subtotals, totals, discounts, or rates.
 - Keep followupHints short and practical.
 - Keep reasoningHints short and practical.
 

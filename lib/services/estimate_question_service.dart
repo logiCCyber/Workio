@@ -6,14 +6,6 @@ import 'estimate_price_rules_service.dart';
 class EstimateQuestionService {
   EstimateQuestionService._();
 
-  static const List<String> _builtInServiceTypes = [
-    'painting',
-    'drywall',
-    'cleaning',
-    'flooring',
-    'general',
-  ];
-
   static Future<AiParsedRequestModel> enrich(AiParsedRequestModel parsed) async {
     final assumptions = <AiAssumptionModel>[
       ...parsed.assumptions,
@@ -22,15 +14,11 @@ class EstimateQuestionService {
     String? serviceType = _cleanString(parsed.serviceType);
     double? sqft = _positiveDoubleOrNull(parsed.sqft);
     int? rooms = _positiveIntOrNull(parsed.rooms);
-    int? coats = _positiveIntOrNull(parsed.coats);
     final parsedMaterials = parsed.parsedMaterials;
     final projectSizeRequired = parsed.projectSizeRequired;
 
     bool? materialsIncluded = parsed.materialsIncluded;
     bool? laborOnly = parsed.laborOnly;
-
-    bool? walls = parsed.walls;
-    bool? ceiling = parsed.ceiling;
 
     final rush = parsed.rush;
     final prep = parsed.prep;
@@ -43,19 +31,6 @@ class EstimateQuestionService {
       laborOnly = false;
     }
 
-    if (serviceType == 'painting' && coats == null) {
-      coats = 2;
-
-      assumptions.add(
-        const AiAssumptionModel(
-          key: 'coats',
-          label: 'Coats',
-          value: '2 coats',
-          reason: 'Painting estimates default to 2 coats unless specified.',
-        ),
-      );
-    }
-
     final serviceTypeOptions = await _loadServiceTypeOptions();
     final currentRule = await _loadMainRule(serviceType);
 
@@ -65,11 +40,8 @@ class EstimateQuestionService {
       serviceType: serviceType,
       sqft: sqft,
       rooms: rooms,
-      coats: coats,
       materialsIncluded: materialsIncluded,
       laborOnly: laborOnly,
-      walls: walls,
-      ceiling: ceiling,
       serviceTypeOptions: serviceTypeOptions,
       currentRule: currentRule,
     );
@@ -79,11 +51,8 @@ class EstimateQuestionService {
       serviceType: serviceType,
       sqft: sqft,
       rooms: rooms,
-      coats: coats,
       materialsIncluded: materialsIncluded,
       laborOnly: laborOnly,
-      walls: walls,
-      ceiling: ceiling,
       missingFields: missingFields,
       parsedMaterials: parsedMaterials,
     );
@@ -92,11 +61,8 @@ class EstimateQuestionService {
       serviceType: serviceType,
       sqft: sqft,
       rooms: rooms,
-      coats: coats,
       materialsIncluded: materialsIncluded,
       laborOnly: laborOnly,
-      walls: walls,
-      ceiling: ceiling,
       assumptions: _uniqueAssumptions(assumptions),
       missingFields: missingFields,
       confidence: confidence,
@@ -113,13 +79,9 @@ class EstimateQuestionService {
     String? serviceType = parsed.serviceType;
     double? sqft = parsed.sqft;
     int? rooms = parsed.rooms;
-    int? coats = parsed.coats;
 
     bool? materialsIncluded = parsed.materialsIncluded;
     bool? laborOnly = parsed.laborOnly;
-
-    bool? walls = parsed.walls;
-    bool? ceiling = parsed.ceiling;
 
     bool rush = parsed.rush;
     bool prep = parsed.prep;
@@ -154,13 +116,6 @@ class EstimateQuestionService {
       }
     }
 
-    if (answers.containsKey('coats')) {
-      coats = _parseNullableInt(answers['coats']);
-      if ((coats ?? 0) <= 0) {
-        coats = null;
-      }
-    }
-
     if (answers.containsKey('materials_included')) {
       materialsIncluded = _parseNullableBool(answers['materials_included']);
     }
@@ -181,29 +136,6 @@ class EstimateQuestionService {
       }
     }
 
-    if (answers.containsKey('walls')) {
-      walls = _parseNullableBool(answers['walls']);
-    }
-
-    if (answers.containsKey('ceiling')) {
-      ceiling = _parseNullableBool(answers['ceiling']);
-    }
-
-    if (answers.containsKey('surfaces')) {
-      final value = answers['surfaces']?.toString().trim().toLowerCase() ?? '';
-
-      if (value == 'walls') {
-        walls = true;
-        ceiling = false;
-      } else if (value == 'ceiling') {
-        walls = false;
-        ceiling = true;
-      } else if (value == 'walls and ceiling') {
-        walls = true;
-        ceiling = true;
-      }
-    }
-
     if (answers.containsKey('rush')) {
       rush = _parseNullableBool(answers['rush']) ?? rush;
     }
@@ -216,11 +148,8 @@ class EstimateQuestionService {
       serviceType: serviceType,
       sqft: sqft,
       rooms: rooms,
-      coats: coats,
       materialsIncluded: materialsIncluded,
       laborOnly: laborOnly,
-      walls: walls,
-      ceiling: ceiling,
       rush: rush,
       prep: prep,
     );
@@ -231,12 +160,6 @@ class EstimateQuestionService {
   static Future<List<String>> _loadServiceTypeOptions() async {
     final result = <String>[];
     final seen = <String>{};
-
-    for (final item in _builtInServiceTypes) {
-      if (seen.add(item)) {
-        result.add(item);
-      }
-    }
 
     try {
       final rules = await EstimatePriceRulesService.getRules();
@@ -258,11 +181,8 @@ class EstimateQuestionService {
     required String? serviceType,
     required double? sqft,
     required int? rooms,
-    required int? coats,
     required bool? materialsIncluded,
     required bool? laborOnly,
-    required bool? walls,
-    required bool? ceiling,
     required List<Map<String, dynamic>> parsedMaterials,
     required List<String> serviceTypeOptions,
     required dynamic currentRule,
@@ -321,41 +241,6 @@ class EstimateQuestionService {
       );
     }
 
-    if (serviceType == 'painting') {
-      if (walls == null && ceiling == null) {
-        fields.add(
-          const AiMissingFieldModel(
-            key: 'surfaces',
-            question: 'Is this for walls, ceiling, or both?',
-            isRequired: true,
-            answerType: 'single_select',
-            options: [
-              'walls',
-              'ceiling',
-              'walls and ceiling',
-            ],
-            hint: 'Painting estimate needs surface details.',
-          ),
-        );
-      }
-
-      if ((coats ?? 0) <= 0) {
-        fields.add(
-          const AiMissingFieldModel(
-            key: 'coats',
-            question: 'How many coats of paint are needed?',
-            isRequired: false,
-            answerType: 'single_select',
-            options: [
-              '1',
-              '2',
-              '3',
-            ],
-            hint: 'If skipped, the system can use a default of 2 coats.',
-          ),
-        );
-      }
-    }
     fields.addAll(
       _buildRuleFollowupFields(
         rule: currentRule,
@@ -370,16 +255,33 @@ class EstimateQuestionService {
     return _uniqueMissingFields(fields);
   }
 
+  static bool _resolveProjectSizeRequired({
+    required String? serviceType,
+    required dynamic currentRule,
+    required bool? projectSizeRequired,
+    required bool hasDetailedMaterials,
+  }) {
+    if (projectSizeRequired != null) {
+      return projectSizeRequired;
+    }
+
+    final normalizedUnit =
+    (currentRule?.unit ?? '').toString().trim().toLowerCase();
+
+    if (normalizedUnit == 'sqft' || normalizedUnit == 'room') {
+      return true;
+    }
+
+    return false;
+  }
+
   static double _recalculateConfidence({
     required AiParsedRequestModel parsed,
     required String? serviceType,
     required double? sqft,
     required int? rooms,
-    required int? coats,
     required bool? materialsIncluded,
     required bool? laborOnly,
-    required bool? walls,
-    required bool? ceiling,
     required List<AiMissingFieldModel> missingFields,
     required List<Map<String, dynamic>> parsedMaterials,
   }) {
@@ -401,15 +303,7 @@ class EstimateQuestionService {
       score += 0.12;
     }
 
-    if (serviceType == 'painting') {
-      if (walls != null || ceiling != null) {
-        score += 0.12;
-      }
-
-      if ((coats ?? 0) > 0) {
-        score += 0.08;
-      }
-    } else if (!_isBlank(serviceType)) {
+    if (!_isBlank(serviceType)) {
       score += 0.08;
     }
 
@@ -463,22 +357,7 @@ class EstimateQuestionService {
 
   static String? _normalizeServiceType(dynamic value) {
     final text = value?.toString().trim().toLowerCase() ?? '';
-
-    switch (text) {
-      case 'painting':
-        return 'painting';
-      case 'drywall':
-        return 'drywall';
-      case 'cleaning':
-        return 'cleaning';
-      case 'flooring':
-        return 'flooring';
-      case 'general':
-      case 'general labor':
-        return 'general';
-      default:
-        return text.isEmpty ? null : text;
-    }
+    return text.isEmpty ? null : text;
   }
 
   static double? _parseNullableDouble(dynamic value) {
@@ -759,43 +638,5 @@ class EstimateQuestionService {
         .trim();
   }
 
-  static bool _resolveProjectSizeRequired({
-    required String? serviceType,
-    required dynamic currentRule,
-    required bool? projectSizeRequired,
-    required bool hasDetailedMaterials,
-  }) {
-    if (projectSizeRequired != null) {
-      return projectSizeRequired;
-    }
-
-    final normalizedUnit =
-    (currentRule?.unit ?? '').toString().trim().toLowerCase();
-
-    if (normalizedUnit == 'sqft' || normalizedUnit == 'room') {
-      return true;
-    }
-
-    if (normalizedUnit == 'item' ||
-        normalizedUnit == 'fixed' ||
-        normalizedUnit == 'hour') {
-      return false;
-    }
-
-    final normalizedServiceType =
-    (serviceType ?? '').trim().toLowerCase();
-
-    switch (normalizedServiceType) {
-      case 'painting':
-        return true;
-      case 'drywall':
-      case 'cleaning':
-      case 'flooring':
-      case 'general':
-        return !hasDetailedMaterials;
-      default:
-        return !hasDetailedMaterials;
-    }
-  }
 }
 

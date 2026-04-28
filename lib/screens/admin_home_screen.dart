@@ -4194,6 +4194,148 @@ class _WorkerRow extends StatelessWidget {
     return AppPalette.green;
   }
 
+  String _presenceText() {
+    final lastSeenAt = worker['last_seen_at'];
+
+    if (lastSeenAt == null) return 'Offline';
+
+    try {
+      final dt = DateTime.parse(lastSeenAt.toString()).toLocal();
+      final diff = DateTime.now().difference(dt);
+
+      if (diff.inMinutes < 2) return 'Online now';
+      if (diff.inMinutes < 60) return 'Last seen ${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return 'Last seen ${diff.inHours}h ago';
+
+      return 'Offline';
+    } catch (_) {
+      return 'Offline';
+    }
+  }
+
+  Color _presenceColor() {
+    final lastSeenAt = worker['last_seen_at'];
+
+    if (lastSeenAt != null) {
+      try {
+        final dt = DateTime.parse(lastSeenAt.toString()).toLocal();
+        final diff = DateTime.now().difference(dt);
+
+        if (diff.inMinutes < 2) return AppPalette.green;
+
+        // ✅ Last seen недавно — светлый серый, не как offline
+        if (diff.inMinutes < 10) return const Color(0xFFC8D0DD);
+
+        // ✅ Last seen давно, но ещё сегодня
+        if (diff.inHours < 24) return Colors.white.withOpacity(0.58);
+      } catch (_) {}
+    }
+
+    // ✅ Offline — тусклый серый
+    return Colors.white.withOpacity(0.36);
+  }
+
+  IconData _presenceIcon() {
+    final lastSeenAt = worker['last_seen_at'];
+
+    if (lastSeenAt != null) {
+      try {
+        final dt = DateTime.parse(lastSeenAt.toString()).toLocal();
+        final diff = DateTime.now().difference(dt);
+
+        if (diff.inMinutes < 2) return Icons.circle;
+        if (diff.inMinutes < 10) return Icons.schedule_rounded;
+      } catch (_) {}
+    }
+
+    return Icons.circle_outlined;
+  }
+
+  bool _isRecentLastSeen() {
+    final lastSeenAt = worker['last_seen_at'];
+    if (lastSeenAt == null) return false;
+
+    try {
+      final dt = DateTime.parse(lastSeenAt.toString()).toLocal();
+      final diff = DateTime.now().difference(dt);
+
+      return diff.inMinutes >= 2 && diff.inMinutes < 10;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Widget _presenceHeaderStatus() {
+    return Row(
+      children: [
+        _presenceText() == 'Online now'
+            ? _PresencePulseDot(
+          color: _presenceColor(),
+          active: true,
+        )
+            : Container(
+          width: 14,
+          height: 14,
+          decoration: _isRecentLastSeen()
+              ? BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.white.withOpacity(0.18),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
+          )
+              : null,
+          child: Icon(
+            _presenceIcon(),
+            size: 14,
+            color: _presenceColor(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            _presenceText(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: _presenceColor(),
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              shadows: _isRecentLastSeen()
+                  ? [
+                Shadow(
+                  color: Colors.white.withOpacity(0.28),
+                  blurRadius: 7,
+                ),
+              ]
+                  : null,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          _statusText(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: _statusColor(),
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Icon(
+          Icons.chevron_right_rounded,
+          color: Colors.white.withOpacity(0.42),
+          size: 18,
+        ),
+      ],
+    );
+  }
+
   Future<bool> _fetchOnShift(String workerId) async {
     if (workerId.isEmpty) return false;
 
@@ -4347,6 +4489,9 @@ class _WorkerRow extends StatelessWidget {
     final viewOnlyAt = worker['view_only_at'];
     final firstWorkAt = worker['first_work_at'];
     final suspendedAt = worker['suspended_at'];
+    final inApp = worker['in_app'] == true;
+    final lastSeenAt = worker['last_seen_at'];
+
     final workerId = (worker['id'] ?? worker['worker_id'] ?? '').toString();
 
     final hasUnpaid = unpaid > 0;
@@ -4427,22 +4572,21 @@ class _WorkerRow extends StatelessWidget {
                           ),
                         ),
                       ),
-                      child: workerCardStatus(worker, mode),
+                      child: _presenceHeaderStatus(),
                     ),
 
                     // ================= BODY =================
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _Avatar(
                             avatarUrl: avatarUrl,
-                            borderColor: statusColor, // ✅ active/view/suspended
+                            borderColor: statusColor,
                           ),
                           const SizedBox(width: 12),
 
-                          // ✅ твой inner card НЕ трогаем
                           Expanded(
                             child: _InnerInfoCard(
                               name: name,
@@ -4460,6 +4604,7 @@ class _WorkerRow extends StatelessWidget {
                       viewOnlyAt: viewOnlyAt,
                       firstWorkAt: firstWorkAt,
                       suspendedAt: suspendedAt,
+                      onShift: worker['on_shift'] == true,
                     ),
                   ],
                 ),
@@ -4529,6 +4674,115 @@ class _StatusDot extends StatelessWidget {
             color: c.withOpacity(0.25),
             blurRadius: 8,
             spreadRadius: 1,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PresencePulseDot extends StatefulWidget {
+  final Color color;
+  final bool active;
+
+  const _PresencePulseDot({
+    required this.color,
+    required this.active,
+  });
+
+  @override
+  State<_PresencePulseDot> createState() => _PresencePulseDotState();
+}
+
+class _PresencePulseDotState extends State<_PresencePulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  );
+
+  late final Animation<double> _scale = Tween<double>(
+    begin: 0.92,
+    end: 1.75,
+  ).animate(
+    CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+  );
+
+  late final Animation<double> _opacity = Tween<double>(
+    begin: 0.32,
+    end: 0.0,
+  ).animate(
+    CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _ctrl.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PresencePulseDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.active && !_ctrl.isAnimating) {
+      _ctrl.repeat();
+    } else if (!widget.active && _ctrl.isAnimating) {
+      _ctrl.stop();
+      _ctrl.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 14,
+      height: 14,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (widget.active)
+            AnimatedBuilder(
+              animation: _ctrl,
+              builder: (_, __) {
+                return Transform.scale(
+                  scale: _scale.value,
+                  child: Opacity(
+                    opacity: _opacity.value,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.color,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: widget.color.withOpacity(0.95),
+              boxShadow: widget.active
+                  ? [
+                BoxShadow(
+                  color: widget.color.withOpacity(0.35),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ]
+                  : null,
+            ),
           ),
         ],
       ),
@@ -8099,7 +8353,6 @@ class _InnerInfoCard extends StatelessWidget {
               height: 1.0,
             ),
           ),
-
         ],
       ),
     );
@@ -8166,6 +8419,104 @@ class _SlimCapsuleLine extends StatelessWidget {
   }
 }
 
+class _ShiftPulseIcon extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final bool active;
+
+  const _ShiftPulseIcon({
+    required this.icon,
+    required this.color,
+    required this.active,
+  });
+
+  @override
+  State<_ShiftPulseIcon> createState() => _ShiftPulseIconState();
+}
+
+class _ShiftPulseIconState extends State<_ShiftPulseIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1300),
+  );
+
+  late final Animation<double> _scale = Tween<double>(
+    begin: 0.85,
+    end: 1.75,
+  ).animate(
+    CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+  );
+
+  late final Animation<double> _opacity = Tween<double>(
+    begin: 0.30,
+    end: 0.0,
+  ).animate(
+    CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _ctrl.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ShiftPulseIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (widget.active && !_ctrl.isAnimating) {
+      _ctrl.repeat();
+    } else if (!widget.active && _ctrl.isAnimating) {
+      _ctrl.stop();
+      _ctrl.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 17,
+      height: 17,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (widget.active)
+            AnimatedBuilder(
+              animation: _ctrl,
+              builder: (_, __) {
+                return Transform.scale(
+                  scale: _scale.value,
+                  child: Opacity(
+                    opacity: _opacity.value,
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.color,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          Icon(
+            widget.icon,
+            size: 15,
+            color: widget.color,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _WorkerFooter extends StatelessWidget {
   final String mode;
@@ -8173,6 +8524,7 @@ class _WorkerFooter extends StatelessWidget {
   final Object? viewOnlyAt;
   final Object? firstWorkAt;
   final Object? suspendedAt;
+  final bool onShift;
 
   const _WorkerFooter({
     required this.mode,
@@ -8180,10 +8532,12 @@ class _WorkerFooter extends StatelessWidget {
     this.viewOnlyAt,
     this.firstWorkAt,
     this.suspendedAt,
+    this.onShift = false,
   });
 
   String _fmtShort(Object? v) {
     if (v == null) return '—';
+
     try {
       final dt = DateTime.parse(v.toString()).toLocal();
       return DateFormat('EEE, MMM d').format(dt);
@@ -8194,6 +8548,7 @@ class _WorkerFooter extends StatelessWidget {
 
   String _fmtLong(Object? v) {
     if (v == null) return '—';
+
     try {
       final dt = DateTime.parse(v.toString()).toLocal();
       return DateFormat('d MMM yyyy').format(dt);
@@ -8202,28 +8557,45 @@ class _WorkerFooter extends StatelessWidget {
     }
   }
 
+  IconData _leftIcon() {
+    if (mode == 'suspended') return Icons.info_outline_rounded;
+    if (mode == 'view_only') return Icons.visibility_rounded;
+    if (onShift) return Icons.play_circle_fill_rounded;
+    return Icons.history_rounded;
+  }
+
+  String _leftText() {
+    if (mode == 'suspended') return 'Worked';
+    if (mode == 'view_only') return 'View only since';
+    if (onShift) return 'ON SHIFT';
+    return 'Last work';
+  }
+
+  String _rightText() {
+    if (mode == 'suspended') {
+      return '${_fmtLong(firstWorkAt)} → ${_fmtLong(suspendedAt)}';
+    }
+
+    if (mode == 'view_only') {
+      return _fmtShort(viewOnlyAt);
+    }
+
+    if (onShift) return '';
+
+    return _fmtShort(lastWorkedAt);
+  }
+
+  Color _leftColor() {
+    if (onShift) return AppPalette.green;
+    if (mode == 'view_only') return AppPalette.orange.withOpacity(0.88);
+    if (mode == 'suspended') return AppPalette.red.withOpacity(0.86);
+    return Colors.white.withOpacity(0.55);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isViewOnly = mode == 'view_only';
-    final isSuspended = mode == 'suspended';
-
-    final leftIcon = isSuspended
-        ? Icons.info_outline_rounded
-        : isViewOnly
-        ? Icons.visibility_rounded
-        : Icons.history_rounded;
-
-    final leftText = isSuspended
-        ? 'Worked'
-        : isViewOnly
-        ? 'View only since'
-        : 'Last work';
-
-    final rightText = isSuspended
-        ? '${_fmtLong(firstWorkAt)} → ${_fmtLong(suspendedAt)}'
-        : isViewOnly
-        ? _fmtShort(viewOnlyAt)
-        : _fmtShort(lastWorkedAt);
+    final leftColor = _leftColor();
+    final rightText = _rightText();
 
     return ClipRRect(
       borderRadius: const BorderRadius.only(
@@ -8245,31 +8617,44 @@ class _WorkerFooter extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              leftIcon,
-              size: 16,
-              color: Colors.white.withOpacity(0.38),
+            onShift
+                ? _ShiftPulseIcon(
+              icon: _leftIcon(),
+              color: leftColor,
+              active: true,
+            )
+                : Icon(
+              _leftIcon(),
+              size: 15,
+              color: leftColor,
             ),
             const SizedBox(width: 8),
             Text(
-              leftText,
+              _leftText(),
               style: TextStyle(
-                color: Colors.white.withOpacity(0.62),
-                fontWeight: FontWeight.w800,
+                color: leftColor,
+                fontWeight: FontWeight.w900,
                 fontSize: 12,
               ),
             ),
-            const Spacer(),
-            Text(
-              rightText,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.64),
-                fontWeight: FontWeight.w900,
-                fontSize: isSuspended ? 11.8 : 12.5,
+
+            const Expanded(child: SizedBox()),
+
+            if (rightText.isNotEmpty)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  rightText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.62),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12.2,
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),

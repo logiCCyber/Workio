@@ -121,7 +121,34 @@ class TaskService {
     required String eventType,
     Map<String, dynamic>? meta,
   }) async {
-    return;
+    final cleanTaskId = taskId.trim();
+    if (cleanTaskId.isEmpty) return;
+
+    final actorAuthId = _supabase.auth.currentUser?.id;
+    if (actorAuthId == null || actorAuthId.trim().isEmpty) return;
+
+    final cleanActorRole = actorRole.trim().isEmpty
+        ? 'system'
+        : actorRole.trim().toLowerCase();
+
+    final cleanEventType = eventType.trim();
+    if (cleanEventType.isEmpty) return;
+
+    final cleanMeta = _cleanMeta(meta);
+
+    await _supabase.from('task_events').insert({
+      'task_id': cleanTaskId,
+      'actor_auth_id': actorAuthId,
+      'actor_role': cleanActorRole,
+      'event_type': cleanEventType,
+      'meta': cleanMeta,
+      'seen_by_admin_at': cleanActorRole == 'admin'
+          ? DateTime.now().toUtc().toIso8601String()
+          : null,
+      'seen_by_worker_at': cleanActorRole == 'worker'
+          ? DateTime.now().toUtc().toIso8601String()
+          : null,
+    });
   }
 
   static Future<List<String>> _fetchAdminTaskIds({
@@ -376,10 +403,19 @@ class TaskService {
       'due_at': dueAt?.toUtc().toIso8601String(),
     };
 
+
     if (cleanStatus.isNotEmpty) {
+      final normalizedStatus = cleanStatus.toLowerCase();
+      final isTerminalStatus =
+          normalizedStatus == 'done' || normalizedStatus == 'cancelled';
+
       payload['status'] = cleanStatus;
       payload['completed_at'] =
-          cleanStatus == 'done' ? DateTime.now().toUtc().toIso8601String() : null;
+      normalizedStatus == 'done' ? DateTime.now().toUtc().toIso8601String() : null;
+
+      payload['worker_acknowledged_at'] = isTerminalStatus
+          ? existing['worker_acknowledged_at']
+          : null;
     }
     if (sortOrder != null) {
       payload['sort_order'] = sortOrder;
@@ -563,6 +599,18 @@ class TaskService {
           .map((e) => Map<String, dynamic>.from(e))
           .where((e) => _s(e['worker_auth_id']) == workerAuthId)
           .where((e) => includeArchived || e['is_archived'] == false)
+          .where((e) {
+        final status = _s(e['status']).toLowerCase();
+        final isTerminal = status == 'done' || status == 'cancelled';
+        final acknowledged = _s(e['worker_acknowledged_at']).isNotEmpty;
+        return !(isTerminal && acknowledged);
+      })
+          .where((e) {
+        final status = _s(e['status']).toLowerCase();
+        final isTerminal = status == 'done' || status == 'cancelled';
+        final acknowledged = _s(e['worker_acknowledged_at']).isNotEmpty;
+        return !(isTerminal && acknowledged);
+      })
           .toList();
 
       list.sort((a, b) {
@@ -620,6 +668,46 @@ class TaskService {
         meta: {'has_note': cleanWorkerNote != null},
       );
     }
+  }
+
+  static Future<void> acknowledgeWorkerTerminalTask({
+    required String taskId,
+  }) async {
+    final uid = _supabase.auth.currentUser?.id;
+    debugPrint('ACK TASK -> taskId=$taskId');
+    debugPrint('ACK TASK -> currentUser=$uid');
+
+    final result = await _supabase
+        .from('worker_tasks')
+        .update({
+      'worker_acknowledged_at': DateTime.now().toUtc().toIso8601String(),
+    })
+        .eq('id', taskId)
+        .select();
+
+    debugPrint('ACK TASK -> result=$result');
+  }
+
+  static Future<void> setTaskSubtaskStatus({
+    required String subtaskId,
+    required String status,
+    String? note,
+  }) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('No authenticated user');
+
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    await _supabase.from('task_subtasks').update({
+      'status': status,
+      'status_note': _nullableTrim(note),
+      'is_done': status == 'done',
+      'done_at': status == 'done' ? now : null,
+      'done_by_auth_id': status == 'done' ? userId : null,
+      'status_updated_at': now,
+      'status_set_by_auth_id': userId,
+      'updated_at': now,
+    }).eq('id', subtaskId);
   }
 
   // =========================================================
@@ -686,6 +774,10 @@ class TaskService {
             'title': cleanItems[index],
             'sort_order': index,
             'is_done': false,
+            'status': 'todo',
+            'status_note': null,
+            'status_updated_at': null,
+            'status_set_by_auth_id': null,
           };
         }),
       );
@@ -720,12 +812,17 @@ class TaskService {
 
     final taskId = _s(existing['task_id']);
     final oldDone = existing['is_done'] == true;
+    final now = DateTime.now().toUtc().toIso8601String();
 
     await _supabase.from('task_subtasks').update({
       'is_done': isDone,
-      'done_at': isDone ? DateTime.now().toUtc().toIso8601String() : null,
+      'status': isDone ? 'done' : 'todo',
+      'status_note': null,
+      'done_at': isDone ? now : null,
       'done_by_auth_id': isDone ? userId : null,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
+      'status_updated_at': now,
+      'status_set_by_auth_id': userId,
+      'updated_at': now,
     }).eq('id', subtaskId);
 
     if (oldDone != isDone) {

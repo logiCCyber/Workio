@@ -9,13 +9,9 @@ class AiParsedRequestModel {
   final double? sqft;
   final int? rooms;
   final double? hours;
-  final int? coats;
 
   final bool? materialsIncluded;
   final bool? laborOnly;
-
-  final bool? walls;
-  final bool? ceiling;
 
   final bool rush;
   final bool prep;
@@ -38,11 +34,8 @@ class AiParsedRequestModel {
     this.sqft,
     this.rooms,
     this.hours,
-    this.coats,
     this.materialsIncluded,
     this.laborOnly,
-    this.walls,
-    this.ceiling,
     this.rush = false,
     this.prep = false,
     this.confidence = 0,
@@ -69,11 +62,8 @@ class AiParsedRequestModel {
       sqft: _toNullableDouble(map['sqft']),
       hours: _toNullableDouble(map['hours']),
       rooms: _toNullableInt(map['rooms']),
-      coats: _toNullableInt(map['coats']),
       materialsIncluded: _toNullableBool(map['materials_included']),
       laborOnly: _toNullableBool(map['labor_only']),
-      walls: _toNullableBool(map['walls']),
-      ceiling: _toNullableBool(map['ceiling']),
       rush: _toBool(map['rush']),
       prep: _toBool(map['prep']),
       confidence: _toDouble(map['confidence']),
@@ -178,10 +168,6 @@ class AiParsedRequestModel {
     return (sqft ?? 0) > 0 || (rooms ?? 0) > 0;
   }
 
-  bool get hasSurfaceInfo {
-    return walls != null || ceiling != null;
-  }
-
   bool get hasParsedMaterials {
     return parsedMaterials.isNotEmpty;
   }
@@ -204,12 +190,9 @@ class AiParsedRequestModel {
       'service_type': serviceType,
       'sqft': sqft,
       'rooms': rooms,
-      'coats': coats,
       'hours': hours,
       'materials_included': materialsIncluded,
       'labor_only': laborOnly,
-      'walls': walls,
-      'ceiling': ceiling,
       'rush': rush,
       'prep': prep,
       'confidence': confidence,
@@ -229,11 +212,8 @@ class AiParsedRequestModel {
     double? sqft,
     int? rooms,
     double? hours,
-    int? coats,
     bool? materialsIncluded,
     bool? laborOnly,
-    bool? walls,
-    bool? ceiling,
     bool? rush,
     bool? prep,
     double? confidence,
@@ -251,11 +231,8 @@ class AiParsedRequestModel {
       sqft: sqft ?? this.sqft,
       rooms: rooms ?? this.rooms,
       hours: hours ?? this.hours,
-      coats: coats ?? this.coats,
       materialsIncluded: materialsIncluded ?? this.materialsIncluded,
       laborOnly: laborOnly ?? this.laborOnly,
-      walls: walls ?? this.walls,
-      ceiling: ceiling ?? this.ceiling,
       rush: rush ?? this.rush,
       prep: prep ?? this.prep,
       confidence: confidence ?? this.confidence,

@@ -225,12 +225,12 @@ function sanitizeScopeTemplate(
 
     if (intent === "repair") {
         text = text
-            .replace(/\bfixture installation\b/gi, "fixture repair or replacement")
-            .replace(/\brough-in plumbing\b/gi, "necessary repair work")
-            .replace(/\btiling and waterproofing\b/gi, "related finishing repairs")
-            .replace(/\btrim and finishes\b/gi, "required finishing work");
-
-        text = text.replace(/\binstallation\b/gi, "repair");
+            .replace(/\bfull installation\b/gi, "required repair work")
+            .replace(/\bnew installation\b/gi, "required repair work")
+            .replace(/\binstallation\b/gi, "repair")
+            .replace(/\bnew build\b/gi, "")
+            .replace(/\bfull renovation\b/gi, "")
+            .replace(/\bremodel\b/gi, "");
     }
 
     if (intent === "broad") {
@@ -429,10 +429,9 @@ GENERAL RULES:
 
 DO NOT OVER-SPECIALIZE RULE MEANING:
 - If the input is broad, keep the output broad.
-- Do NOT turn generic "electrical repair" into "service panel repair", "meter repair", "service entrance repair", or "main breaker repair" unless those are explicitly mentioned in the input.
-- Do NOT infer panel, meter, main breaker, utility coordination, or service entrance work from the word "service" alone.
-- If the input says "electrical repair", stay with broad electrical repair.
-- Only specialize into panel, breaker, meter, or service entrance if the input explicitly contains those words.
+- Do NOT turn a broad repair rule into a narrow specialty rule unless the narrow task is explicitly mentioned in the input.
+- Do NOT infer special equipment, permits, utility coordination, structural work, or specialty access unless explicitly mentioned.
+- Only specialize when the input clearly contains the specialized task words.
 
 SERVICE MEANING RULES:
 - serviceType is the main truth.
@@ -456,7 +455,6 @@ Use ONLY these placeholders when truly useful:
 {service_label}
 {sqft}
 {rooms}
-{coats}
 {materials}
 {rush}
 {prep}
@@ -472,7 +470,7 @@ ALIASES RULES:
 - Do NOT include "remodel", "renovation", "new build", "fit-out", "full install" unless the input clearly means that.
 - Good aliases are near-synonyms, wording variations, and common search variations.
 - Do NOT expand a broad rule into narrower specialty aliases unless explicitly supported by the input.
-- Example: "electrical repair" should not automatically generate "meter socket repair" or "service panel repair".
+- Example: a broad repair rule should not automatically generate narrow specialty aliases unless those exact specialty tasks are mentioned.
 
 DISPLAY NAME RULES:
 - suggestedDisplayName must be short, clean, and admin-friendly.
@@ -490,9 +488,9 @@ SERVICE TYPE RULES:
 - Keep it close to the actual service meaning.
 - Do not over-expand the scope.
 - It should be stable and reusable as the canonical service key.
-- Good example: "electric service repair" -> "electrical repair"
-- Good example: "outlet troubleshoot" -> "electrical repair"
-- Good example: "basement floor painting service" -> "painting"
+- Good example: "repair service request" -> "repair"
+- Good example: "item installation request" -> "installation"
+- Good example: "inspection visit" -> "inspection"
 
 AI KEYWORDS RULES:
 - 6 to 10 max.
@@ -508,12 +506,12 @@ SCOPE TEMPLATE RULES:
 - Must not be too long.
 - Must not force project-size wording for non-size-based rules.
 - Must not assume a full renovation if the rule is not for renovation.
-- Must not assume rough-in plumbing, tiling, waterproofing, trim, permits, etc. unless the service type clearly implies them.
+- Must not assume specialty tasks, permits, structural work, finishing work, access work, or extra trades unless the service type clearly implies them.
 - Prefer simple structure:
   "Complete the requested {service_label} work. {materials}. {prep}. Final cleanup upon completion."
 - Only mention size when unit really depends on size.
 - For broad repair rules, keep the scope generic.
-- Do NOT mention panel, meter, service entrance, utility company coordination, or main breaker unless explicitly supported by the input.
+- Do NOT mention specialty equipment, utility coordination, permits, structural changes, or extra trade work unless explicitly supported by the input.
 
 NOTES TEMPLATE RULES:
 - Reusable.
@@ -549,19 +547,19 @@ FOLLOW-UP QUESTION RULES:
 
 STYLE EXAMPLES:
 
-If serviceType = "bathroom repair" and unit = "fixed":
-- aliases should stay near repair, not renovation.
-- labor title should stay near bathroom repair.
-- scope should NOT mention {sqft} or {rooms} by default.
-- follow-up questions can ask issue type, number of bathrooms, site condition.
+If unit = "fixed":
+- keep scope general and do not ask for sqft/rooms by default.
+- follow-up questions can ask issue type, access condition, or site condition.
 
-If serviceType = "sink installation" and unit = "item":
-- aliases should stay near sink install / sink replacement.
-- do NOT ask sqft/rooms by default.
-- ask quantity or replacement/new install if needed.
+If unit = "item":
+- ask quantity only when useful.
+- keep aliases close to the item/service meaning.
 
-If serviceType = "painting" and unit = "sqft":
-- it is OK to mention {sqft} and {coats}.
+If unit = "sqft":
+- it is OK to mention {sqft} only when the selected service is truly area-based.
+
+If unit = "room":
+- it is OK to mention {rooms} only when room count is a useful pricing unit.
 
 Input:
 serviceType: ${serviceType}

@@ -9,8 +9,6 @@ class EstimatePriceRuleModel {
   final double? materialFixedRate;
   final double? prepFixedRate;
   final double? rushFixedRate;
-  final double? singleCoatRate;
-  final double? multiCoatRate;
   final bool isActive;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -40,8 +38,6 @@ class EstimatePriceRuleModel {
     this.materialFixedRate,
     this.prepFixedRate,
     this.rushFixedRate,
-    this.singleCoatRate,
-    this.multiCoatRate,
     this.isActive = true,
     this.createdAt,
     this.updatedAt,
@@ -75,8 +71,6 @@ class EstimatePriceRuleModel {
       materialFixedRate: _toNullableDouble(map['material_fixed_rate']),
       prepFixedRate: _toNullableDouble(map['prep_fixed_rate']),
       rushFixedRate: _toNullableDouble(map['rush_fixed_rate']),
-      singleCoatRate: _toNullableDouble(map['single_coat_rate']),
-      multiCoatRate: _toNullableDouble(map['multi_coat_rate']),
       aiFollowupQuestions: _toJsonMapList(map['ai_followup_questions']),
       aiKeywords: _toStringList(map['ai_keywords']),
       aiScopeTemplate: map['ai_scope_template']?.toString(),
@@ -158,8 +152,6 @@ class EstimatePriceRuleModel {
       'material_fixed_rate': materialFixedRate,
       'prep_fixed_rate': prepFixedRate,
       'rush_fixed_rate': rushFixedRate,
-      'single_coat_rate': singleCoatRate,
-      'multi_coat_rate': multiCoatRate,
       'is_active': isActive,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
@@ -202,8 +194,6 @@ class EstimatePriceRuleModel {
     double? materialFixedRate,
     double? prepFixedRate,
     double? rushFixedRate,
-    double? singleCoatRate,
-    double? multiCoatRate,
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -222,8 +212,6 @@ class EstimatePriceRuleModel {
       materialFixedRate: materialFixedRate ?? this.materialFixedRate,
       prepFixedRate: prepFixedRate ?? this.prepFixedRate,
       rushFixedRate: rushFixedRate ?? this.rushFixedRate,
-      singleCoatRate: singleCoatRate ?? this.singleCoatRate,
-      multiCoatRate: multiCoatRate ?? this.multiCoatRate,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

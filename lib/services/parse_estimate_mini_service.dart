@@ -64,7 +64,8 @@ class ParseEstimateMiniResult {
           .toList();
     }
 
-    final rawServiceType = map['serviceType']?.toString().trim();
+    final rawServiceType =
+    (map['serviceType'] ?? map['service_type'])?.toString().trim();
 
     return ParseEstimateMiniResult(
       serviceType: (rawServiceType == null || rawServiceType.isEmpty)
@@ -73,12 +74,25 @@ class ParseEstimateMiniResult {
       sqft: toDouble(map['sqft']),
       rooms: toInt(map['rooms']),
       hours: toDouble(map['hours']),
-      materialsIncluded: toBool(map['materialsIncluded']),
-      laborOnly: toBool(map['laborOnly']),
-      projectSizeRequired: map['projectSizeRequired'] == true,
-      parsedMaterials: toMapList(map['parsedMaterials']),
-      reasoningHints: toStringList(map['reasoningHints']),
-      followupHints: toStringList(map['followupHints']),
+      materialsIncluded: toBool(
+        map['materialsIncluded'] ?? map['materials_included'],
+      ),
+      laborOnly: toBool(
+        map['laborOnly'] ?? map['labor_only'],
+      ),
+      projectSizeRequired: toBool(
+        map['projectSizeRequired'] ?? map['project_size_required'],
+      ) ??
+          false,
+      parsedMaterials: toMapList(
+        map['parsedMaterials'] ?? map['parsed_materials'],
+      ),
+      reasoningHints: toStringList(
+        map['reasoningHints'] ?? map['reasoning_hints'],
+      ),
+      followupHints: toStringList(
+        map['followupHints'] ?? map['followup_hints'],
+      ),
     );
   }
 }

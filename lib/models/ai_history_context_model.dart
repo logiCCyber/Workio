@@ -58,6 +58,38 @@ class AiHistoryContextModel {
     return best.score >= 0.75;
   }
 
+  double? get lastSimilarPrice {
+    final best = bestSuggestion;
+    if (best == null || best.total <= 0) return null;
+    return best.total;
+  }
+
+  String? get priceHint {
+    final usable = suggestions
+        .where((item) => item.score >= 0.40 && item.total > 0)
+        .toList();
+
+    if (usable.isEmpty) return null;
+
+    final sorted = [...usable]..sort((a, b) => b.score.compareTo(a.score));
+    final top = sorted.take(3).toList();
+
+    if (top.length == 1) {
+      return 'Earlier similar work was around \$${top.first.total.toStringAsFixed(0)}';
+    }
+
+    final totals = top.map((e) => e.total).toList()..sort();
+
+    final low = totals.first;
+    final high = totals.last;
+
+    if ((high - low).abs() < 1) {
+      return 'Earlier similar work was around \$${high.toStringAsFixed(0)}';
+    }
+
+    return 'Earlier similar work was usually \$${low.toStringAsFixed(0)}–\$${high.toStringAsFixed(0)}';
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'raw_prompt': rawPrompt,

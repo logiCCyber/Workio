@@ -14,6 +14,7 @@ import 'worker_chat_screen.dart';
 import '../services/task_service.dart';
 import 'worker_tasks_screen.dart';
 import '../utils/company_logo_helper.dart';
+import '../services/push_token_service.dart';
 
 class WorkerScreen extends StatefulWidget {
   final String accessMode;
@@ -58,6 +59,7 @@ class _WorkerScreenState extends State<WorkerScreen>
 
   Timer? _ticker;
   Duration _elapsed = Duration.zero;
+  Timer? _presenceHeartbeat;
 
   RealtimeChannel? _appPresenceChannel;
 
@@ -70,7 +72,21 @@ class _WorkerScreenState extends State<WorkerScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _accessMode = widget.accessMode;
+
     _initAppPresence();
+
+    Future.microtask(() async {
+      try {
+        print('WORKER PUSH SYNC START');
+        await PushTokenService().syncWorkerPushToken();
+        print('WORKER PUSH SYNC OK');
+
+        await _trackAppPresence();
+      } catch (e) {
+        print('WORKER INIT PUSH/PRESENCE ERROR = $e');
+      }
+    });
+
     _reload();
   }
 
@@ -79,6 +95,7 @@ class _WorkerScreenState extends State<WorkerScreen>
     WidgetsBinding.instance.removeObserver(this);
 
     _ticker?.cancel();
+    _presenceHeartbeat?.cancel();
 
     final ch = _appPresenceChannel;
     _appPresenceChannel = null;
@@ -93,20 +110,86 @@ class _WorkerScreenState extends State<WorkerScreen>
 
   Future<void> _trackAppPresence() async {
     final ch = _appPresenceChannel;
-    final myId = Supabase.instance.client.auth.currentUser?.id;
-    if (ch == null || myId == null) return;
+    final myId = _db.auth.currentUser?.id;
 
-    await ch.track({
-      'auth_user_id': myId,
-      'role': 'worker',
-      'online_at': DateTime.now().toIso8601String(),
-    });
+    print('PRESENCE TRY USER ID = $myId');
+
+    if (myId == null) return;
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    try {
+      if (ch != null) {
+        await ch.track({
+          'auth_user_id': myId,
+          'role': 'worker',
+          'online_at': nowIso,
+        });
+      }
+
+      final updated = await _db
+          .from('workers')
+          .update({
+        'in_app': true,
+        'last_seen_at': nowIso,
+      })
+          .eq('auth_user_id', myId)
+          .select('name, email, auth_user_id, in_app, last_seen_at')
+          .maybeSingle();
+
+      print('PRESENCE TRY USER ID = $myId');
+      print('PRESENCE UPDATED ROW = $updated');
+
+      if (updated == null) {
+        print('PRESENCE WARNING: no worker row matched this auth_user_id');
+      }
+
+      _presenceHeartbeat?.cancel();
+      _presenceHeartbeat = Timer.periodic(const Duration(seconds: 30), (_) async {
+        final userId = _db.auth.currentUser?.id;
+        if (userId == null) return;
+
+        final updated = await _db
+            .from('workers')
+            .update({
+          'in_app': true,
+          'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+        })
+            .eq('auth_user_id', userId)
+            .select('name, email, auth_user_id, in_app, last_seen_at')
+            .maybeSingle();
+
+        print('PRESENCE HEARTBEAT USER ID = $userId');
+        print('PRESENCE HEARTBEAT ROW = $updated');
+
+        if (updated == null) {
+          print('PRESENCE WARNING: heartbeat found no worker row');
+        }
+      });
+    } catch (e) {
+      print('PRESENCE UPDATE ERROR = $e');
+    }
   }
 
   Future<void> _untrackAppPresence() async {
+    _presenceHeartbeat?.cancel();
+
+    final myId = _db.auth.currentUser?.id;
     final ch = _appPresenceChannel;
-    if (ch == null) return;
-    await ch.untrack();
+
+    if (ch != null) {
+      await ch.untrack();
+    }
+
+    if (myId == null) return;
+
+    await _db
+        .from('workers')
+        .update({
+      'in_app': false,
+      'last_seen_at': DateTime.now().toUtc().toIso8601String(),
+    })
+        .eq('auth_user_id', myId);
   }
 
   Future<void> _initAppPresence() async {

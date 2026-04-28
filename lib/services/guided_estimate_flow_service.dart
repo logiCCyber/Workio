@@ -23,7 +23,7 @@ class GuidedEstimateFlowService {
 
   static bool requiresQuantity(EstimatePriceRuleModel? rule) {
     final value = unit(rule);
-    return value == 'item' || value == 'sqft' || value == 'room';
+    return value == 'item' || value == 'sqft' || value == 'room' || value == 'hour';
   }
 
   static String quantityLabel(EstimatePriceRuleModel? rule) {
@@ -34,6 +34,8 @@ class GuidedEstimateFlowService {
         return 'Square Footage';
       case 'room':
         return 'Rooms';
+      case 'hour':
+        return 'Hours';
       default:
         return 'Size';
     }
@@ -47,6 +49,8 @@ class GuidedEstimateFlowService {
         return '1200';
       case 'room':
         return '3';
+      case 'hour':
+        return '2';
       default:
         return 'Enter value';
     }
@@ -147,12 +151,19 @@ class GuidedEstimateFlowService {
   }) {
     if (rule == null) return '';
 
-    final parts = <String>[];
-    parts.add(serviceLabel(rule));
+    final serviceType = rule.serviceType.trim();
+    final label = serviceLabel(rule);
+
+    final parts = <String>[
+      'service_type: $serviceType',
+      'service_label: $label',
+    ];
+
+    final requestParts = <String>[];
 
     final requestedWork = (answers['requested_work'] ?? '').toString().trim();
     if (requestedWork.isNotEmpty) {
-      parts.add(requestedWork);
+      requestParts.add(requestedWork);
     }
 
     final quantityValue = (answers['quantity_value'] ?? '').toString().trim();
@@ -162,9 +173,11 @@ class GuidedEstimateFlowService {
       if (currentUnit == 'item') {
         parts.add('$quantityValue item${quantityValue == '1' ? '' : 's'}');
       } else if (currentUnit == 'sqft') {
-        parts.add('$quantityValue sqft');
+        requestParts.add('$quantityValue sqft');
       } else if (currentUnit == 'room') {
-        parts.add('$quantityValue room${quantityValue == '1' ? '' : 's'}');
+        requestParts.add('$quantityValue room${quantityValue == '1' ? '' : 's'}');
+      } else if (currentUnit == 'hour') {
+        requestParts.add('$quantityValue hour${quantityValue == '1' ? '' : 's'}');
       }
     }
 
@@ -209,9 +222,18 @@ class GuidedEstimateFlowService {
       parts.add(value);
     }
 
-    return parts
+    final request = requestParts
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .join(', ');
+
+    if (request.isNotEmpty) {
+      parts.add('request: $request');
+    }
+
+    return parts
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .join('. ');
   }
 }

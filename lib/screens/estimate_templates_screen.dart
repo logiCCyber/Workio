@@ -131,26 +131,26 @@ class _EstimateTemplatesScreenState extends State<EstimateTemplatesScreen> {
                 _PremiumTextField(
                   controller: nameController,
                   label: 'Template Name',
-                  hintText: 'Painting Basic',
+                  hintText: 'Basic Service Template',
                 ),
                 const SizedBox(height: 12),
                 _PremiumTextField(
                   controller: serviceTypeController,
                   label: 'Service Type',
-                  hintText: 'Painting',
+                  hintText: 'service_type',
                 ),
                 const SizedBox(height: 12),
                 _PremiumTextField(
                   controller: scopeController,
                   label: 'Default Scope',
-                  hintText: 'Prepare surfaces, protect work area, apply two coats...',
+                  hintText: 'Describe the default work scope for this service...',
                   maxLines: 5,
                 ),
                 const SizedBox(height: 12),
                 _PremiumTextField(
                   controller: notesController,
                   label: 'Default Notes',
-                  hintText: 'Materials included. Final color selection by client...',
+                  hintText: 'Default notes, exclusions, materials, or conditions...',
                   maxLines: 4,
                 ),
                 const SizedBox(height: 18),
@@ -827,7 +827,7 @@ class _EmptyTemplatesState extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Create your first template for painting, cleaning, or drywall.',
+                'Create your first reusable template for any service type.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Color(0xFF8E93A6),

@@ -9,6 +9,7 @@ import 'admin_worker_details_screen.dart';
 import '../dialogs/add_worker_dialog.dart';
 import 'login_screen.dart';
 import 'admin_home_screen.dart';
+import '../services/push_token_service.dart';
 
 
 class AdminPanel extends StatefulWidget {
@@ -43,6 +44,9 @@ class _AdminPanelState extends State<AdminPanel> {
     super.initState();
     _warningsSeed = Random().nextInt(0x7fffffff);
     _bootstrap();
+    Future.microtask(() async {
+      await PushTokenService().syncAdminPushToken();
+    });
   }
 
   Future<void> _bootstrap() async {

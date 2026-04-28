@@ -17,7 +17,6 @@ class AiEstimateResultModel {
   final List<AiMissingFieldModel> missingFields;
 
   final double confidence;
-  final bool usedFallback;
 
   const AiEstimateResultModel({
     this.title,
@@ -29,7 +28,6 @@ class AiEstimateResultModel {
     this.assumptions = const [],
     this.missingFields = const [],
     this.confidence = 0,
-    this.usedFallback = false,
   });
 
   factory AiEstimateResultModel.fromMap(Map<String, dynamic> map) {
@@ -51,7 +49,6 @@ class AiEstimateResultModel {
       assumptions: _toAssumptions(map['assumptions']),
       missingFields: _toMissingFields(map['missing_fields']),
       confidence: _toDouble(map['confidence']),
-      usedFallback: _toBool(map['used_fallback']),
     );
   }
 
@@ -59,19 +56,6 @@ class AiEstimateResultModel {
     if (value == null) return 0;
     if (value is num) return value.toDouble();
     return double.tryParse(value.toString()) ?? 0;
-  }
-
-  static bool _toBool(dynamic value) {
-    if (value == null) return false;
-    if (value is bool) return value;
-
-    final normalized = value.toString().trim().toLowerCase();
-
-    if (normalized == 'true' || normalized == '1' || normalized == 'yes') {
-      return true;
-    }
-
-    return false;
   }
 
   static List<EstimateItemModel> _toEstimateItems(dynamic value) {
@@ -129,7 +113,6 @@ class AiEstimateResultModel {
       'assumptions': assumptions.map((item) => item.toMap()).toList(),
       'missing_fields': missingFields.map((item) => item.toMap()).toList(),
       'confidence': confidence,
-      'used_fallback': usedFallback,
     };
   }
 
@@ -143,7 +126,6 @@ class AiEstimateResultModel {
     List<AiAssumptionModel>? assumptions,
     List<AiMissingFieldModel>? missingFields,
     double? confidence,
-    bool? usedFallback,
   }) {
     return AiEstimateResultModel(
       title: title ?? this.title,
@@ -155,7 +137,6 @@ class AiEstimateResultModel {
       assumptions: assumptions ?? this.assumptions,
       missingFields: missingFields ?? this.missingFields,
       confidence: confidence ?? this.confidence,
-      usedFallback: usedFallback ?? this.usedFallback,
     );
   }
 }

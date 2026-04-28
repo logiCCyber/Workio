@@ -806,7 +806,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                   _PremiumTextField(
                     controller: _titleController,
                     label: 'Title',
-                    hintText: 'Painting • Montreal',
+                    hintText: 'Service Estimate • City',
                   ),
                   const SizedBox(height: 12),
                   _PremiumPickerField(
@@ -830,8 +830,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
               child: _PremiumTextField(
                 controller: _scopeController,
                 label: 'Scope',
-                hintText:
-                'Prepare surfaces, protect work areas, apply two coats, clean work area...',
+                hintText: 'Describe the work scope, included tasks, exclusions, and cleanup...',
                 maxLines: 6,
               ),
             ),
@@ -2032,7 +2031,7 @@ class _AddEditItemPageState extends State<_AddEditItemPage> {
                   _PremiumTextField(
                     controller: _titleController,
                     label: 'Title',
-                    hintText: 'Painting walls',
+                    hintText: 'Service item title',
                   ),
                   const SizedBox(height: 12),
                   _PremiumTextField(

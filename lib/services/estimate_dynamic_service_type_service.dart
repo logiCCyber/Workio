@@ -5,14 +5,6 @@ import 'estimate_price_rules_service.dart';
 class EstimateDynamicServiceTypeService {
   EstimateDynamicServiceTypeService._();
 
-  static const Set<String> _builtInServiceTypes = {
-    'painting',
-    'drywall',
-    'cleaning',
-    'flooring',
-    'general',
-  };
-
   static const Set<String> _stopWords = {
     'and',
     'for',
@@ -49,15 +41,7 @@ class EstimateDynamicServiceTypeService {
 
     final current = (parsed.serviceType ?? '').trim().toLowerCase();
 
-    final shouldOverride = current.isEmpty ||
-        current == 'general' ||
-        !_builtInServiceTypes.contains(current);
-
-    if (!shouldOverride && current == detected) {
-      return parsed;
-    }
-
-    if (!shouldOverride) {
+    if (current == detected) {
       return parsed;
     }
 

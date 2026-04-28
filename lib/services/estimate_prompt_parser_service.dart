@@ -13,40 +13,26 @@ class EstimatePromptParserService {
     final normalizedPrompt = _normalize(rawPrompt);
     final normalizedRuleUnit = (ruleUnit ?? '').trim().toLowerCase();
 
-    String? serviceType = _detectServiceType(normalizedPrompt);
     double? sqft = _extractSquareFootage(normalizedPrompt);
     int? rooms = _extractRooms(normalizedPrompt);
     double? hours = _extractHours(normalizedPrompt);
-    int? coats = _extractCoats(normalizedPrompt);
     final parsedMaterials = _extractParsedMaterials(normalizedPrompt);
 
     bool? materialsIncluded = _detectMaterialsIncluded(normalizedPrompt);
     bool? laborOnly = _detectLaborOnly(normalizedPrompt);
 
-    bool? walls = _detectWalls(normalizedPrompt);
-    bool? ceiling = _detectCeiling(normalizedPrompt);
+    String? serviceType;
 
-    final rush = _hasAny(normalizedPrompt, [
-      'rush',
-      'urgent',
-      'urgent job',
-      'asap',
-      'срочно',
-      'срочная работа',
-      'срочно нужно',
-    ]);
+    final rush = _detectRush(normalizedPrompt);
 
     final prep = _hasAny(normalizedPrompt, [
       'prep',
       'preparation',
+      'surface prep',
+      'surface preparation',
       'patch',
       'patching',
-      'repair',
-      'repairs',
-      'minor repair',
-      'surface prep',
       'подготовка',
-      'ремонт',
       'шпаклевка',
       'заделка',
     ]);
@@ -76,37 +62,6 @@ class EstimatePromptParserService {
           label: 'Materials',
           value: 'Included',
           reason: 'Detailed material list was detected in the prompt.',
-        ),
-      );
-    }
-
-    if (serviceType == 'painting' && coats == null) {
-      coats = 2;
-      assumptions.add(
-        const AiAssumptionModel(
-          key: 'coats',
-          label: 'Coats',
-          value: '2 coats',
-          reason: 'Painting jobs usually default to 2 coats unless stated otherwise.',
-        ),
-      );
-    }
-
-    if (serviceType == null) {
-      missingFields.add(
-        const AiMissingFieldModel(
-          key: 'service_type',
-          question: 'What kind of work is this: painting, drywall, cleaning, flooring, or general labor?',
-          isRequired: true,
-          answerType: 'single_select',
-          options: [
-            'painting',
-            'drywall',
-            'cleaning',
-            'flooring',
-            'general',
-          ],
-          hint: 'Main job type is required before building the estimate.',
         ),
       );
     }
@@ -148,34 +103,14 @@ class EstimatePromptParserService {
       );
     }
 
-    if (serviceType == 'painting' && walls == null && ceiling == null) {
-      missingFields.add(
-        const AiMissingFieldModel(
-          key: 'surfaces',
-          question: 'Is this for walls, ceiling, or both?',
-          isRequired: true,
-          answerType: 'single_select',
-          options: [
-            'walls',
-            'ceiling',
-            'walls and ceiling',
-          ],
-          hint: 'Painting estimate needs surface selection.',
-        ),
-      );
-    }
-
     final confidence = _calculateConfidence(
       normalizedPrompt: normalizedPrompt,
       serviceType: serviceType,
       sqft: sqft,
       rooms: rooms,
       hours: hours,
-      coats: coats,
       materialsIncluded: materialsIncluded,
       laborOnly: laborOnly,
-      walls: walls,
-      ceiling: ceiling,
       rush: rush,
       prep: prep,
       missingFields: missingFields,
@@ -189,11 +124,8 @@ class EstimatePromptParserService {
       sqft: sqft,
       rooms: rooms,
       hours: hours,
-      coats: coats,
       materialsIncluded: materialsIncluded,
       laborOnly: laborOnly,
-      walls: walls,
-      ceiling: ceiling,
       rush: rush,
       prep: prep,
       confidence: confidence,
@@ -207,72 +139,6 @@ class EstimatePromptParserService {
     return value.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  static String? _detectServiceType(String text) {
-    if (_hasAny(text, [
-      'paint',
-      'painting',
-      'repaint',
-      'покраска',
-      'красить',
-      'окраска',
-    ])) {
-      return 'painting';
-    }
-
-    if (_hasAny(text, [
-      'drywall',
-      'gypsum',
-      'sheetrock',
-      'гипсокартон',
-    ])) {
-      return 'drywall';
-    }
-
-    if (_hasAny(text, [
-      'cleaning',
-      'clean',
-      'deep clean',
-      'move out cleaning',
-      'уборка',
-      'клининг',
-      'почистить',
-    ])) {
-      return 'cleaning';
-    }
-
-    if (_hasAny(text, [
-      'floor',
-      'flooring',
-      'vinyl',
-      'laminate',
-      'hardwood',
-      'tile floor',
-      'пол',
-      'наполь',
-      'ламинат',
-      'плитка',
-    ])) {
-      return 'flooring';
-    }
-
-    if (_hasAny(text, [
-      'general labor',
-      'handyman',
-      'odd jobs',
-      'repair work',
-      'renovation',
-      'service',
-      'job',
-      'work',
-      'работа',
-      'ремонтные работы',
-      'услуга',
-    ])) {
-      return 'general';
-    }
-
-    return null;
-  }
 
   static bool _requiresProjectSize({
     required String normalizedPrompt,
@@ -392,24 +258,6 @@ class EstimatePromptParserService {
     return null;
   }
 
-  static int? _extractCoats(String text) {
-    final patterns = [
-      RegExp(r'(\d+)\s*(coat|coats)\b'),
-      RegExp(r'(\d+)\s*(слой|слоя|слоев|слоёв)\b'),
-    ];
-
-    for (final pattern in patterns) {
-      final match = pattern.firstMatch(text);
-      if (match == null) continue;
-
-      final parsed = int.tryParse(match.group(1) ?? '');
-      if (parsed != null && parsed > 0) {
-        return parsed;
-      }
-    }
-
-    return null;
-  }
 
   static List<Map<String, dynamic>> _extractParsedMaterials(String text) {
     final normalized = text
@@ -542,6 +390,41 @@ class EstimatePromptParserService {
     return null;
   }
 
+  static bool _detectRush(String text) {
+    if (_matchesAnyFlexible(text, [
+      ['no', 'rush'],
+      ['not', 'urgent'],
+      ['no', 'urgent'],
+      ['no', 'asap'],
+      ['not', 'asap'],
+      ['no', 'expedite'],
+      ['no', 'expedited'],
+      ['not', 'expedited'],
+      ['no', 'priority'],
+      ['no', 'rush', 'fee'],
+      ['without', 'rush'],
+      ['standard', 'timing'],
+      ['regular', 'timing'],
+      ['normal', 'schedule'],
+    ])) {
+      return false;
+    }
+
+    return _hasAny(text, [
+      'rush',
+      'urgent',
+      'urgent job',
+      'asap',
+      'expedite',
+      'expedited',
+      'priority',
+      'after hours',
+      'after-hours',
+    ]);
+  }
+
+
+
   static bool _matchesAnyFlexible(
       String source,
       List<List<String>> patterns,
@@ -666,91 +549,14 @@ class EstimatePromptParserService {
     return matrix[aLen][bLen];
   }
 
-  static bool? _detectWalls(String text) {
-    if (_hasAny(text, [
-      'walls and ceiling',
-      'walls & ceiling',
-      'wall and ceiling',
-      'стены и потолок',
-    ])) {
-      return true;
-    }
-
-    if (_hasAny(text, [
-      'walls only',
-      'only walls',
-      'just walls',
-      'стены только',
-      'только стены',
-    ])) {
-      return true;
-    }
-
-    if (_hasWord(text, 'walls') || _hasWord(text, 'wall') || _hasWord(text, 'стены') || _hasWord(text, 'стена')) {
-      return true;
-    }
-
-    if (_hasAny(text, [
-      'ceiling only',
-      'only ceiling',
-      'just ceiling',
-      'только потолок',
-    ])) {
-      return false;
-    }
-
-    return null;
-  }
-
-  static bool? _detectCeiling(String text) {
-    if (_hasAny(text, [
-      'walls and ceiling',
-      'walls & ceiling',
-      'wall and ceiling',
-      'стены и потолок',
-    ])) {
-      return true;
-    }
-
-    if (_hasAny(text, [
-      'ceiling only',
-      'only ceiling',
-      'just ceiling',
-      'только потолок',
-    ])) {
-      return true;
-    }
-
-    if (_hasWord(text, 'ceiling') ||
-        _hasWord(text, 'ceilings') ||
-        _hasWord(text, 'потолок') ||
-        _hasWord(text, 'потолки')) {
-      return true;
-    }
-
-    if (_hasAny(text, [
-      'walls only',
-      'only walls',
-      'just walls',
-      'только стены',
-    ])) {
-      return false;
-    }
-
-    return null;
-  }
-
   static double _calculateConfidence({
     required String normalizedPrompt,
     required String? serviceType,
     required double? sqft,
     required int? rooms,
     required double? hours,
-    required int? coats,
     required bool? materialsIncluded,
     required bool? laborOnly,
-    required bool? walls,
-    required bool? ceiling,
     required bool rush,
     required bool prep,
     required List<Map<String, dynamic>> parsedMaterials,
@@ -776,14 +582,6 @@ class EstimatePromptParserService {
 
     if (parsedMaterials.isNotEmpty) {
       score += 0.12;
-    }
-
-    if (coats != null) {
-      score += 0.08;
-    }
-
-    if (walls != null || ceiling != null) {
-      score += 0.10;
     }
 
     if (rush) {
@@ -812,11 +610,6 @@ class EstimatePromptParserService {
 
     score -= requiredMissingCount * 0.10;
 
-    if ((serviceType ?? '') == 'painting' &&
-        walls == null &&
-        ceiling == null) {
-      score -= 0.05;
-    }
 
     final clamped = score.clamp(0.05, 0.98);
     return double.parse(clamped.toStringAsFixed(2));

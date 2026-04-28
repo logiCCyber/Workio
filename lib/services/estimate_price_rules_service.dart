@@ -8,80 +8,6 @@ class EstimatePriceRulesService {
   static final _client = Supabase.instance.client;
   static const _table = 'estimate_price_rules';
 
-  static List<EstimatePriceRuleModel> _defaultRules(String adminAuthId) {
-    return [
-      EstimatePriceRuleModel(
-        id: 'painting_walls',
-        adminAuthId: adminAuthId,
-        serviceType: 'painting',
-        category: 'walls',
-        unit: 'sqft',
-        baseRate: 1.80,
-        singleCoatRate: 1.45,
-        multiCoatRate: 1.80,
-        materialRatePerSqft: 0.22,
-        prepFixedRate: 180,
-        rushFixedRate: 175,
-      ),
-      EstimatePriceRuleModel(
-        id: 'painting_ceiling',
-        adminAuthId: adminAuthId,
-        serviceType: 'painting',
-        category: 'ceiling',
-        unit: 'sqft',
-        baseRate: 0.85,
-        singleCoatRate: 0.65,
-        multiCoatRate: 0.85,
-        materialRatePerSqft: 0.22,
-        prepFixedRate: 180,
-        rushFixedRate: 175,
-      ),
-      EstimatePriceRuleModel(
-        id: 'drywall_main',
-        adminAuthId: adminAuthId,
-        serviceType: 'drywall',
-        category: 'main',
-        unit: 'sqft',
-        baseRate: 2.35,
-        materialRatePerSqft: 0.28,
-        prepFixedRate: 140,
-        rushFixedRate: 180,
-      ),
-      EstimatePriceRuleModel(
-        id: 'cleaning_main',
-        adminAuthId: adminAuthId,
-        serviceType: 'cleaning',
-        category: 'main',
-        unit: 'sqft',
-        baseRate: 0.34,
-        materialFixedRate: 45,
-        rushFixedRate: 95,
-      ),
-      EstimatePriceRuleModel(
-        id: 'flooring_main',
-        adminAuthId: adminAuthId,
-        serviceType: 'flooring',
-        category: 'main',
-        unit: 'sqft',
-        baseRate: 2.95,
-        materialRatePerSqft: 0.55,
-        prepFixedRate: 160,
-        rushFixedRate: 175,
-      ),
-      EstimatePriceRuleModel(
-        id: 'general_main',
-        adminAuthId: adminAuthId,
-        serviceType: 'general',
-        category: 'main',
-        unit: 'sqft',
-        baseRate: 1.25,
-        materialFixedRate: 95,
-        prepFixedRate: 120,
-        rushFixedRate: 120,
-      ),
-    ];
-  }
-
   static String _requireAdminAuthId() {
     final user = _client.auth.currentUser;
     if (user == null) {
@@ -90,26 +16,7 @@ class EstimatePriceRulesService {
     return user.id;
   }
 
-  static Future<void> _seedDefaultsIfEmpty() async {
-    final adminAuthId = _requireAdminAuthId();
-
-    final existing = await _client
-        .from(_table)
-        .select('id')
-        .eq('admin_auth_id', adminAuthId);
-
-    if ((existing as List).isNotEmpty) return;
-
-    final defaults = _defaultRules(adminAuthId)
-        .map((rule) => rule.toMap()..remove('created_at')..remove('updated_at'))
-        .toList();
-
-    await _client.from(_table).insert(defaults);
-  }
-
   static Future<List<EstimatePriceRuleModel>> getRules() async {
-    await _seedDefaultsIfEmpty();
-
     final adminAuthId = _requireAdminAuthId();
 
     final response = await _client
@@ -163,20 +70,6 @@ class EstimatePriceRulesService {
     return findRule(
       serviceType: serviceType,
       category: 'main',
-    );
-  }
-
-  static Future<EstimatePriceRuleModel?> findPaintingWallsRule() async {
-    return findRule(
-      serviceType: 'painting',
-      category: 'walls',
-    );
-  }
-
-  static Future<EstimatePriceRuleModel?> findPaintingCeilingRule() async {
-    return findRule(
-      serviceType: 'painting',
-      category: 'ceiling',
     );
   }
 
@@ -241,15 +134,12 @@ class EstimatePriceRulesService {
     await _client.from(_table).upsert(payload);
   }
 
-  static Future<void> resetDefaults() async {
+  static Future<void> deleteAllRules() async {
     final adminAuthId = _requireAdminAuthId();
 
-    await _client.from(_table).delete().eq('admin_auth_id', adminAuthId);
-
-    final defaults = _defaultRules(adminAuthId)
-        .map((rule) => rule.toMap()..remove('created_at')..remove('updated_at'))
-        .toList();
-
-    await _client.from(_table).insert(defaults);
+    await _client
+        .from(_table)
+        .delete()
+        .eq('admin_auth_id', adminAuthId);
   }
 }

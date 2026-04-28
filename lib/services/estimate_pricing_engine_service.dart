@@ -10,14 +10,6 @@ class EstimatePricingEngineService {
   static Future<List<EstimateItemModel>> buildItems(
       AiParsedRequestModel parsed,
       ) async {
-    final serviceType = (parsed.serviceType ?? '').trim().toLowerCase();
-
-    if (serviceType.isEmpty) return const [];
-
-    if (serviceType == 'painting') {
-      return await _buildPaintingItems(parsed);
-    }
-
     return await _buildDynamicItems(parsed);
   }
 
@@ -29,11 +21,16 @@ class EstimatePricingEngineService {
 
     final rule = await EstimatePriceRulesService.findMainRule(serviceType);
     if (rule == null) {
-      return await _buildGeneralItems(parsed);
+      return const [];
     }
 
     final items = <EstimateItemModel>[];
     final quantity = _resolveDynamicQuantity(parsed, rule.unit);
+
+    if (quantity <= 0) {
+      return const [];
+    }
+
     final materialsIncluded = parsed.materialsIncluded == true;
     final rush = parsed.rush;
     final prep = parsed.prep;
@@ -252,128 +249,6 @@ class EstimatePricingEngineService {
         .join(' ');
   }
 
-  static Future<List<EstimateItemModel>> _buildPaintingItems(
-      AiParsedRequestModel parsed,
-      ) async {
-    final items = <EstimateItemModel>[];
-
-    final wallsRule = await EstimatePriceRulesService.findPaintingWallsRule();
-    final ceilingRule = await EstimatePriceRulesService.findPaintingCeilingRule();
-
-    if (wallsRule == null && ceilingRule == null) {
-      return const [];
-    }
-
-    final effectiveSqft = _resolvePaintingSqft(parsed);
-    final coats = (parsed.coats ?? 2) <= 0 ? 2 : parsed.coats!;
-    final materialsIncluded = parsed.materialsIncluded == true;
-    final rush = parsed.rush;
-    final prep = parsed.prep;
-
-    final walls =
-        parsed.walls == true || (parsed.walls == null && parsed.ceiling != true);
-    final ceiling = parsed.ceiling == true;
-
-    if (walls && wallsRule != null) {
-      final wallRate = coats >= 2
-          ? (wallsRule.multiCoatRate ?? wallsRule.baseRate)
-          : (wallsRule.singleCoatRate ?? wallsRule.baseRate);
-
-      items.add(
-        _item(
-          title: 'Painting Walls',
-          description: 'Labor for wall painting',
-          unit: wallsRule.unit,
-          quantity: effectiveSqft,
-          unitPrice: wallRate,
-        ),
-      );
-    }
-
-    if (ceiling && ceilingRule != null) {
-      final ceilingRate = coats >= 2
-          ? (ceilingRule.multiCoatRate ?? ceilingRule.baseRate)
-          : (ceilingRule.singleCoatRate ?? ceilingRule.baseRate);
-
-      items.add(
-        _item(
-          title: 'Painting Ceiling',
-          description: 'Labor for ceiling painting',
-          unit: ceilingRule.unit,
-          quantity: effectiveSqft,
-          unitPrice: ceilingRate,
-        ),
-      );
-    }
-
-    if (prep) {
-      final prepPrice =
-          wallsRule?.prepFixedRate ?? ceilingRule?.prepFixedRate ?? 0;
-
-      if (prepPrice > 0) {
-        items.add(
-          _item(
-            title: 'Surface Prep & Minor Repairs',
-            description: 'Basic patching, sanding, and surface preparation',
-            unit: 'fixed',
-            quantity: 1,
-            unitPrice: prepPrice,
-          ),
-        );
-      }
-    }
-
-    if (materialsIncluded) {
-      if (parsed.parsedMaterials.isNotEmpty) {
-        items.addAll(
-          _buildParsedMaterialItems(
-            parsedMaterials: parsed.parsedMaterials,
-            fallbackTitle: 'Painting Materials',
-            fallbackDescription: 'Paint, tape, masking, and basic consumables',
-          ),
-        );
-      } else {
-        final materialRate =
-            wallsRule?.materialRatePerSqft ??
-                ceilingRule?.materialRatePerSqft ??
-                0;
-
-        if (materialRate > 0) {
-          items.add(
-            _item(
-              title: 'Painting Materials',
-              description: 'Paint, tape, masking, and basic consumables',
-              unit: 'fixed',
-              quantity: 1,
-              unitPrice: effectiveSqft * materialRate,
-            ),
-          );
-        }
-      }
-    }
-
-    if (rush) {
-      final rushPrice =
-          wallsRule?.rushFixedRate ?? ceilingRule?.rushFixedRate ?? 0;
-
-      if (rushPrice > 0) {
-        items.add(
-          _item(
-            title: 'Rush Service',
-            description: 'Priority scheduling and rush handling',
-            unit: 'fixed',
-            quantity: 1,
-            unitPrice: rushPrice,
-          ),
-        );
-      }
-    }
-
-    return _normalizeItems(items);
-  }
-
-
-
   static double _resolveDynamicQuantity(
       AiParsedRequestModel parsed,
       String unit,
@@ -382,22 +257,24 @@ class EstimatePricingEngineService {
 
     if (normalizedUnit == 'sqft') {
       if ((parsed.sqft ?? 0) > 0) return parsed.sqft!;
-      if ((parsed.rooms ?? 0) > 0) return parsed.rooms! * 220.0;
-      return 400.0;
+      return 0;
     }
 
     if (normalizedUnit == 'room') {
       if ((parsed.rooms ?? 0) > 0) return parsed.rooms!.toDouble();
-      if ((parsed.sqft ?? 0) > 0) return 1;
-      return 1;
+      return 0;
+    }
+
+    if (normalizedUnit == 'hour') {
+      if ((parsed.hours ?? 0) > 0) return parsed.hours!;
+      return 0;
     }
 
     if (normalizedUnit == 'item') {
       return 1;
     }
 
-    if (normalizedUnit == 'hour') {
-      if ((parsed.hours ?? 0) > 0) return parsed.hours!;
+    if (normalizedUnit == 'fixed') {
       return 1;
     }
 
@@ -411,92 +288,6 @@ class EstimatePricingEngineService {
         .where((e) => e.isNotEmpty)
         .map((part) => part[0].toUpperCase() + part.substring(1))
         .join(' ');
-  }
-
-  static Future<List<EstimateItemModel>> _buildGeneralItems(
-      AiParsedRequestModel parsed,
-      ) async {
-    final rule = await EstimatePriceRulesService.findMainRule('general');
-    if (rule == null) return const [];
-
-    final items = <EstimateItemModel>[];
-
-    final effectiveSqft = _resolveGeneralSqft(parsed);
-    final materialsIncluded = parsed.materialsIncluded == true;
-    final rush = parsed.rush;
-    final prep = parsed.prep;
-
-    items.add(
-      _item(
-        title: 'General Labor',
-        description: 'General labor for requested work',
-        unit: rule.unit,
-        quantity: effectiveSqft,
-        unitPrice: rule.baseRate,
-      ),
-    );
-
-    if (prep && (rule.prepFixedRate ?? 0) > 0) {
-      items.add(
-        _item(
-          title: 'Prep Work',
-          description: 'Preparation and setup before main work',
-          unit: 'fixed',
-          quantity: 1,
-          unitPrice: rule.prepFixedRate!,
-        ),
-      );
-    }
-
-    if (materialsIncluded && (rule.materialFixedRate ?? 0) > 0) {
-      items.add(
-        _item(
-          title: 'Materials',
-          description: 'General materials and consumables',
-          unit: 'fixed',
-          quantity: 1,
-          unitPrice: rule.materialFixedRate!,
-        ),
-      );
-    }
-
-    if (rush && (rule.rushFixedRate ?? 0) > 0) {
-      items.add(
-        _item(
-          title: 'Rush Service',
-          description: 'Priority scheduling and rush handling',
-          unit: 'fixed',
-          quantity: 1,
-          unitPrice: rule.rushFixedRate!,
-        ),
-      );
-    }
-
-    return _normalizeItems(items);
-  }
-
-  static double _resolvePaintingSqft(AiParsedRequestModel parsed) {
-    if ((parsed.sqft ?? 0) > 0) {
-      return parsed.sqft!;
-    }
-
-    if ((parsed.rooms ?? 0) > 0) {
-      return parsed.rooms! * 250.0;
-    }
-
-    return 500.0;
-  }
-
-  static double _resolveGeneralSqft(AiParsedRequestModel parsed) {
-    if ((parsed.sqft ?? 0) > 0) {
-      return parsed.sqft!;
-    }
-
-    if ((parsed.rooms ?? 0) > 0) {
-      return parsed.rooms! * 220.0;
-    }
-
-    return 400.0;
   }
 
   static EstimateItemModel _item({

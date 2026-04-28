@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,8 +18,17 @@ class WorkerTasksScreen extends StatefulWidget {
 
 class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   String _statusFilter = 'all';
+  final Set<String> _shownTerminalSheets = {};
+
+  Timer? _refreshTimer;
 
   String _s(Object? v) => (v ?? '').toString().trim();
+
+  final Map<String, String?> _reasonTargetSubtaskByTask = {};
+  final Map<String, String?> _reasonTargetStatusByTask = {};
+  final Map<String, bool> _expandedSubtasks = {};
+
+  final Map<String, TextEditingController> _noteCtrls = {};
 
   String _uploadedByLabel(Map<String, dynamic> attachment) {
     final role = _s(attachment['uploaded_by_role']).toLowerCase();
@@ -29,7 +39,24 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     return 'Uploaded';
   }
 
+  bool _isChecklistProofAttachment(Map<String, dynamic> attachment) {
+    final fileName = _s(attachment['file_name']).toLowerCase();
+    final mediaUrl = Uri.decodeFull(_s(attachment['media_url'])).toLowerCase();
+    final filePath = Uri.decodeFull(_s(attachment['file_path'])).toLowerCase();
+    final storagePath =
+    Uri.decodeFull(_s(attachment['storage_path'])).toLowerCase();
+
+    return fileName.startsWith('proof__') ||
+        mediaUrl.contains('proof__') ||
+        filePath.contains('proof__') ||
+        storagePath.contains('proof__');
+  }
+
   bool _canWorkerDeleteAttachment(Map<String, dynamic> attachment) {
+    if (_isChecklistProofAttachment(attachment)) {
+      return false;
+    }
+
     return _s(attachment['uploaded_by_role']).toLowerCase() == 'worker';
   }
 
@@ -216,6 +243,19 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     }
   }
 
+  String _reasonPrefix(String status) {
+    switch (status) {
+      case 'blocked':
+        return 'Blocked: ';
+      case 'not_needed':
+        return 'Not needed: ';
+      case 'partial':
+        return 'Partially done: ';
+      default:
+        return '';
+    }
+  }
+
   IconData _taskStatusIcon(String v) {
     switch (v) {
       case 'done':
@@ -240,6 +280,88 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       default:
         return v;
     }
+  }
+
+  Future<bool?> _showWorkerTerminalTaskSheet({
+    required String taskId,
+    required bool isDone,
+  }) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF2B2F36),
+                Color(0xFF23272E),
+                Color(0xFF1B1F26),
+              ],
+            ),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isDone ? 'Task completed' : 'Task cancelled',
+                  style: const TextStyle(
+                    color: _TaskPalette.textMain,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  isDone
+                      ? 'This task is completed and locked. After you press OK, it will be removed from your active list.'
+                      : 'This task was cancelled by admin and is locked. After you press OK, it will be removed from your active list.',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.72),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.6,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _TaskActionCapsule(
+                        label: 'Keep for now',
+                        icon: Icons.visibility_rounded,
+                        onTap: () => Navigator.pop(context, false),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _TaskActionCapsule(
+                        label: 'OK',
+                        icon: Icons.check_rounded,
+                        accentColor: isDone
+                            ? _TaskPalette.green
+                            : _TaskPalette.red,
+                        onTap: () => Navigator.pop(context, true),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _sanitizeChecklistPhotoLabel(String input) {
@@ -433,7 +555,22 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
+    _refreshTimer?.cancel();
+
+    for (final c in _noteCtrls.values) {
+      c.dispose();
+    }
+
     _hideTaskToast();
     super.dispose();
   }
@@ -794,6 +931,204 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     }
   }
 
+
+  Future<bool> _confirmChecklistAction({
+    required String title,
+    required String message,
+    required IconData icon,
+    required Color accent,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF232833).withOpacity(0.97),
+                      const Color(0xFF1A1F28).withOpacity(0.985),
+                      const Color(0xFF141922).withOpacity(0.99),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.08),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.34),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                accent.withOpacity(0.92),
+                                accent.withOpacity(0.68),
+                              ],
+                            ),
+                          ),
+                          child: Icon(icon, color: Colors.white, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              color: _TaskPalette.textMain,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 19,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      message,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.72),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: () => Navigator.pop(context, false),
+                              child: Container(
+                                height: 54,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Color(0xFF2B313D),
+                                      Color(0xFF222833),
+                                    ],
+                                  ),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.08),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.white.withOpacity(0.85),
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Cancel',
+                                      style: TextStyle(
+                                        color: _TaskPalette.textMain,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: () => Navigator.pop(context, true),
+                              child: Container(
+                                height: 54,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      accent.withOpacity(0.92),
+                                      accent.withOpacity(0.68),
+                                    ],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: accent.withOpacity(0.18),
+                                      blurRadius: 12,
+                                      spreadRadius: -4,
+                                    ),
+                                  ],
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.check_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Continue',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    return result == true;
+  }
+
   Widget _buildInlineTaskDetails({
     required Map<String, dynamic> task,
     required int taskIndex,
@@ -801,43 +1136,87 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     final taskId = _s(task['id']);
     if (taskId.isEmpty) return const SizedBox.shrink();
 
-    final noteCtrl = TextEditingController(text: _s(task['worker_note']));
+    final noteCtrl = _noteCtrls.putIfAbsent(
+      taskId,
+      () => TextEditingController(),
+    );
     String status = _s(task['status']).isEmpty ? 'todo' : _s(task['status']);
-    final Map<String, bool> localSubtaskState = {};
 
     final description = _s(task['description']);
-    final cleanDescription =
-    TaskService.stripChecklistFromDescription(description);
+    final cleanDescription = TaskService.stripChecklistFromDescription(description);
     final priority = _s(task['priority']).toLowerCase();
+    final savedWorkerNote = _s(task['worker_note']);
+
+    final acknowledgedAt = _s(task['worker_acknowledged_at']);
+    final statusLower = _s(task['status']).toLowerCase();
+    final isTerminalTask = statusLower == 'done' || statusLower == 'cancelled';
+
+    if (isTerminalTask &&
+        acknowledgedAt.isEmpty &&
+        !_shownTerminalSheets.contains(taskId)) {
+      _shownTerminalSheets.add(taskId);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+
+        final confirmed = await _showWorkerTerminalTaskSheet(
+          taskId: taskId,
+          isDone: statusLower == 'done',
+        );
+
+        if (!mounted) return;
+
+        if (confirmed == true) {
+          try {
+            await TaskService.acknowledgeWorkerTerminalTask(taskId: taskId);
+            if (!mounted) return;
+            setState(() {});
+          } catch (e) {
+            if (!mounted) return;
+            _showTaskToast(
+              'Acknowledge failed: $e',
+              icon: Icons.error_outline_rounded,
+              accent: _TaskPalette.red,
+            );
+          }
+        }
+      });
+    }
 
     final dueRaw = _s(task['due_at']);
     final dueText = dueRaw.isEmpty
         ? ''
         : (() {
-      final dt = DateTime.tryParse(dueRaw)?.toLocal();
-      if (dt == null) return '';
-      return DateFormat('MMM d, HH:mm').format(dt);
-    })();
+            final dt = DateTime.tryParse(dueRaw)?.toLocal();
+            if (dt == null) return '';
+            return DateFormat('MMM d, HH:mm').format(dt);
+          })();
 
     final List<Color> cardGradient = taskIndex.isOdd
         ? const [
-      Color(0xFF2A3140),
-      Color(0xFF1E2531),
-    ]
+            Color(0xFF3A3E45),
+            Color(0xFF2E3239),
+          ]
         : const [
-      Color(0xFF232833),
-      Color(0xFF1A1F28),
-    ];
+            Color(0xFF30343B),
+            Color(0xFF24282F),
+          ];
 
     return StatefulBuilder(
       builder: (context, setLocalState) {
+        final reasonTargetSubtaskId = _reasonTargetSubtaskByTask[taskId];
+        final reasonTargetStatus = _reasonTargetStatusByTask[taskId];
+        final isReasonMode =
+            reasonTargetSubtaskId != null && reasonTargetStatus != null;
+
         bool isDoneNow() => _s(status).toLowerCase() == 'done';
         bool isCancelledNow() => _s(status).toLowerCase() == 'cancelled';
-        bool isLockedNow() => isCancelledNow();
+        bool isLockedNow() => isDoneNow() || isCancelledNow();
+        final saveLocked = isLockedNow() || isReasonMode;
 
         return Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(0, 0, 0, 16),
+          padding: const EdgeInsets.fromLTRB(0, 12, 0, 16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -853,166 +1232,191 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: double.infinity,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF171B22).withOpacity(0.92),
-                  border: Border(
-                    top: BorderSide(color: Colors.white.withOpacity(0.06)),
-                    bottom: BorderSide(color: Colors.white.withOpacity(0.06)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: double.infinity,
+                  height: 52,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFF20252D).withOpacity(0.98),
+                        const Color(0xFF171B22).withOpacity(0.96),
+                        const Color(0xFF11151B).withOpacity(0.98),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.06),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.28),
+                        blurRadius: 14,
+                        offset: const Offset(0, 7),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.035),
+                        blurRadius: 10,
+                        spreadRadius: -6,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: IgnorePointer(
-                        ignoring: isLockedNow(),
-                        child: Opacity(
-                          opacity: isLockedNow() ? 0.55 : 1,
-                          child: Center(
-                            child: PopupMenuButton<String>(
-                              padding: EdgeInsets.zero,
-                              color: const Color(0xFF20242D),
-                              elevation: 14,
-                              offset: const Offset(0, 8),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                side: BorderSide(
-                                  color: Colors.white.withOpacity(0.08),
-                                ),
-                              ),
-                              onSelected: isLockedNow()
-                                  ? (_) {}
-                                  : (v) => setLocalState(() => status = v),
-                              itemBuilder: (_) => [
-                                _statusMenuItem(
-                                  value: 'todo',
-                                  label: 'Todo',
-                                  icon: Icons.radio_button_unchecked_rounded,
-                                  color: const Color(0xFFA47551),
-                                ),
-                                _statusMenuItem(
-                                  value: 'in_progress',
-                                  label: 'In progress',
-                                  icon: Icons.timelapse_rounded,
-                                  color: _TaskPalette.blue,
-                                ),
-                                _statusMenuItem(
-                                  value: 'done',
-                                  label: 'Done',
-                                  icon: Icons.check_circle_rounded,
-                                  color: _TaskPalette.green,
-                                ),
-                                _statusMenuItem(
-                                  value: 'needs_review',
-                                  label: 'Needs review',
-                                  icon: Icons.rate_review_rounded,
-                                  color: _TaskPalette.orange,
-                                ),
-                              ],
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _taskStatusIcon(_s(status).toLowerCase()),
-                                    size: 14,
-                                    color: _statusColor(_s(status).toLowerCase()),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: IgnorePointer(
+                          ignoring: saveLocked,
+                          child: Opacity(
+                            opacity: saveLocked ? 0.55 : 1,
+                            child: Center(
+                              child: PopupMenuButton<String>(
+                                padding: EdgeInsets.zero,
+                                color: const Color(0xFF20242D),
+                                elevation: 14,
+                                offset: const Offset(0, 8),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                  side: BorderSide(
+                                    color: Colors.white.withOpacity(0.08),
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _statusLabel(_s(status).toLowerCase()),
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.86),
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12.2,
-                                    ),
+                                ),
+                                onSelected: isLockedNow()
+                                    ? (_) {}
+                                    : (v) => setLocalState(() => status = v),
+                                itemBuilder: (_) => [
+                                  _statusMenuItem(
+                                    value: 'todo',
+                                    label: 'Todo',
+                                    icon: Icons.radio_button_unchecked_rounded,
+                                    color: const Color(0xFFA47551),
                                   ),
-                                  const SizedBox(width: 5),
-                                  Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    size: 16,
-                                    color: Colors.white.withOpacity(0.58),
+                                  _statusMenuItem(
+                                    value: 'in_progress',
+                                    label: 'In progress',
+                                    icon: Icons.timelapse_rounded,
+                                    color: _TaskPalette.blue,
+                                  ),
+                                  _statusMenuItem(
+                                    value: 'needs_review',
+                                    label: 'Needs review',
+                                    icon: Icons.rate_review_rounded,
+                                    color: _TaskPalette.orange,
                                   ),
                                 ],
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      _taskStatusIcon(_s(status).toLowerCase()),
+                                      size: 14,
+                                      color: _statusColor(_s(status).toLowerCase()),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        _statusLabel(_s(status).toLowerCase()),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.86),
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 11.8,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      size: 16,
+                                      color: Colors.white.withOpacity(0.58),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 18,
-                      color: Colors.white.withOpacity(0.08),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              priority == 'urgent'
-                                  ? Icons.priority_high_rounded
-                                  : priority == 'high'
-                                  ? Icons.keyboard_double_arrow_up_rounded
-                                  : priority == 'low'
-                                  ? Icons.south_rounded
-                                  : Icons.flag_rounded,
-                              size: 14,
-                              color: _priorityColor(priority),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              priority,
-                              style: TextStyle(
-                                color: _priorityColor(priority),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12.2,
-                              ),
-                            ),
-                          ],
-                        ),
+                      Container(
+                        width: 1,
+                        height: 18,
+                        color: Colors.white.withOpacity(0.08),
                       ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 18,
-                      color: Colors.white.withOpacity(0.08),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.schedule_rounded,
-                              size: 14,
-                              color: Color(0xFFF59E0B),
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                dueText.isEmpty ? 'No date' : dueText,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.78),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12.2,
+                      Expanded(
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                priority == 'urgent'
+                                    ? Icons.priority_high_rounded
+                                    : priority == 'high'
+                                        ? Icons.keyboard_double_arrow_up_rounded
+                                        : priority == 'low'
+                                            ? Icons.south_rounded
+                                            : Icons.flag_rounded,
+                                size: 14,
+                                color: _priorityColor(priority),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  priority,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: _priorityColor(priority),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11.8,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      Container(
+                        width: 1,
+                        height: 18,
+                        color: Colors.white.withOpacity(0.08),
+                      ),
+                      Expanded(
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.schedule_rounded,
+                                size: 14,
+                                color: Color(0xFFF59E0B),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  dueText.isEmpty ? 'No date' : dueText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.78),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.2,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-
               const SizedBox(height: 12),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
@@ -1024,9 +1428,9 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(0xFF232833).withOpacity(0.92),
-                        const Color(0xFF1A1F28).withOpacity(0.96),
-                        const Color(0xFF141922).withOpacity(0.98),
+                        const Color(0xFF2A2E35).withOpacity(0.92),
+                        const Color(0xFF23272E).withOpacity(0.96),
+                        const Color(0xFF1B1F26).withOpacity(0.98),
                       ],
                     ),
                     border: Border.all(
@@ -1056,7 +1460,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                             const SizedBox(width: 8),
                             Flexible(
                               child: Text(
-                                _s(task['title']).isEmpty ? 'Task' : _s(task['title']),
+                                _s(task['title']).isEmpty ? 'Task' : _s(task['title']).toUpperCase(),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.center,
@@ -1071,7 +1475,6 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                           ],
                         ),
                       ),
-
                       if (cleanDescription.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         Row(
@@ -1100,19 +1503,41 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                           ],
                         ),
                       ],
-
+                      if (savedWorkerNote.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(top: 2),
+                              child: Icon(
+                                Icons.campaign_rounded,
+                                color: Color(0xFF8EA0FF),
+                                size: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                savedWorkerNote,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.78),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.1,
+                                  height: 1.30,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       StreamBuilder<List<Map<String, dynamic>>>(
                         stream: TaskService.watchTaskSubtasks(taskId),
                         builder: (context, snapshot) {
-                          final subtasks =
-                              snapshot.data ?? const <Map<String, dynamic>>[];
+                          final subtasks = snapshot.data ?? const <Map<String, dynamic>>[];
                           if (subtasks.isEmpty) return const SizedBox.shrink();
 
-                          final doneCount = subtasks.where((e) {
-                            final subtaskId = _s(e['id']);
-                            return localSubtaskState[subtaskId] ??
-                                (e['is_done'] == true);
-                          }).length;
+                          final doneCount = subtasks.where((e) => _s(e['status']).toLowerCase() == 'done' || e['is_done'] == true).length;
                           final totalCount = subtasks.length;
                           final countColor = doneCount == totalCount
                               ? _TaskPalette.green
@@ -1140,9 +1565,42 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                               ...List.generate(subtasks.length, (index) {
                                 final item = subtasks[index];
                                 final subtaskId = _s(item['id']);
-                                final isDone = localSubtaskState[subtaskId] ??
-                                    (item['is_done'] == true);
+                                final itemStatus = _s(item['status']).toLowerCase().isEmpty
+                                    ? (item['is_done'] == true ? 'done' : 'todo')
+                                    : _s(item['status']).toLowerCase();
                                 final title = _s(item['title']);
+                                final statusNote = _s(item['status_note']);
+                                final isExpanded = _expandedSubtasks[subtaskId] == true;
+                                final bool showArrow = itemStatus == 'blocked' ||
+                                    itemStatus == 'not_needed' ||
+                                    itemStatus == 'partial';
+                                final bool showCamera = itemStatus == 'todo';
+                                final bool showReason = itemStatus == 'todo';
+                                final bool showNothing = itemStatus == 'done';
+
+                                IconData statusIcon;
+                                Color statusColor;
+                                switch (itemStatus) {
+                                  case 'done':
+                                    statusIcon = Icons.task_alt_rounded;
+                                    statusColor = _TaskPalette.green;
+                                    break;
+                                  case 'blocked':
+                                    statusIcon = Icons.block_rounded;
+                                    statusColor = _TaskPalette.orange;
+                                    break;
+                                  case 'not_needed':
+                                    statusIcon = Icons.remove_circle_outline_rounded;
+                                    statusColor = Colors.white.withOpacity(0.72);
+                                    break;
+                                  case 'partial':
+                                    statusIcon = Icons.timelapse_rounded;
+                                    statusColor = _TaskPalette.blue;
+                                    break;
+                                  default:
+                                    statusIcon = Icons.radio_button_unchecked_rounded;
+                                    statusColor = _TaskPalette.red;
+                                }
 
                                 return Padding(
                                   padding: EdgeInsets.only(
@@ -1152,76 +1610,31 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                     color: Colors.transparent,
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(14),
-                                      onTap: () async {
-                                        if (isLockedNow()) return;
-                                        final nextValue = !isDone;
-
-                                        if (!isDone) {
-                                          final captured =
-                                          await _captureChecklistCompletionPhoto(
-                                            taskId: taskId,
-                                            subtaskTitle: title,
-                                          );
-                                          if (!captured) return;
-                                        }
-
+                                      onTap: showArrow
+                                          ? () {
                                         setLocalState(() {
-                                          localSubtaskState[subtaskId] = nextValue;
+                                          for (final st in subtasks) {
+                                            final id = _s(st['id']);
+                                            if (id.isNotEmpty && id != subtaskId) {
+                                              _expandedSubtasks[id] = false;
+                                            }
+                                          }
+
+                                          _expandedSubtasks[subtaskId] = !isExpanded;
                                         });
-
-                                        try {
-                                          await TaskService.toggleTaskSubtask(
-                                            subtaskId: subtaskId,
-                                            isDone: nextValue,
-                                          );
-
-                                          try {
-                                            await TaskService.updateWorkerTask(
-                                              taskId: taskId,
-                                              status: _s(status).isEmpty
-                                                  ? 'todo'
-                                                  : _s(status),
-                                              workerNote: noteCtrl.text.trim(),
-                                            );
-                                          } catch (_) {}
-
-                                          if (!mounted) return;
-                                          setState(() {});
-                                          _showTaskToast(
-                                            nextValue
-                                                ? 'Checklist item completed'
-                                                : 'Checklist item reopened',
-                                            icon: nextValue
-                                                ? Icons.check_circle_rounded
-                                                : Icons.undo_rounded,
-                                            accent: nextValue
-                                                ? _TaskPalette.green
-                                                : _TaskPalette.orange,
-                                          );
-                                        } catch (e) {
-                                          setLocalState(() {
-                                            localSubtaskState[subtaskId] = !nextValue;
-                                          });
-
-                                          if (!mounted) return;
-                                          _showTaskToast(
-                                            'Checklist update failed: $e',
-                                            icon: Icons.error_outline_rounded,
-                                            accent: _TaskPalette.red,
-                                          );
-                                        }
-                                      },
+                                      }
+                                          : null,
                                       child: Container(
                                         width: double.infinity,
-                                        padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+                                        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(14),
                                           gradient: LinearGradient(
                                             begin: Alignment.topLeft,
                                             end: Alignment.bottomRight,
                                             colors: [
-                                              const Color(0xFF232833).withOpacity(0.94),
-                                              const Color(0xFF1A1F28).withOpacity(0.98),
+                                              const Color(0xFF2D3138).withOpacity(0.94),
+                                              const Color(0xFF23272E).withOpacity(0.98),
                                             ],
                                           ),
                                           border: Border.all(
@@ -1236,36 +1649,306 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                             ),
                                           ],
                                         ),
-                                        child: Row(
-                                          crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Icon(
-                                              isDone
-                                                  ? Icons.task_alt_rounded
-                                                  : Icons.radio_button_unchecked_rounded,
-                                              size: 18,
-                                              color: isDone
-                                                  ? _TaskPalette.green
-                                                  : _TaskPalette.red,
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Text(
-                                                title,
-                                                style: TextStyle(
-                                                  color: Colors.white.withOpacity(
-                                                    isDone ? 0.72 : 0.90,
-                                                  ),
-                                                  fontWeight: FontWeight.w700,
-                                                  fontSize: 13,
-                                                  height: 1.25,
-                                                  decoration: isDone
-                                                      ? TextDecoration.lineThrough
-                                                      : null,
-                                                  decorationColor:
-                                                  Colors.white.withOpacity(0.42),
+                                            Row(
+                                              crossAxisAlignment: CrossAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  statusIcon,
+                                                  size: 18,
+                                                  color: statusColor,
                                                 ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Text(
+                                                    title,
+                                                    style: TextStyle(
+                                                      color: Colors.white.withOpacity(
+                                                        itemStatus == 'done' ? 0.72 : 0.90,
+                                                      ),
+                                                      fontWeight: FontWeight.w700,
+                                                      fontSize: 13,
+                                                      height: 1.25,
+                                                      decoration: itemStatus == 'done'
+                                                          ? TextDecoration.lineThrough
+                                                          : null,
+                                                      decorationColor: Colors.white.withOpacity(0.42),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+
+                                                if (showCamera) ...[
+                                                  _ChecklistMiniActionBtn(
+                                                    icon: Icons.photo_camera_rounded,
+                                                    color: _TaskPalette.green,
+                                                    onTap: isLockedNow()
+                                                        ? null
+                                                        : () async {
+                                                      final confirmed =
+                                                      await _confirmChecklistAction(
+                                                        title: 'Complete checklist item?',
+                                                        message:
+                                                        'After confirmation, this item will be marked as done and the worker action buttons for it will disappear.',
+                                                        icon: Icons.photo_camera_rounded,
+                                                        accent: _TaskPalette.green,
+                                                      );
+
+                                                      if (!confirmed) return;
+
+                                                      final captured =
+                                                      await _captureChecklistCompletionPhoto(
+                                                        taskId: taskId,
+                                                        subtaskTitle: title,
+                                                      );
+
+                                                      if (!captured) return;
+
+                                                      try {
+                                                        await TaskService.setTaskSubtaskStatus(
+                                                          subtaskId: subtaskId,
+                                                          status: 'done',
+                                                        );
+
+                                                        if (!mounted) return;
+                                                        setState(() {});
+                                                        _showTaskToast(
+                                                          'Checklist item completed',
+                                                          icon: Icons.check_circle_rounded,
+                                                          accent: _TaskPalette.green,
+                                                        );
+                                                      } catch (e) {
+                                                        if (!mounted) return;
+                                                        _showTaskToast(
+                                                          'Checklist update failed: $e',
+                                                          icon: Icons.error_outline_rounded,
+                                                          accent: _TaskPalette.red,
+                                                        );
+                                                      }
+                                                    },
+                                                  ),
+                                                ],
+
+                                                if (showReason) ...[
+                                                  if (showCamera) const SizedBox(width: 6),
+                                                  _ChecklistMiniActionBtn(
+                                                    icon: Icons.block_rounded,
+                                                    color: _TaskPalette.orange,
+                                                    onTap: isLockedNow()
+                                                        ? null
+                                                        : () async {
+                                                      final reason =
+                                                      await showModalBottomSheet<String>(
+                                                        context: context,
+                                                        backgroundColor: Colors.transparent,
+                                                        builder: (_) {
+                                                          return Container(
+                                                            margin: const EdgeInsets.fromLTRB(
+                                                              12,
+                                                              0,
+                                                              12,
+                                                              12,
+                                                            ),
+                                                            padding: const EdgeInsets.all(12),
+                                                            decoration: BoxDecoration(
+                                                              borderRadius: BorderRadius.circular(22),
+                                                              gradient: const LinearGradient(
+                                                                begin: Alignment.topLeft,
+                                                                end: Alignment.bottomRight,
+                                                                colors: [
+                                                                  Color(0xFF2C3037),
+                                                                  Color(0xFF23272E),
+                                                                  Color(0xFF1D2128),
+                                                                ],
+                                                              ),
+                                                              border: Border.all(
+                                                                color: Colors.white24,
+                                                              ),
+                                                            ),
+                                                            child: SafeArea(
+                                                              top: false,
+                                                              child: Column(
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                children: [
+                                                                  ListTile(
+                                                                    leading: const Icon(
+                                                                      Icons.block_rounded,
+                                                                      color: _TaskPalette.orange,
+                                                                    ),
+                                                                    title: const Text(
+                                                                      'Blocked',
+                                                                      style: TextStyle(
+                                                                        color: Colors.white,
+                                                                      ),
+                                                                    ),
+                                                                    onTap: () => Navigator.pop(
+                                                                      context,
+                                                                      'blocked',
+                                                                    ),
+                                                                  ),
+                                                                  ListTile(
+                                                                    leading: const Icon(
+                                                                      Icons.remove_circle_outline_rounded,
+                                                                      color: _TaskPalette.orange,
+                                                                    ),
+                                                                    title: const Text(
+                                                                      'Not needed',
+                                                                      style: TextStyle(
+                                                                        color: Colors.white,
+                                                                      ),
+                                                                    ),
+                                                                    onTap: () => Navigator.pop(
+                                                                      context,
+                                                                      'not_needed',
+                                                                    ),
+                                                                  ),
+                                                                  ListTile(
+                                                                    leading: const Icon(
+                                                                      Icons.timelapse_rounded,
+                                                                      color: _TaskPalette.orange,
+                                                                    ),
+                                                                    title: const Text(
+                                                                      'Partially done',
+                                                                      style: TextStyle(
+                                                                        color: Colors.white,
+                                                                      ),
+                                                                    ),
+                                                                    onTap: () => Navigator.pop(
+                                                                      context,
+                                                                      'partial',
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          );
+                                                        },
+                                                      );
+
+                                                      if (reason == null || reason.isEmpty) return;
+
+                                                      final reasonLabel = reason == 'blocked'
+                                                          ? 'Blocked'
+                                                          : reason == 'not_needed'
+                                                          ? 'Not needed'
+                                                          : 'Partially done';
+
+                                                      final confirmed =
+                                                      await _confirmChecklistAction(
+                                                        title: 'Change checklist item status?',
+                                                        message:
+                                                        'The item will be switched to "$reasonLabel" and the worker action buttons for it will disappear.',
+                                                        icon: Icons.block_rounded,
+                                                        accent: _TaskPalette.orange,
+                                                      );
+
+                                                      if (!confirmed) return;
+
+                                                      try {
+                                                        await TaskService.setTaskSubtaskStatus(
+                                                          subtaskId: subtaskId,
+                                                          status: reason,
+                                                        );
+
+                                                        setLocalState(() {
+                                                          for (final st in subtasks) {
+                                                            final id = _s(st['id']);
+                                                            if (id.isNotEmpty && id != subtaskId) {
+                                                              _expandedSubtasks[id] = false;
+                                                            }
+                                                          }
+
+                                                          _reasonTargetSubtaskByTask[taskId] = subtaskId;
+                                                          _reasonTargetStatusByTask[taskId] = reason;
+                                                          _expandedSubtasks[subtaskId] = true;
+                                                          noteCtrl.text = _reasonPrefix(reason);
+                                                          noteCtrl.selection = TextSelection.collapsed(
+                                                            offset: noteCtrl.text.length,
+                                                          );
+                                                        });
+                                                      } catch (e) {
+                                                        if (!mounted) return;
+                                                        _showTaskToast(
+                                                          'Status update failed: $e',
+                                                          icon: Icons.error_outline_rounded,
+                                                          accent: _TaskPalette.red,
+                                                        );
+                                                      }
+                                                    },
+                                                  ),
+                                                ],
+
+                                                if (showArrow) ...[
+                                                  const SizedBox(width: 6),
+                                                  _ChecklistMiniActionBtn(
+                                                    icon: isExpanded
+                                                        ? Icons.keyboard_arrow_up_rounded
+                                                        : Icons.keyboard_arrow_down_rounded,
+                                                    color: _TaskPalette.green,
+                                                    onTap: () {
+                                                      setLocalState(() {
+                                                        for (final st in subtasks) {
+                                                          final id = _s(st['id']);
+                                                          if (id.isNotEmpty && id != subtaskId) {
+                                                            _expandedSubtasks[id] = false;
+                                                          }
+                                                        }
+
+                                                        _expandedSubtasks[subtaskId] = !isExpanded;
+                                                      });
+                                                    },
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+
+                                            AnimatedSwitcher(
+                                              duration: const Duration(milliseconds: 220),
+                                              switchInCurve: Curves.easeOutCubic,
+                                              switchOutCurve: Curves.easeInCubic,
+                                              transitionBuilder: (child, animation) {
+                                                return SizeTransition(
+                                                  sizeFactor: animation,
+                                                  axisAlignment: -1,
+                                                  child: FadeTransition(
+                                                    opacity: animation,
+                                                    child: child,
+                                                  ),
+                                                );
+                                              },
+                                              child: showArrow && isExpanded
+                                                  ? Padding(
+                                                key: ValueKey('reason_open_$subtaskId'),
+                                                padding: const EdgeInsets.only(top: 10),
+                                                child: Container(
+                                                  width: double.infinity,
+                                                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+                                                  decoration: BoxDecoration(
+                                                    border: Border(
+                                                      top: BorderSide(
+                                                        color: Colors.white.withOpacity(0.06),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    statusNote.isEmpty ? 'No reason added yet.' : statusNote,
+                                                    style: TextStyle(
+                                                      color: statusNote.isEmpty
+                                                          ? Colors.white.withOpacity(0.34)
+                                                          : Colors.white.withOpacity(0.56),
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 11.4,
+                                                      height: 1.28,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                                  : SizedBox(
+                                                key: ValueKey('reason_closed_$subtaskId'),
+                                                height: 0,
+                                                width: double.infinity,
                                               ),
                                             ),
                                           ],
@@ -1297,9 +1980,49 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 14),
-
+              if (isReasonMode) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      color: Colors.white.withOpacity(0.04),
+                      border: Border.all(
+                        color: _TaskPalette.green.withOpacity(0.16),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 1),
+                          child: Icon(
+                            Icons.edit_note_rounded,
+                            color: _TaskPalette.green,
+                            size: 16,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Write the reason for this checklist item and tap Send.',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.74),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12.6,
+                              height: 1.30,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: IgnorePointer(
@@ -1308,21 +2031,56 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                     opacity: (isDoneNow() || isLockedNow()) ? 0.55 : 1,
                     child: _TaskInput(
                       controller: noteCtrl,
-                      hint: isCancelledNow()
-                          ? 'Task was cancelled by admin'
-                          : isDoneNow()
-                          ? 'Task is completed'
-                          : 'Worker note',
+                      hint: isReasonMode
+                          ? 'Write the reason and tap Send'
+                          : isCancelledNow()
+                              ? 'Task was cancelled by admin'
+                              : isDoneNow()
+                                  ? 'Task is completed'
+                                  : 'Worker note',
                       maxLines: 5,
                       icon: Icons.campaign_rounded,
                       iconColor: const Color(0xFF8EA0FF),
+                      trailingIcon: isReasonMode ? Icons.send_rounded : null,
+                      trailingIconColor: _TaskPalette.green,
+                      onTrailingTap: isReasonMode
+                          ? () async {
+                              if (isDoneNow() || isLockedNow()) return;
+                              final text = noteCtrl.text.trim();
+                              if (text.isEmpty) return;
+                              try {
+                                await TaskService.setTaskSubtaskStatus(
+                                  subtaskId: reasonTargetSubtaskId!,
+                                  status: reasonTargetStatus!,
+                                  note: text,
+                                );
+                                setLocalState(() {
+                                  _expandedSubtasks[reasonTargetSubtaskId] = true;
+                                  _reasonTargetSubtaskByTask.remove(taskId);
+                                  _reasonTargetStatusByTask.remove(taskId);
+                                  noteCtrl.clear();
+                                });
+                                if (!mounted) return;
+                                _showTaskToast(
+                                  'Reason sent',
+                                  icon: Icons.send_rounded,
+                                  accent: _TaskPalette.green,
+                                );
+                              } catch (e) {
+                                if (!mounted) return;
+                                _showTaskToast(
+                                  'Reason send failed: $e',
+                                  icon: Icons.error_outline_rounded,
+                                  accent: _TaskPalette.red,
+                                );
+                              }
+                            }
+                          : null,
                     ),
                   ),
                 ),
               ),
-
               const SizedBox(height: 16),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: StreamBuilder<List<Map<String, dynamic>>>(
@@ -1357,9 +2115,9 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFF232833),
-                              Color(0xFF1A1F28),
-                              Color(0xFF141922),
+                              Color(0xFF2B2F36),
+                              Color(0xFF23272E),
+                              Color(0xFF1C2026),
                             ],
                           ),
                           border: Border.all(
@@ -1384,8 +2142,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Color(0xFF343A47),
-                                    Color(0xFF2A303B),
+                                    Color(0xFF3A3E46),
+                                    Color(0xFF2D3138),
                                   ],
                                 ),
                                 border: Border.all(
@@ -1464,8 +2222,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                           final accent = role == 'admin'
                               ? const Color(0xFF7C9BFF)
                               : role == 'worker'
-                              ? _TaskPalette.green
-                              : Colors.white.withOpacity(0.10);
+                                  ? _TaskPalette.green
+                                  : Colors.white.withOpacity(0.10);
                           final canDelete = _canWorkerDeleteAttachment(attachment);
 
                           return Padding(
@@ -1495,8 +2253,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             fileName,
@@ -1509,15 +2266,13 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                           ),
                                           const SizedBox(height: 3),
                                           Container(
-                                            padding:
-                                            const EdgeInsets.symmetric(
+                                            padding: const EdgeInsets.symmetric(
                                               horizontal: 8,
                                               vertical: 4,
                                             ),
                                             decoration: BoxDecoration(
                                               color: accent.withOpacity(0.12),
-                                              borderRadius:
-                                              BorderRadius.circular(999),
+                                              borderRadius: BorderRadius.circular(999),
                                               border: Border.all(
                                                 color: accent.withOpacity(0.28),
                                               ),
@@ -1562,9 +2317,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                   },
                 ),
               ),
-
               const SizedBox(height: 12),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _SheetSectionCard(
@@ -1594,14 +2347,15 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                           label: 'Attach',
                           icon: Icons.attach_file_rounded,
                           iconColor: Colors.white.withOpacity(0.88),
-                          onTap: (isDoneNow() || isLockedNow()) ? null : () => _addTaskFile(taskId),
+                          onTap: (isDoneNow() || isLockedNow())
+                              ? null
+                              : () => _addTaskFile(taskId),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-
               if (isDoneNow()) ...[
                 const SizedBox(height: 12),
                 Padding(
@@ -1654,33 +2408,41 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                   ),
                 ),
               ],
-
               const SizedBox(height: 14),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: IgnorePointer(
-                  ignoring: isLockedNow(),
+                  ignoring: saveLocked,
                   child: Opacity(
-                    opacity: isLockedNow() ? 0.55 : 1,
+                    opacity: saveLocked ? 0.45 : 1,
                     child: SizedBox(
                       width: double.infinity,
                       child: _TaskActionCapsule(
                         label: 'Save',
                         icon: Icons.check_rounded,
                         accentColor: _TaskPalette.green,
-                        onTap: () async {
+                        onTap: saveLocked
+                            ? null
+                            : () async {
+                          final text = noteCtrl.text.trim();
+
                           try {
                             await TaskService.updateWorkerTask(
                               taskId: taskId,
                               status: _s(status).isEmpty ? 'todo' : _s(status),
-                              workerNote: noteCtrl.text.trim(),
+                              workerNote: text.isEmpty ? savedWorkerNote : text,
                             );
+
+                            setLocalState(() {
+                              if (text.isNotEmpty) {
+                                noteCtrl.clear();
+                              }
+                            });
 
                             if (!mounted) return;
                             setState(() {});
                             _showTaskToast(
-                              'Task updated',
+                              text.isEmpty ? 'Status saved' : 'Task updated',
                               icon: Icons.check_circle_rounded,
                               accent: _TaskPalette.green,
                             );
@@ -1755,10 +2517,20 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                         final completedAt = DateTime.tryParse(_s(t['completed_at']))?.toLocal();
                         if (completedAt == null) return true;
 
-                        final completedDay =
-                        DateTime(completedAt.year, completedAt.month, completedAt.day);
+                        final completedDay = DateTime(
+                          completedAt.year,
+                          completedAt.month,
+                          completedAt.day,
+                        );
 
                         return completedDay == today;
+                      }).toList();
+
+                      tasks = tasks.where((t) {
+                        final due = DateTime.tryParse(_s(t['due_at']))?.toLocal();
+                        if (due == null) return true;
+
+                        return !due.isBefore(DateTime.now());
                       }).toList();
 
                       if (tasks.isNotEmpty) {
@@ -1798,12 +2570,25 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                             child: _TaskDaySection(
                               title: group.title,
                               count: group.tasks.length,
+                              leading: group.tasks.length == 1
+                                  ? _DeadlineIndexBadge(
+                                indexLabel: '01',
+                                createdAtRaw: _s(group.tasks.first['created_at']),
+                                dueAtRaw: _s(group.tasks.first['due_at']),
+                                statusRaw: _s(group.tasks.first['status']),
+                              )
+                                  : null,
                               children: List.generate(group.tasks.length, (taskIndex) {
                                 final task = group.tasks[taskIndex];
 
-                                return _buildInlineTaskDetails(
-                                  task: task,
-                                  taskIndex: taskIndex,
+                                return Padding(
+                                  padding: EdgeInsets.only(
+                                    bottom: taskIndex == group.tasks.length - 1 ? 0 : 12,
+                                  ),
+                                  child: _buildInlineTaskDetails(
+                                    task: task,
+                                    taskIndex: taskIndex,
+                                  ),
                                 );
                               }),
                             ),
@@ -1864,24 +2649,32 @@ class _TasksHeader extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
         child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(26),
-            gradient: LinearGradient(
+            gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                _TaskPalette.cardTop.withOpacity(0.97),
-                _TaskPalette.cardBottom.withOpacity(0.96),
-                const Color(0xFF171A22).withOpacity(0.97),
+                Color(0xFF2C3037),
+                Color(0xFF23272E),
+                Color(0xFF1B1F26),
               ],
             ),
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.08),
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.34),
                 blurRadius: 24,
                 offset: const Offset(0, 14),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.025),
+                blurRadius: 10,
+                spreadRadius: -6,
+                offset: const Offset(0, -2),
               ),
             ],
           ),
@@ -1891,7 +2684,7 @@ class _TasksHeader extends StatelessWidget {
                 icon: Icons.arrow_back_ios_new_rounded,
                 onTap: onBack,
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1904,13 +2697,14 @@ class _TasksHeader extends StatelessWidget {
                         color: _TaskPalette.textMain,
                         fontWeight: FontWeight.w900,
                         fontSize: 20,
+                        letterSpacing: 0.1,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.56),
+                        color: Colors.white.withOpacity(0.54),
                         fontWeight: FontWeight.w700,
                         fontSize: 12.5,
                       ),
@@ -1919,10 +2713,15 @@ class _TasksHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Icon(
-                Icons.assignment_rounded,
-                color: _TaskPalette.green,
-                size: 30,
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.assignment_rounded,
+                  color: _TaskPalette.green,
+                  size: 27,
+                ),
               ),
             ],
           ),
@@ -1953,16 +2752,25 @@ class _HeaderBtn extends StatelessWidget {
           width: 46,
           height: 46,
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
             gradient: const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Color(0xFF31363E),
-                Color(0xFF232830),
+                Color(0xFF353A42),
+                Color(0xFF262B33),
               ],
             ),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.06),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
           child: Icon(
             icon,
@@ -2203,9 +3011,9 @@ class _SheetSectionCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF232833),
-            Color(0xFF1A1F28),
-            Color(0xFF141922),
+            Color(0xFF2B2F36),
+            Color(0xFF23272E),
+            Color(0xFF1C2026),
           ],
         ),
         border: Border.all(
@@ -2263,8 +3071,8 @@ class _MediaCapsuleAction extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Color(0xFF232833),
-                    Color(0xFF1A1F28),
+                    Color(0xFF2A2E35),
+                    Color(0xFF20242B),
                   ],
                 ),
                 border: Border.all(
@@ -2276,6 +3084,12 @@ class _MediaCapsuleAction extends StatelessWidget {
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
+                  BoxShadow(
+                    color: Colors.white.withOpacity(0.03),
+                    blurRadius: 10,
+                    spreadRadius: -6,
+                    offset: const Offset(0, -2),
+                  ),
                 ],
               ),
               child: Column(
@@ -2284,7 +3098,7 @@ class _MediaCapsuleAction extends StatelessWidget {
                   Icon(
                     icon,
                     size: 22,
-                    color: Colors.white,
+                    color: iconColor,
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -2298,6 +3112,42 @@ class _MediaCapsuleAction extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChecklistMiniActionBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _ChecklistMiniActionBtn({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onTap == null;
+
+    return Opacity(
+      opacity: disabled ? 0.42 : 1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Icon(
+              icon,
+              size: 18,
+              color: color,
             ),
           ),
         ),
@@ -2463,6 +3313,9 @@ class _TaskInput extends StatelessWidget {
   final int maxLines;
   final IconData? icon;
   final Color? iconColor;
+  final IconData? trailingIcon;
+  final Color? trailingIconColor;
+  final VoidCallback? onTrailingTap;
 
   const _TaskInput({
     required this.controller,
@@ -2470,15 +3323,20 @@ class _TaskInput extends StatelessWidget {
     required this.maxLines,
     this.icon,
     this.iconColor,
+    this.trailingIcon,
+    this.trailingIconColor,
+    this.onTrailingTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
+        color: const Color(0xFF1A1E25),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.06),
+        ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
       child: Row(
@@ -2514,6 +3372,33 @@ class _TaskInput extends StatelessWidget {
               ),
             ),
           ),
+          if (trailingIcon != null) ...[
+            const SizedBox(width: 10),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: onTrailingTap,
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: Colors.transparent,
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      trailingIcon,
+                      size: 18,
+                      color: trailingIconColor ?? _TaskPalette.green,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2955,16 +3840,140 @@ class _TaskDayGroup {
   });
 }
 
+class _DeadlineIndexBadge extends StatelessWidget {
+  final String indexLabel;
+  final String createdAtRaw;
+  final String dueAtRaw;
+  final String statusRaw;
+
+  const _DeadlineIndexBadge({
+    required this.indexLabel,
+    required this.createdAtRaw,
+    required this.dueAtRaw,
+    required this.statusRaw,
+  });
+
+  DateTime? _parse(String raw) {
+    if (raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw)?.toLocal();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final createdAt = _parse(createdAtRaw);
+    final dueAt = _parse(dueAtRaw);
+    final now = DateTime.now();
+
+    final status = statusRaw.toLowerCase();
+
+    double progress = 0.0;
+    Color ringColor = _TaskPalette.green;
+
+    if (status == 'done' || status == 'cancelled') {
+      progress = 1.0;
+      ringColor = _TaskPalette.red;
+    } else if (createdAt != null &&
+        dueAt != null &&
+        dueAt.isAfter(createdAt)) {
+      final totalMs =
+          dueAt.millisecondsSinceEpoch - createdAt.millisecondsSinceEpoch;
+      final elapsedMs =
+          now.millisecondsSinceEpoch - createdAt.millisecondsSinceEpoch;
+
+      progress = (elapsedMs / totalMs).clamp(0.0, 1.0);
+
+      final remaining = 1.0 - progress;
+
+      if (remaining > 0.5) {
+        ringColor = _TaskPalette.green;
+      } else if (remaining > 0.2) {
+        ringColor = _TaskPalette.orange;
+      } else {
+        ringColor = _TaskPalette.red;
+      }
+    } else {
+      progress = 0.0;
+      ringColor = Colors.white.withOpacity(0.18);
+    }
+
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: CircularProgressIndicator(
+              value: 1.0,
+              strokeWidth: 3.2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Colors.white.withOpacity(0.06),
+              ),
+              backgroundColor: Colors.transparent,
+            ),
+          ),
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.linear,
+              builder: (context, value, _) {
+                return CircularProgressIndicator(
+                  value: value,
+                  strokeWidth: 3.6,
+                  strokeCap: StrokeCap.round,
+                  valueColor: AlwaysStoppedAnimation<Color>(ringColor),
+                  backgroundColor: Colors.transparent,
+                );
+              },
+            ),
+          ),
+          Container(
+            width: 29,
+            height: 29,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFF31363E),
+                  Color(0xFF232830),
+                ],
+              ),
+            ),
+            child: Text(
+              indexLabel,
+              style: TextStyle(
+                color: ringColor,
+                fontWeight: FontWeight.w900,
+                fontSize: 12.8,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _TaskDaySection extends StatelessWidget {
   final String title;
   final int count;
   final List<Widget> children;
+  final Widget? leading;
 
   const _TaskDaySection({
     required this.title,
     required this.count,
     required this.children,
+    this.leading,
   });
 
   IconData _iconForTitle(String v) {
@@ -3019,11 +4028,12 @@ class _TaskDaySection extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    _iconForTitle(title),
-                    size: 18,
-                    color: _TaskPalette.green,
-                  ),
+                  leading ??
+                      Icon(
+                        _iconForTitle(title),
+                        color: const Color(0xFF35E0B6),
+                        size: 18,
+                      ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(

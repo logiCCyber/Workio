@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +22,10 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
   String _workerFilterId = '';
   String _workerFilterName = 'All workers';
   String _statusFilter = 'all';
+
+  Timer? _refreshTimer;
+
+  final Map<String, bool> _expandedSubtasks = {};
 
   bool _showArchived = false;
 
@@ -201,6 +206,17 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
     super.initState();
     _markAllAdminTaskEventsSeen();
     _runAutoArchive();
+
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _hideTaskToast();
+    super.dispose();
   }
 
   Future<void> _markAllAdminTaskEventsSeen() async {
@@ -1017,17 +1033,35 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                         children: [
                                           Row(
                                             children: [
-                                              const Expanded(
-                                                child: Text(
-                                                  'Task details',
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: _TaskPalette.textMain,
-                                                    fontWeight: FontWeight.w900,
-                                                    fontSize: 18,
-                                                    height: 1.15,
-                                                  ),
+                                               Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Text(
+                                                      'Task details',
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: _TaskPalette.textMain,
+                                                        fontWeight: FontWeight.w900,
+                                                        fontSize: 18,
+                                                        height: 1.1,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      workerName,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: Colors.white.withOpacity(0.48),
+                                                        fontWeight: FontWeight.w700,
+                                                        fontSize: 11.4,
+                                                        height: 1.0,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                               Material(
@@ -1049,36 +1083,6 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                                 ),
                                               ),
                                             ],
-                                          ),
-                                          const SizedBox(height: 10),
-                                          const _TaskStripDivider(),
-                                          const SizedBox(height: 12),
-                                          Center(
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.person_rounded,
-                                                  size: 15,
-                                                  color: Colors.white.withOpacity(0.68),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Flexible(
-                                                  child: Text(
-                                                    workerName,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    textAlign: TextAlign.center,
-                                                    style: TextStyle(
-                                                      color: Colors.white.withOpacity(0.84),
-                                                      fontWeight: FontWeight.w800,
-                                                      fontSize: 14.4,
-                                                      height: 1.0,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
                                           ),
                                         ],
                                       ),
@@ -1235,7 +1239,7 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                         const SizedBox(width: 8),
                                         Flexible(
                                           child: Text(
-                                            _s(task['title']).isEmpty ? 'Task' : _s(task['title']),
+                                            _s(task['title']).isEmpty ? 'Task' : _s(task['title']).toUpperCase(),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             textAlign: TextAlign.center,
@@ -1350,8 +1354,8 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                                   begin: Alignment.topLeft,
                                                   end: Alignment.bottomRight,
                                                   colors: [
-                                                    const Color(0xFF232833).withOpacity(0.94),
-                                                    const Color(0xFF1A1F28).withOpacity(0.98),
+                                                    const Color(0xFF2D3138).withOpacity(0.94),
+                                                    const Color(0xFF23272E).withOpacity(0.98),
                                                   ],
                                                 ),
                                                 border: Border.all(
@@ -1391,72 +1395,191 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
 
                                           ...List.generate(subtasks.length, (index) {
                                             final item = subtasks[index];
-                                            final isDone = item['is_done'] == true;
-                                            final title = _s(item['title']);
                                             final itemId = _s(item['id']);
+                                            final title = _s(item['title']);
+
+                                            final itemStatus = _s(item['status']).toLowerCase().isEmpty
+                                                ? (item['is_done'] == true ? 'done' : 'todo')
+                                                : _s(item['status']).toLowerCase();
+
+                                            final statusNote = _s(item['status_note']);
+                                            final isExpanded = _expandedSubtasks[itemId] == true;
+
+                                            final bool showArrow = itemStatus == 'blocked' ||
+                                                itemStatus == 'not_needed' ||
+                                                itemStatus == 'partial';
+
                                             final isProofTarget =
-                                                selectedProofSubtaskId != null &&
-                                                    selectedProofSubtaskId == itemId;
+                                                selectedProofSubtaskId != null && selectedProofSubtaskId == itemId;
+
+                                            IconData statusIcon;
+                                            Color statusColor;
+
+                                            switch (itemStatus) {
+                                              case 'done':
+                                                statusIcon = Icons.task_alt_rounded;
+                                                statusColor = _TaskPalette.green;
+                                                break;
+                                              case 'blocked':
+                                                statusIcon = Icons.block_rounded;
+                                                statusColor = _TaskPalette.orange;
+                                                break;
+                                              case 'not_needed':
+                                                statusIcon = Icons.remove_circle_outline_rounded;
+                                                statusColor = Colors.white.withOpacity(0.72);
+                                                break;
+                                              case 'partial':
+                                                statusIcon = Icons.timelapse_rounded;
+                                                statusColor = _TaskPalette.blue;
+                                                break;
+                                              default:
+                                                statusIcon = Icons.radio_button_unchecked_rounded;
+                                                statusColor = _TaskPalette.red;
+                                            }
 
                                             return Padding(
                                               padding: EdgeInsets.only(
                                                 bottom: index == subtasks.length - 1 ? 0 : 8,
                                               ),
-                                              child: Container(
-                                                width: double.infinity,
-                                                padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
-                                                decoration: BoxDecoration(
+                                              child: Material(
+                                                color: Colors.transparent,
+                                                child: InkWell(
                                                   borderRadius: BorderRadius.circular(14),
-                                                  gradient: LinearGradient(
-                                                    begin: Alignment.topLeft,
-                                                    end: Alignment.bottomRight,
-                                                    colors: [
-                                                      const Color(0xFF232833).withOpacity(0.94),
-                                                      const Color(0xFF1A1F28).withOpacity(0.98),
-                                                    ],
-                                                  ),
-                                                  border: Border.all(
-                                                    color: isProofTarget
-                                                        ? _TaskPalette.green.withOpacity(0.26)
-                                                        : Colors.white.withOpacity(0.07),
-                                                  ),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Colors.black.withOpacity(0.14),
-                                                      blurRadius: 8,
-                                                      spreadRadius: -6,
-                                                      offset: const Offset(0, 5),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: Row(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Icon(
-                                                      isDone
-                                                          ? Icons.task_alt_rounded
-                                                          : Icons.radio_button_unchecked_rounded,
-                                                      size: 18,
-                                                      color: isDone ? _TaskPalette.green : _TaskPalette.red,
-                                                    ),
-                                                    const SizedBox(width: 9),
-                                                    Expanded(
-                                                      child: Text(
-                                                        title,
-                                                        style: TextStyle(
-                                                          color: isDone
-                                                              ? Colors.white.withOpacity(0.68)
-                                                              : Colors.white.withOpacity(0.90),
-                                                          fontWeight: FontWeight.w700,
-                                                          fontSize: 12.8,
-                                                          height: 1.22,
-                                                          decoration:
-                                                          isDone ? TextDecoration.lineThrough : null,
-                                                          decorationColor: Colors.white.withOpacity(0.42),
-                                                        ),
+                                                  onTap: showArrow
+                                                      ? () {
+                                                    setSheetState(() {
+                                                      for (final st in subtasks) {
+                                                        final id = _s(st['id']);
+                                                        if (id.isNotEmpty && id != itemId) {
+                                                          _expandedSubtasks[id] = false;
+                                                        }
+                                                      }
+
+                                                      _expandedSubtasks[itemId] = !isExpanded;
+                                                    });
+                                                  }
+                                                      : null,
+                                                  child: Container(
+                                                    width: double.infinity,
+                                                    padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+                                                    decoration: BoxDecoration(
+                                                      borderRadius: BorderRadius.circular(14),
+                                                      gradient: LinearGradient(
+                                                        begin: Alignment.topLeft,
+                                                        end: Alignment.bottomRight,
+                                                        colors: [
+                                                          const Color(0xFF2D3138).withOpacity(0.94),
+                                                          const Color(0xFF23272E).withOpacity(0.98),
+                                                        ],
                                                       ),
+                                                      border: Border.all(
+                                                        color: isProofTarget
+                                                            ? _TaskPalette.green.withOpacity(0.26)
+                                                            : Colors.white.withOpacity(0.07),
+                                                      ),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: Colors.black.withOpacity(0.14),
+                                                          blurRadius: 8,
+                                                          spreadRadius: -6,
+                                                          offset: const Offset(0, 5),
+                                                        ),
+                                                      ],
                                                     ),
-                                                  ],
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Row(
+                                                          crossAxisAlignment: CrossAxisAlignment.center,
+                                                          children: [
+                                                            Icon(
+                                                              statusIcon,
+                                                              size: 18,
+                                                              color: statusColor,
+                                                            ),
+                                                            const SizedBox(width: 9),
+                                                            Expanded(
+                                                              child: Text(
+                                                                title,
+                                                                style: TextStyle(
+                                                                  color: itemStatus == 'done'
+                                                                      ? Colors.white.withOpacity(0.68)
+                                                                      : Colors.white.withOpacity(0.90),
+                                                                  fontWeight: FontWeight.w700,
+                                                                  fontSize: 12.8,
+                                                                  height: 1.22,
+                                                                  decoration: itemStatus == 'done'
+                                                                      ? TextDecoration.lineThrough
+                                                                      : null,
+                                                                  decorationColor: Colors.white.withOpacity(0.42),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                            if (showArrow) ...[
+                                                              const SizedBox(width: 6),
+                                                              Icon(
+                                                                isExpanded
+                                                                    ? Icons.keyboard_arrow_up_rounded
+                                                                    : Icons.keyboard_arrow_down_rounded,
+                                                                color: _TaskPalette.green,
+                                                                size: 19,
+                                                              ),
+                                                            ],
+                                                          ],
+                                                        ),
+
+                                                        AnimatedSwitcher(
+                                                          duration: const Duration(milliseconds: 220),
+                                                          switchInCurve: Curves.easeOutCubic,
+                                                          switchOutCurve: Curves.easeInCubic,
+                                                          transitionBuilder: (child, animation) {
+                                                            return SizeTransition(
+                                                              sizeFactor: animation,
+                                                              axisAlignment: -1,
+                                                              child: FadeTransition(
+                                                                opacity: animation,
+                                                                child: child,
+                                                              ),
+                                                            );
+                                                          },
+                                                          child: showArrow && isExpanded
+                                                              ? Padding(
+                                                            key: ValueKey('admin_reason_open_$itemId'),
+                                                            padding: const EdgeInsets.only(top: 9),
+                                                            child: Container(
+                                                              width: double.infinity,
+                                                              padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+                                                              decoration: BoxDecoration(
+                                                                border: Border(
+                                                                  top: BorderSide(
+                                                                    color: Colors.white.withOpacity(0.06),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              child: Text(
+                                                                statusNote.isEmpty
+                                                                    ? 'No reason added yet.'
+                                                                    : statusNote,
+                                                                style: TextStyle(
+                                                                  color: statusNote.isEmpty
+                                                                      ? Colors.white.withOpacity(0.34)
+                                                                      : Colors.white.withOpacity(0.56),
+                                                                  fontWeight: FontWeight.w600,
+                                                                  fontSize: 11.4,
+                                                                  height: 1.28,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          )
+                                                              : SizedBox(
+                                                            key: ValueKey('admin_reason_closed_$itemId'),
+                                                            height: 0,
+                                                            width: double.infinity,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                             );
@@ -2836,25 +2959,26 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                           child: _TaskDaySection(
                             title: group.title,
                             count: group.tasks.length,
-                            children: List.generate(group.tasks.length,
-                                    (taskIndex) {
-                                  final task = group.tasks[taskIndex];
-                                  final Map<String, dynamic> worker =
-                                  task['workers'] is Map
-                                      ? Map<String, dynamic>.from(
-                                    task['workers'] as Map,
-                                  )
-                                      : <String, dynamic>{};
+                            children: List.generate(group.tasks.length, (taskIndex) {
+                              final task = group.tasks[taskIndex];
+                              final Map<String, dynamic> worker =
+                              task['workers'] is Map
+                                  ? Map<String, dynamic>.from(task['workers'] as Map)
+                                  : <String, dynamic>{};
 
-                                  return _TaskCard(
-                                    task: task,
-                                    worker: worker,
-                                    onTap: () => _openTaskActions(task),
-                                    alternate: taskIndex.isOdd,
-                                    indexLabel:
-                                    '${taskIndex + 1}'.padLeft(2, '0'),
-                                  );
-                                }),
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                  bottom: taskIndex == group.tasks.length - 1 ? 0 : 12,
+                                ),
+                                child: _TaskCard(
+                                  task: task,
+                                  worker: worker,
+                                  onTap: () => _openTaskActions(task),
+                                  alternate: false,
+                                  indexLabel: '${taskIndex + 1}'.padLeft(2, '0'),
+                                ),
+                              );
+                            }),
                           ),
                         );
                       }),
@@ -3941,7 +4065,7 @@ class _TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = _s(task['title']).isEmpty ? 'Task' : _s(task['title']);
+    final title = _s(task['title']).isEmpty ? 'Task' : _s(task['title']).toUpperCase();
     final rawDescription = _s(task['description']);
     final cleanDescription =
     TaskService.stripChecklistFromDescription(rawDescription);
@@ -4028,33 +4152,11 @@ class _TaskCard extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        gradient: const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0xFF31363E),
-                            Color(0xFF232830),
-                          ],
-                        ),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.08),
-                        ),
-                      ),
-                      child: Text(
-                        indexLabel,
-                        style: const TextStyle(
-                          color: _TaskPalette.green,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12.8,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
+                    _DeadlineIndexBadge(
+                      indexLabel: indexLabel,
+                      createdAtRaw: _s(task['created_at']),
+                      dueAtRaw: _s(task['due_at']),
+                      statusRaw: _s(task['status']),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -4417,6 +4519,129 @@ class _TaskCard extends StatelessWidget {
   }
 }
 
+class _DeadlineIndexBadge extends StatelessWidget {
+  final String indexLabel;
+  final String createdAtRaw;
+  final String dueAtRaw;
+  final String statusRaw;
+
+  const _DeadlineIndexBadge({
+    required this.indexLabel,
+    required this.createdAtRaw,
+    required this.dueAtRaw,
+    required this.statusRaw,
+  });
+
+  DateTime? _parse(String raw) {
+    if (raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw)?.toLocal();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final createdAt = _parse(createdAtRaw);
+    final dueAt = _parse(dueAtRaw);
+    final now = DateTime.now();
+
+    final status = statusRaw.toLowerCase();
+
+    double progress = 0.0;
+    Color ringColor = _TaskPalette.green;
+
+    if (status == 'done' || status == 'cancelled') {
+      progress = 1.0;
+      ringColor = _TaskPalette.red;
+    } else if (createdAt != null &&
+        dueAt != null &&
+        dueAt.isAfter(createdAt)) {
+      final totalMs =
+          dueAt.millisecondsSinceEpoch - createdAt.millisecondsSinceEpoch;
+      final elapsedMs =
+          now.millisecondsSinceEpoch - createdAt.millisecondsSinceEpoch;
+
+      progress = (elapsedMs / totalMs).clamp(0.0, 1.0);
+
+      final remaining = 1.0 - progress;
+
+      if (remaining > 0.5) {
+        ringColor = _TaskPalette.green;
+      } else if (remaining > 0.2) {
+        ringColor = _TaskPalette.orange;
+      } else {
+        ringColor = _TaskPalette.red;
+      }
+    } else {
+      progress = 0.0;
+      ringColor = Colors.white.withOpacity(0.18);
+    }
+
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: CircularProgressIndicator(
+              value: 1.0,
+              strokeWidth: 3.2,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Colors.white.withOpacity(0.06),
+              ),
+              backgroundColor: Colors.transparent,
+            ),
+          ),
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.linear,
+              builder: (context, value, _) {
+                return CircularProgressIndicator(
+                  value: value,
+                  strokeWidth: 3.6,
+                  strokeCap: StrokeCap.round,
+                  valueColor: AlwaysStoppedAnimation<Color>(ringColor),
+                  backgroundColor: Colors.transparent,
+                );
+              },
+            ),
+          ),
+          Container(
+            width: 29,
+            height: 29,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFF31363E),
+                  Color(0xFF232830),
+                ],
+              ),
+            ),
+            child: Text(
+              indexLabel,
+              style: TextStyle(
+                color: ringColor,
+                fontWeight: FontWeight.w900,
+                fontSize: 12.8,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MiniTag extends StatelessWidget {
   final String label;
   final Color color;
@@ -4531,6 +4756,62 @@ class _TaskChecklistPreview extends StatelessWidget {
     this.embedded = false,
   });
 
+  static String _txt(Object? v) => (v ?? '').toString().trim();
+
+  static String _itemStatus(Map<String, dynamic> item) {
+    final status = _txt(item['status']).toLowerCase();
+
+    if (status.isNotEmpty) return status;
+    if (item['is_done'] == true) return 'done';
+
+    return 'todo';
+  }
+
+  static IconData _statusIcon(String status) {
+    switch (status) {
+      case 'done':
+        return Icons.task_alt_rounded;
+      case 'blocked':
+        return Icons.block_rounded;
+      case 'not_needed':
+        return Icons.remove_circle_outline_rounded;
+      case 'partial':
+        return Icons.timelapse_rounded;
+      default:
+        return Icons.radio_button_unchecked_rounded;
+    }
+  }
+
+  static Color _statusColor(String status) {
+    switch (status) {
+      case 'done':
+        return _TaskPalette.green;
+      case 'blocked':
+        return _TaskPalette.orange;
+      case 'not_needed':
+        return Colors.white70;
+      case 'partial':
+        return _TaskPalette.blue;
+      default:
+        return _TaskPalette.red;
+    }
+  }
+
+  static String _statusLabel(String status) {
+    switch (status) {
+      case 'done':
+        return 'done';
+      case 'blocked':
+        return 'blocked';
+      case 'not_needed':
+        return 'not needed';
+      case 'partial':
+        return 'partial';
+      default:
+        return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Map<String, dynamic>>>(
@@ -4540,7 +4821,12 @@ class _TaskChecklistPreview extends StatelessWidget {
         if (subtasks.isEmpty) return const SizedBox.shrink();
 
         final visible = subtasks.take(2).toList();
-        final doneCount = subtasks.where((e) => e['is_done'] == true).length;
+
+        final doneCount = subtasks.where((e) {
+          final status = _itemStatus(e);
+          return status == 'done';
+        }).length;
+
         final totalCount = subtasks.length;
         final hasMore = totalCount > visible.length;
         final isAllDone = doneCount == totalCount;
@@ -4554,8 +4840,11 @@ class _TaskChecklistPreview extends StatelessWidget {
           children: [
             ...List.generate(visible.length, (index) {
               final item = visible[index];
-              final isDone = item['is_done'] == true;
-              final title = (item['title'] ?? '').toString().trim();
+              final title = _txt(item['title']);
+              final status = _itemStatus(item);
+              final isDone = status == 'done';
+              final label = _statusLabel(status);
+              final color = _statusColor(status);
 
               return Padding(
                 padding: EdgeInsets.only(
@@ -4565,17 +4854,23 @@ class _TaskChecklistPreview extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(16),
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(0xFF2D3138).withOpacity(0.94),
-                        const Color(0xFF23272E).withOpacity(0.98),
+                        const Color(0xFF232833).withOpacity(0.94),
+                        const Color(0xFF1A1F28).withOpacity(0.98),
                       ],
                     ),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.08),
+                      color: status == 'blocked'
+                          ? _TaskPalette.orange.withOpacity(0.22)
+                          : status == 'partial'
+                          ? _TaskPalette.blue.withOpacity(0.22)
+                          : status == 'not_needed'
+                          ? Colors.white.withOpacity(0.12)
+                          : Colors.white.withOpacity(0.07),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -4587,14 +4882,12 @@ class _TaskChecklistPreview extends StatelessWidget {
                     ],
                   ),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Icon(
-                        isDone
-                            ? Icons.task_alt_rounded
-                            : Icons.radio_button_unchecked_rounded,
+                        _statusIcon(status),
                         size: 18,
-                        color: isDone ? _TaskPalette.green : _TaskPalette.red,
+                        color: color,
                       ),
                       const SizedBox(width: 9),
                       Expanded(
@@ -4609,19 +4902,30 @@ class _TaskChecklistPreview extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             fontSize: 12.8,
                             height: 1.22,
-                            decoration: isDone ? TextDecoration.lineThrough : null,
+                            decoration:
+                            isDone ? TextDecoration.lineThrough : null,
                             decorationColor: Colors.white.withOpacity(0.42),
                           ),
                         ),
                       ),
+                      if (label.isNotEmpty && status != 'todo') ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: color.withOpacity(0.92),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 10.8,
+                            height: 1,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
               );
             }),
-
             const SizedBox(height: 8),
-
             Row(
               children: [
                 Text(
@@ -4638,7 +4942,7 @@ class _TaskChecklistPreview extends StatelessWidget {
                   style: TextStyle(
                     color: countColor,
                     fontWeight: FontWeight.w900,
-                    fontSize: 13.0,
+                    fontSize: 13.2,
                   ),
                 ),
               ],
@@ -4648,31 +4952,8 @@ class _TaskChecklistPreview extends StatelessWidget {
 
         if (embedded) return content;
 
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF252930).withOpacity(0.92),
-                const Color(0xFF1E2229).withOpacity(0.96),
-                const Color(0xFF171B21).withOpacity(0.98),
-              ],
-            ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.08),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.18),
-                blurRadius: 10,
-                spreadRadius: -6,
-              ),
-            ],
-          ),
+        return Padding(
+          padding: const EdgeInsets.only(top: 12),
           child: content,
         );
       },
@@ -5229,6 +5510,224 @@ class _SheetSearchBar extends StatelessWidget {
   }
 }
 
+Future<bool> showPastDueTaskWarningDialog(
+    BuildContext context, {
+      required bool isEdit,
+    }) async {
+  final result = await showDialog<bool>(
+    context: context,
+    barrierColor: Colors.black.withOpacity(0.62),
+    builder: (context) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF2A2024).withOpacity(0.98),
+                    const Color(0xFF211C22).withOpacity(0.99),
+                    const Color(0xFF171A21).withOpacity(0.99),
+                  ],
+                ),
+                border: Border.all(
+                  color: _TaskPalette.red.withOpacity(0.24),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _TaskPalette.red.withOpacity(0.16),
+                    blurRadius: 26,
+                    spreadRadius: -8,
+                    offset: const Offset(0, 12),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.36),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0xFF7A2433),
+                              Color(0xFF4A1F27),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: _TaskPalette.red.withOpacity(0.30),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.schedule_rounded,
+                          color: Colors.white,
+                          size: 21,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Past due time',
+                          style: TextStyle(
+                            color: _TaskPalette.textMain,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 20,
+                            height: 1.05,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  Container(
+                    height: 1,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          _TaskPalette.red.withOpacity(0.24),
+                          Colors.white.withOpacity(0.06),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  Text(
+                    isEdit
+                        ? 'This due time is already in the past. The task will be shown as overdue.'
+                        : 'This due time is already in the past. The worker will still see this task, but it will be marked as overdue.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.72),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.8,
+                      height: 1.36,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => Navigator.pop(context, false),
+                            child: Container(
+                              height: 54,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFF2B313D),
+                                    Color(0xFF222833),
+                                  ],
+                                ),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+                              child: const Center(
+                                child: Text(
+                                  'Edit time',
+                                  style: TextStyle(
+                                    color: _TaskPalette.textMain,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => Navigator.pop(context, true),
+                            child: Container(
+                              height: 54,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFF7A2433),
+                                    Color(0xFF5A1B26),
+                                  ],
+                                ),
+                                border: Border.all(
+                                  color: _TaskPalette.red.withOpacity(0.28),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: _TaskPalette.red.withOpacity(0.18),
+                                    blurRadius: 12,
+                                    spreadRadius: -4,
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: Text(
+                                  isEdit ? 'Save anyway' : 'Create anyway',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  return result == true;
+}
+
 class _CreateTaskSheet extends StatefulWidget {
   final List<Map<String, dynamic>> workers;
   final Future<void> Function(Map<String, dynamic> payload) onSubmitTask;
@@ -5406,6 +5905,12 @@ class _CreateTaskSheetState extends State<_CreateTaskSheet> {
     });
 
     try {
+
+      final hasPastDue = tasks.any((task) {
+        final dueAt = task['due_at'];
+        return dueAt is DateTime && dueAt.isBefore(DateTime.now());
+      });
+
       await widget.onSubmitTask({
         'worker_id': _s(_selectedWorker!['id']),
         'worker_auth_id': _s(_selectedWorker!['auth_user_id']),
@@ -5558,13 +6063,20 @@ class _CreateTaskSheetState extends State<_CreateTaskSheet> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Color(0xFF232833),
-                            Color(0xFF1A1F28),
+                            Color(0xFF2A2E35),
+                            Color(0xFF20242B),
                           ],
                         ),
                         border: Border.all(
                           color: Colors.white.withOpacity(0.08),
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.18),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -5886,6 +6398,15 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
       return;
     }
 
+    if (_dueAt != null && _dueAt!.isBefore(DateTime.now())) {
+      final continueAnyway = await showPastDueTaskWarningDialog(
+        context,
+        isEdit: true,
+      );
+
+      if (!continueAnyway) return;
+    }
+
     await widget.onSubmitTask({
       'title': _titleCtrl.text.trim(),
       'description': _descCtrl.text.trim(),
@@ -5910,41 +6431,46 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
         physics: const BouncingScrollPhysics(),
         child: _TaskFormShell(
           title: 'Edit task',
+          panelColors: const [
+            Color(0xFF2C3037),
+            Color(0xFF24282F),
+            Color(0xFF1D2128),
+          ],
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               _SheetSectionCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _FieldTile(
+                child: Column(
+                  children: [
+                    IgnorePointer(
+                      ignoring: true,
+                      child: _GroupedTapField(
                         label: 'Worker',
                         value: workerName,
                         icon: Icons.person_outline_rounded,
-                        onTap: null,
+                        iconColor: _TaskPalette.green,
+                        onTap: () {},
                       ),
-                      const SizedBox(height: 10),
-                      _TaskInput(
-                        controller: _titleCtrl,
-                        label: 'Task title',
-                        hint: 'Enter short clear title',
-                        maxLines: 2,
-                        icon: Icons.title_rounded,
-                        iconColor: Colors.white,
-                      ),
-                      const SizedBox(height: 10),
-                      _TaskInput(
-                        controller: _descCtrl,
-                        label: 'Description',
-                        hint: 'Add details',
-                        maxLines: 5,
-                        icon: Icons.notes_rounded,
-                        iconColor: _TaskPalette.orange,
-                      ),
-                    ],
-                  ),
+                    ),
+                    const _SectionDivider(),
+                    _GroupedTextField(
+                      controller: _titleCtrl,
+                      label: 'Task title',
+                      hint: 'Enter short clear title',
+                      maxLines: 2,
+                      icon: Icons.title_rounded,
+                      iconColor: Colors.white,
+                    ),
+                    const _SectionDivider(),
+                    _GroupedTextField(
+                      controller: _descCtrl,
+                      label: 'Description',
+                      hint: 'Add details for the worker',
+                      maxLines: 5,
+                      icon: Icons.notes_rounded,
+                      iconColor: _TaskPalette.orange,
+                    ),
+                  ],
                 ),
               ),
 
@@ -5952,7 +6478,7 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
 
               _SheetSectionCard(
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -5974,12 +6500,13 @@ class _EditTaskSheetState extends State<_EditTaskSheet> {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      _FieldTile(
+                      _MiniSelectCard(
                         label: 'Due date',
                         value: _dueAt == null
-                            ? 'Optional'
-                            : DateFormat.yMMMd().add_Hm().format(_dueAt!),
-                        icon: Icons.schedule_rounded,
+                            ? 'Set date'
+                            : DateFormat('MMM d • hh:mm a').format(_dueAt!),
+                        icon: Icons.calendar_month_rounded,
+                        iconColor: _TaskPalette.blue,
                         onTap: _pickDueDate,
                       ),
                     ],
@@ -6091,6 +6618,7 @@ class _TaskFormShell extends StatelessWidget {
     );
   }
 }
+
 class _SheetSectionCard extends StatelessWidget {
   final Widget child;
 
@@ -6485,8 +7013,8 @@ class _TaskActionCapsule extends StatelessWidget {
       Color(0xFF7E889A),
     ]
         : const [
-      Color(0xFF262C37),
-      Color(0xFF1E242D),
+      Color(0xFF2A2E35),
+      Color(0xFF20242B),
     ];
 
     final Color borderColor = isGreen
@@ -7107,8 +7635,9 @@ class _DatePickerSheetState extends State<_DatePickerSheet> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color(0xFF232833),
-                  Color(0xFF181D25),
+                  Color(0xFF2C3037),
+                  Color(0xFF24282F),
+                  Color(0xFF1D2128),
                 ],
               ),
               border: Border.all(color: Colors.white.withOpacity(0.08)),
@@ -7141,8 +7670,22 @@ class _DatePickerSheetState extends State<_DatePickerSheet> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(22),
-                    color: Colors.white.withOpacity(0.035),
-                    border: Border.all(color: Colors.white.withOpacity(0.07)),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF303542),
+                        Color(0xFF262B36),
+                      ],
+                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.10)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.20),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
                   child: Center(
                     child: Row(
@@ -7282,15 +7825,24 @@ class _DatePickerSheetState extends State<_DatePickerSheet> {
                                 color: isSelected
                                     ? _TaskPalette.green
                                     : (isToday
-                                    ? Colors.white.withOpacity(0.05)
+                                    ? Colors.white.withOpacity(0.045)
                                     : Colors.transparent),
                                 border: isSelected
                                     ? null
                                     : Border.all(
                                   color: isToday
-                                      ? Colors.white.withOpacity(0.10)
+                                      ? Colors.white.withOpacity(0.12)
                                       : Colors.transparent,
                                 ),
+                                boxShadow: isSelected
+                                    ? [
+                                  BoxShadow(
+                                    color: _TaskPalette.green.withOpacity(0.18),
+                                    blurRadius: 14,
+                                    spreadRadius: -6,
+                                  ),
+                                ]
+                                    : null,
                               ),
                               alignment: Alignment.center,
                               child: Text(
@@ -7559,24 +8111,10 @@ class _StatusPicker extends StatelessWidget {
         ),
         divider(),
         item(
-          value: 'in_progress',
-          label: 'In progress',
-          icon: Icons.timelapse_rounded,
-          color: _TaskPalette.blue,
-        ),
-        divider(),
-        item(
           value: 'done',
           label: 'Done',
           icon: Icons.check_circle_rounded,
           color: _TaskPalette.green,
-        ),
-        divider(),
-        item(
-          value: 'needs_review',
-          label: 'Needs review',
-          icon: Icons.rate_review_rounded,
-          color: _TaskPalette.orange,
         ),
         divider(),
         item(
@@ -7586,12 +8124,11 @@ class _StatusPicker extends StatelessWidget {
           color: _TaskPalette.red,
         ),
       ],
-      child: _FieldTile(
+      child: _MiniSelectCard(
         label: 'Status',
         value: _label(value),
         icon: _icon(value),
         iconColor: _color(value),
-        valueColor: _color(value),
       ),
     );
   }
@@ -7673,13 +8210,20 @@ class _FormButtons extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF232833),
-                      Color(0xFF1A1F28),
+                      Color(0xFF2A2E35),
+                      Color(0xFF20242B),
                     ],
                   ),
                   border: Border.all(
                     color: Colors.white.withOpacity(0.08),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.18),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
                 alignment: Alignment.center,
                 child: Text(
@@ -8653,11 +9197,13 @@ class _TaskDaySection extends StatelessWidget {
   final String title;
   final int count;
   final List<Widget> children;
+  final Widget? leading;
 
   const _TaskDaySection({
     required this.title,
     required this.count,
     required this.children,
+    this.leading,
   });
 
   IconData _iconForTitle(String v) {
@@ -8680,17 +9226,17 @@ class _TaskDaySection extends StatelessWidget {
           colors: [
             Color(0xFF2B2F36),
             Color(0xFF23272E),
-            Color(0xFF1C2026),
+            Color(0xFF1B1F26),
           ],
         ),
         border: Border.all(
-          color: Colors.white.withOpacity(0.07),
+          color: Colors.white.withOpacity(0.08),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.34),
-            blurRadius: 24,
-            offset: const Offset(0, 14),
+            color: Colors.black.withOpacity(0.30),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
@@ -8703,7 +9249,7 @@ class _TaskDaySection extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF262A31),
+                color: const Color(0xFF232830),
                 border: Border(
                   bottom: BorderSide(
                     color: Colors.white.withOpacity(0.07),
@@ -8712,11 +9258,12 @@ class _TaskDaySection extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    _iconForTitle(title),
-                    size: 18,
-                    color: _TaskPalette.green,
-                  ),
+                  leading ??
+                      Icon(
+                        _iconForTitle(title),
+                        color: const Color(0xFF35E0B6),
+                        size: 18,
+                      ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -8733,21 +9280,16 @@ class _TaskDaySection extends StatelessWidget {
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.62),
                       fontWeight: FontWeight.w800,
-                      fontSize: 13,
+                      fontSize: 12.6,
                     ),
                   ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
               child: Column(
-                children: [
-                  for (int i = 0; i < children.length; i++) ...[
-                    children[i],
-                    if (i != children.length - 1) const SizedBox(height: 12),
-                  ],
-                ],
+                children: children,
               ),
             ),
           ],

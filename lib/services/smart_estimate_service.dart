@@ -1,7 +1,5 @@
-import '../models/ai_assumption_model.dart';
 import '../models/ai_estimate_result_model.dart';
 import '../models/ai_parsed_request_model.dart';
-import 'estimate_ai_service.dart';
 import 'estimate_draft_builder_service.dart';
 import 'estimate_history_suggestion_service.dart';
 import 'estimate_prompt_parser_service.dart';
@@ -18,7 +16,6 @@ class SmartEstimateService {
     String? clientId,
     String? propertyId,
     String? ruleUnit,
-    bool useFallbackOnError = true,
   }) async {
     final trimmedPrompt = prompt.trim();
 
@@ -35,7 +32,6 @@ class SmartEstimateService {
         assumptions: const [],
         missingFields: const [],
         confidence: 0,
-        usedFallback: false,
       );
     }
 
@@ -76,47 +72,9 @@ class SmartEstimateService {
         return resultWithHistory;
       }
 
-      if (!useFallbackOnError) {
-        return resultWithHistory;
-      }
-
-      if (resultWithHistory.canAutoGenerate && resultWithHistory.items.isEmpty) {
-        return _buildFallbackResult(
-          prompt: trimmedPrompt,
-          propertyCity: propertyCity,
-          parsedRequest: enriched,
-          historyContext: historyContext,
-          previousResult: resultWithHistory,
-          reason:
-          'Smart pricing engine returned no items, so legacy generator was used.',
-        );
-      }
-
       return resultWithHistory;
     } catch (_) {
-      if (!useFallbackOnError) {
-        rethrow;
-      }
-
-      final parsed = await _safeParse(
-        trimmedPrompt,
-        ruleUnit: ruleUnit,
-      );
-      final historyContext = await EstimateHistorySuggestionService.buildContext(
-        prompt: trimmedPrompt,
-        clientId: clientId,
-        propertyId: propertyId,
-      );
-
-      return _buildFallbackResult(
-        prompt: trimmedPrompt,
-        propertyCity: propertyCity,
-        parsedRequest: parsed,
-        historyContext: historyContext,
-        previousResult: null,
-        reason:
-        'Smart estimate engine failed unexpectedly, so legacy generator was used.',
-      );
+      rethrow;
     }
   }
 
@@ -127,7 +85,6 @@ class SmartEstimateService {
     String? clientId,
     String? propertyId,
     String? ruleUnit,
-    bool useFallbackOnError = true,
   }) async {
     final trimmedPrompt = prompt.trim();
 
@@ -137,7 +94,6 @@ class SmartEstimateService {
         propertyCity: propertyCity,
         clientId: clientId,
         propertyId: propertyId,
-        useFallbackOnError: useFallbackOnError,
       );
     }
 
@@ -179,138 +135,10 @@ class SmartEstimateService {
         return resultWithHistory;
       }
 
-      if (!useFallbackOnError) {
-        return resultWithHistory;
-      }
-
-      if (resultWithHistory.canAutoGenerate && resultWithHistory.items.isEmpty) {
-        return _buildFallbackResult(
-          prompt: trimmedPrompt,
-          propertyCity: propertyCity,
-          parsedRequest: updated,
-          historyContext: historyContext,
-          previousResult: resultWithHistory,
-          reason:
-          'Smart pricing engine returned no items after answers were applied, so legacy generator was used.',
-        );
-      }
-
       return resultWithHistory;
     } catch (_) {
-      if (!useFallbackOnError) {
-        rethrow;
-      }
-
-      final parsed = await _safeParse(
-        trimmedPrompt,
-        ruleUnit: ruleUnit,
-      );
-      final historyContext = await EstimateHistorySuggestionService.buildContext(
-        prompt: trimmedPrompt,
-        clientId: clientId,
-        propertyId: propertyId,
-      );
-
-      return _buildFallbackResult(
-        prompt: trimmedPrompt,
-        propertyCity: propertyCity,
-        parsedRequest: parsed,
-        historyContext: historyContext,
-        previousResult: null,
-        reason:
-        'Smart estimate engine failed after answers were applied, so legacy generator was used.',
-      );
+      rethrow;
     }
-  }
-
-  static AiEstimateResultModel _buildFallbackResult({
-    required String prompt,
-    required String? propertyCity,
-    required AiParsedRequestModel parsedRequest,
-    required dynamic historyContext,
-    required AiEstimateResultModel? previousResult,
-    required String reason,
-  }) {
-    final fallbackDraft = EstimateAiService.generateDraft(
-      prompt: prompt,
-      propertyCity: propertyCity,
-    );
-
-    final fallbackAssumptions = _mergeAssumptions(
-      previousResult?.assumptions ?? parsedRequest.assumptions,
-      [
-        AiAssumptionModel(
-          key: 'fallback_generation',
-          label: 'Fallback Generation',
-          value: 'Legacy estimate generator',
-          reason: reason,
-        ),
-      ],
-    );
-
-    return AiEstimateResultModel(
-      title: fallbackDraft.title,
-      scope: fallbackDraft.scope,
-      notes: fallbackDraft.notes,
-      items: fallbackDraft.items,
-      parsedRequest: parsedRequest,
-      historyContext: historyContext,
-      assumptions: fallbackAssumptions,
-      missingFields: previousResult?.missingFields ?? parsedRequest.missingFields,
-      confidence: _resolveFallbackConfidence(
-        previousResult: previousResult,
-        parsedRequest: parsedRequest,
-      ),
-      usedFallback: true,
-    );
-  }
-
-  static Future<AiParsedRequestModel> _safeParse(
-      String prompt, {
-        String? ruleUnit,
-      }) async {
-    try {
-      final localParsed = EstimatePromptParserService.parse(
-        prompt,
-        ruleUnit: ruleUnit,
-      );
-      final mergedParsed = await _applyMiniParseIfNeeded(
-        prompt: prompt,
-        localParsed: localParsed,
-      );
-      return await EstimateQuestionService.enrich(mergedParsed);
-    } catch (_) {
-      return AiParsedRequestModel.empty(prompt);
-    }
-  }
-
-  static List<AiAssumptionModel> _mergeAssumptions(
-      List<AiAssumptionModel> first,
-      List<AiAssumptionModel> second,
-      ) {
-    final map = <String, AiAssumptionModel>{};
-
-    for (final item in [...first, ...second]) {
-      final key = item.key.trim();
-      if (key.isEmpty) continue;
-      map[key] = item;
-    }
-
-    return map.values.toList();
-  }
-
-  static double _resolveFallbackConfidence({
-    required AiEstimateResultModel? previousResult,
-    required AiParsedRequestModel parsedRequest,
-  }) {
-    final previousConfidence = previousResult?.confidence ?? 0;
-    final parsedConfidence = parsedRequest.confidence;
-
-    final resolved = previousConfidence > 0
-        ? previousConfidence
-        : (parsedConfidence > 0 ? parsedConfidence : 0.55);
-
-    return double.parse(resolved.toStringAsFixed(2));
   }
 
   static Future<AiParsedRequestModel> _applyMiniParseIfNeeded({
@@ -339,15 +167,7 @@ class SmartEstimateService {
   static bool _shouldUseMiniParse(AiParsedRequestModel parsed) {
     final hasDetailedMaterials = parsed.parsedMaterials.isNotEmpty;
     final lowConfidence = parsed.confidence < 0.60;
-    final builtInOnly = const {
-      'painting',
-      'drywall',
-      'cleaning',
-      'flooring',
-      'general',
-    }.contains((parsed.serviceType ?? '').trim().toLowerCase());
-
-    return hasDetailedMaterials || lowConfidence || builtInOnly;
+    return hasDetailedMaterials || lowConfidence;
   }
 
   static AiParsedRequestModel _mergeMiniParse({

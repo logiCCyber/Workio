@@ -49,7 +49,10 @@ function clampConfidence(value: unknown): number {
     return Number(num.toFixed(2));
 }
 
-function sanitizeSuppressQuestionKeys(value: unknown): string[] {
+function sanitizeSuppressQuestionKeys(
+    value: unknown,
+    candidates: Array<Record<string, unknown>> = [],
+): string[] {
     const allowed = new Set([
         "issue_description",
         "requested_work",
@@ -58,8 +61,24 @@ function sanitizeSuppressQuestionKeys(value: unknown): string[] {
         "materials_detail",
         "quantity_value",
         "work_type",
-        "panel_access",
     ]);
+
+    for (const candidate of candidates) {
+        const questions = Array.isArray(candidate.followupQuestions)
+            ? candidate.followupQuestions
+            : [];
+
+        for (const question of questions) {
+            if (!question || typeof question !== "object") continue;
+
+            const key = cleanString((question as Record<string, unknown>).key)
+                .toLowerCase();
+
+            if (key) {
+                allowed.add(key);
+            }
+        }
+    }
 
     return toStringArray(value).filter((key) => allowed.has(key));
 }
@@ -189,14 +208,14 @@ Choose the best candidate rule for the current request, normalize the requested 
 and decide whether the app should ask a clarifying question.
 
 IMPORTANT:
-- The app is universal. Do NOT force electrical, painting, plumbing, etc.
+- The app is universal. Do NOT force any specific trade unless the candidate rule clearly matches the request.
 - Respect the actual request text more than generic candidate names.
-- Negative keywords matter strongly.
+- Negative keywords matter strongly. 
 - Avoid false positives.
 - If confidence is not high enough, return selectedRuleId = null and ask a short clarifying question.
 - If one candidate clearly contradicts the prompt, do not choose it.
-- If prompt says painting floor, do not choose electrical.
-- If prompt says outlet replacement, do not choose painting.
+- If the prompt clearly describes one service type, do not choose an unrelated service type.
+- If the prompt describes a specific task, choose only a candidate that matches that task.
 
 RULES:
 - normalizedRequestedWork should be short, clean, and practical.
@@ -267,14 +286,16 @@ ${JSON.stringify(compactCandidates, null, 2)}
         const parsed = JSON.parse(content);
 
         const candidateIds = new Set(compactCandidates.map((c) => c.ruleId).filter(Boolean));
+        const confidence = clampConfidence(parsed.confidence);
+
         const selectedRuleId =
-            parsed.selectedRuleId && candidateIds.has(parsed.selectedRuleId)
+            confidence >= 0.60 && parsed.selectedRuleId && candidateIds.has(parsed.selectedRuleId)
                 ? parsed.selectedRuleId
                 : null;
 
         const result = {
             selectedRuleId,
-            confidence: clampConfidence(parsed.confidence),
+            confidence,
             normalizedRequestedWork: sanitizeNormalizedRequestedWork(
                 parsed.normalizedRequestedWork || prompt,
             ),
@@ -282,6 +303,7 @@ ${JSON.stringify(compactCandidates, null, 2)}
             clarifyingQuestion: sanitizeClarifyingQuestion(parsed.clarifyingQuestion),
             suppressQuestionKeys: sanitizeSuppressQuestionKeys(
                 parsed.suppressQuestionKeys,
+                compactCandidates,
             ),
             reasoningSummary: sanitizeReasoningSummary(parsed.reasoningSummary),
         };

@@ -15,7 +15,7 @@ class PriceRulesScreen extends StatefulWidget {
 
 class _PriceRulesScreenState extends State<PriceRulesScreen> {
   bool _isLoading = true;
-  bool _isResetting = false;
+  bool _isDeletingAll = false;
   List<EstimatePriceRuleModel> _rules = [];
 
   @override
@@ -147,12 +147,6 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     final rushFixedRateController = TextEditingController(
       text: rule.rushFixedRate?.toStringAsFixed(2) ?? '',
     );
-    final singleCoatRateController = TextEditingController(
-      text: rule.singleCoatRate?.toStringAsFixed(2) ?? '',
-    );
-    final multiCoatRateController = TextEditingController(
-      text: rule.multiCoatRate?.toStringAsFixed(2) ?? '',
-    );
 
     bool isAiMetadataExpanded = false;
     bool isGeneratingAi = false;
@@ -209,13 +203,13 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                 _RuleTextField(
                   controller: displayNameController,
                   label: 'Display Name',
-                  hintText: 'Plumbing',
+                  hintText: 'Service display name',
                 ),
                 const SizedBox(height: 12),
                 _RuleTextField(
                   controller: aliasesController,
                   label: 'Aliases (comma separated)',
-                  hintText: 'plumbing, toilet, sink, faucet, drain',
+                  hintText: 'main name, short name, common client words',
                   maxLines: 2,
                   inputFormatters: [
                     AliasesAutoCommaFormatter(),
@@ -240,7 +234,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                         _RuleTextField(
                           controller: aiKeywordsController,
                           label: 'AI Keywords (comma separated)',
-                          hintText: 'toilet leak, drain, faucet, pipe leak',
+                          hintText: 'common request, problem words, client phrases',
                           maxLines: 2,
                           inputFormatters: [
                             AliasesAutoCommaFormatter(),
@@ -250,7 +244,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                         _RuleTextField(
                           controller: aiScopeTemplateController,
                           label: 'AI Scope Template',
-                          hintText: 'Complete the requested plumbing work...',
+                          hintText: 'Complete the requested {service_label} work...',
                           maxLines: 3,
                         ),
                         const SizedBox(height: 12),
@@ -264,20 +258,20 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                         _RuleTextField(
                           controller: aiLaborTitleController,
                           label: 'AI Labor Title',
-                          hintText: 'Plumbing Work',
+                          hintText: 'Main Service Work',
                         ),
                         const SizedBox(height: 12),
                         _RuleTextField(
                           controller: aiLaborDescriptionController,
                           label: 'AI Labor Description',
-                          hintText: 'Labor for requested plumbing work',
+                          hintText: 'Labor for the requested service',
                           maxLines: 2,
                         ),
                         const SizedBox(height: 12),
                         _RuleTextField(
                           controller: aiMaterialsTitleController,
                           label: 'AI Materials Title',
-                          hintText: 'Plumbing Materials',
+                          hintText: 'Service Materials',
                         ),
                         const SizedBox(height: 12),
                         _RuleTextField(
@@ -414,16 +408,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                   controller: rushFixedRateController,
                   label: 'Rush Fixed Rate',
                 ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: singleCoatRateController,
-                  label: 'Single Coat Rate',
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: multiCoatRateController,
-                  label: 'Multi Coat Rate',
-                ),
+
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
@@ -478,10 +463,6 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                           _parseNullableDouble(prepFixedRateController.text),
                           rushFixedRate:
                           _parseNullableDouble(rushFixedRateController.text),
-                          singleCoatRate:
-                          _parseNullableDouble(singleCoatRateController.text),
-                          multiCoatRate:
-                          _parseNullableDouble(multiCoatRateController.text),
                           aiFollowupQuestions: generatedFollowupQuestions,
                         ),
                       );
@@ -537,8 +518,6 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     final materialFixedRateController = TextEditingController();
     final prepFixedRateController = TextEditingController();
     final rushFixedRateController = TextEditingController();
-    final singleCoatRateController = TextEditingController();
-    final multiCoatRateController = TextEditingController();
     bool isAiMetadataExpanded = false;
     bool isGeneratingAi = false;
     List<Map<String, dynamic>> generatedFollowupQuestions = [];
@@ -592,19 +571,19 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                 _RuleTextField(
                   controller: serviceTypeController,
                   label: 'Service Type',
-                  hintText: 'plumbing',
+                  hintText: 'service_type',
                 ),
                 const SizedBox(height: 12),
                 _RuleTextField(
                   controller: displayNameController,
                   label: 'Display Name',
-                  hintText: 'Plumbing',
+                  hintText: 'Service display name',
                 ),
                 const SizedBox(height: 12),
                 _RuleTextField(
                   controller: aliasesController,
                   label: 'Aliases (comma separated)',
-                  hintText: 'plumbing, toilet, sink, faucet, drain',
+                  hintText: 'main name, short name, common client words',
                   maxLines: 2,
                   inputFormatters: [
                     AliasesAutoCommaFormatter(),
@@ -629,7 +608,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                         _RuleTextField(
                           controller: aiKeywordsController,
                           label: 'AI Keywords (comma separated)',
-                          hintText: 'toilet leak, drain, faucet, pipe leak',
+                          hintText: 'common request, problem words, client phrases',
                           maxLines: 2,
                           inputFormatters: [
                             AliasesAutoCommaFormatter(),
@@ -639,7 +618,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                         _RuleTextField(
                           controller: aiScopeTemplateController,
                           label: 'AI Scope Template',
-                          hintText: 'Complete the requested plumbing work...',
+                          hintText: 'Complete the requested {service_label} work...',
                           maxLines: 3,
                         ),
                         const SizedBox(height: 12),
@@ -653,20 +632,20 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                         _RuleTextField(
                           controller: aiLaborTitleController,
                           label: 'AI Labor Title',
-                          hintText: 'Plumbing Work',
+                          hintText: 'Main Service Work',
                         ),
                         const SizedBox(height: 12),
                         _RuleTextField(
                           controller: aiLaborDescriptionController,
                           label: 'AI Labor Description',
-                          hintText: 'Labor for requested plumbing work',
+                          hintText: 'Labor for the requested service',
                           maxLines: 2,
                         ),
                         const SizedBox(height: 12),
                         _RuleTextField(
                           controller: aiMaterialsTitleController,
                           label: 'AI Materials Title',
-                          hintText: 'Plumbing Materials',
+                          hintText: 'Service Materials',
                         ),
                         const SizedBox(height: 12),
                         _RuleTextField(
@@ -798,6 +777,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                   label: 'Unit',
                   hintText: 'fixed',
                 ),
+                const SizedBox(height: 12),
                 _RuleField(
                   controller: baseRateController,
                   label: 'Base Rate',
@@ -821,16 +801,6 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                 _RuleField(
                   controller: rushFixedRateController,
                   label: 'Rush Fixed Rate',
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: singleCoatRateController,
-                  label: 'Single Coat Rate',
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: multiCoatRateController,
-                  label: 'Multi Coat Rate',
                 ),
                 const SizedBox(height: 18),
                 SizedBox(
@@ -910,12 +880,6 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                           rushFixedRate: _parseNullableDouble(
                             rushFixedRateController.text,
                           ),
-                          singleCoatRate: _parseNullableDouble(
-                            singleCoatRateController.text,
-                          ),
-                          multiCoatRate: _parseNullableDouble(
-                            multiCoatRateController.text,
-                          ),
                           isActive: true,
                         ),
                       );
@@ -946,22 +910,47 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     }
   }
 
-  Future<void> _resetDefaults() async {
+  Future<void> _deleteAllRules() async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) {
+        return CupertinoAlertDialog(
+          title: const Text('Delete All Rules'),
+          content: const Text(
+            'This will remove all your Price Rules. AI Estimate will not generate prices until you add rules again.',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete All'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
     setState(() {
-      _isResetting = true;
+      _isDeletingAll = true;
     });
 
     try {
-      await EstimatePriceRulesService.resetDefaults();
+      await EstimatePriceRulesService.deleteAllRules();
       await _loadRules();
-      _showSnack('Default rules restored');
+      _showSnack('All rules deleted');
     } catch (e) {
-      _showSnack('Не удалось сбросить rules');
+      _showSnack('Failed to delete all rules');
     } finally {
       if (!mounted) return;
 
       setState(() {
-        _isResetting = false;
+        _isDeletingAll = false;
       });
     }
   }
@@ -1050,11 +1039,11 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               color: const Color(0xFF5B8CFF),
               borderRadius: BorderRadius.circular(14),
-              onPressed: _isResetting ? null : _resetDefaults,
-              child: _isResetting
+              onPressed: _isDeletingAll ? null : _deleteAllRules,
+              child: _isDeletingAll
                   ? const CupertinoActivityIndicator(color: Colors.white)
                   : const Text(
-                'Reset',
+                'Delete All',
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
@@ -1196,14 +1185,6 @@ class _PriceRuleTile extends StatelessWidget {
               _RuleLine(
                 label: 'Rush Fixed',
                 value: _formatValue(rule.rushFixedRate),
-              ),
-              _RuleLine(
-                label: 'Single Coat',
-                value: _formatValue(rule.singleCoatRate),
-              ),
-              _RuleLine(
-                label: 'Multi Coat',
-                value: _formatValue(rule.multiCoatRate),
               ),
             ],
           ),
