@@ -80,17 +80,60 @@ class _LoginScreenState extends State<LoginScreen> {
   void _toastErr(String t) => AppToast.error(t);          // красный
 
   String _prettyAuthError(Object e) {
-    if (e is AuthException) {
-      final m = e.message;
-      if (m.toLowerCase().contains('only request this after')) {
-        return m; // покажет "wait 49 seconds" как есть
-      }
-      return m;
+    final raw = e.toString();
+    final s = raw.toLowerCase();
+
+    // ✅ Network / Supabase connection errors
+    if (s.contains('failed host lookup') ||
+        s.contains('socketexception') ||
+        s.contains('clientexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('connection timed out') ||
+        s.contains('connection refused') ||
+        s.contains('connection reset')) {
+      return 'Can’t connect to server. Check your internet connection and try again.';
     }
 
-    final s = e.toString().toLowerCase();
-    if (s.contains('invalid login credentials')) return 'Wrong email or password';
-    return 'Something went wrong. Try again.';
+    // ✅ Auth errors
+    if (s.contains('invalid login credentials')) {
+      return 'Wrong email or password.';
+    }
+
+    if (s.contains('email not confirmed')) {
+      return 'Please confirm your email before signing in.';
+    }
+
+    if (s.contains('user already registered') ||
+        s.contains('already registered')) {
+      return 'An account with this email already exists.';
+    }
+
+    if (s.contains('signup disabled')) {
+      return 'Creating accounts is currently disabled.';
+    }
+
+    if (s.contains('only request this after')) {
+      return 'Please wait a moment before trying again.';
+    }
+
+    if (s.contains('jwt') || s.contains('session')) {
+      return 'Your session expired. Please sign in again.';
+    }
+
+    // ✅ Supabase database/profile errors
+    if (s.contains('postgrestexception') ||
+        s.contains('permission denied') ||
+        s.contains('violates row-level security')) {
+      return 'Server profile error. Please try again or contact support.';
+    }
+
+    // ✅ If it is clean AuthException message, show it
+    if (e is AuthException && e.message.trim().isNotEmpty) {
+      return e.message;
+    }
+
+    // ✅ Final safe fallback
+    return 'Something went wrong. Please try again.';
   }
 
   // ✅ ВАЖНО: ищем worker по auth_user_id (а не по id)

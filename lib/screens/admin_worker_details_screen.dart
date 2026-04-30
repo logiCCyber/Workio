@@ -19,6 +19,7 @@ import '../widgets/worker_range_calendar_sheet_updated.dart';
 import '../widgets/quick_calculator_sheet.dart';
 import 'pay_calendar_sheet.dart';
 import '../utils/company_logo_helper.dart';
+import 'package:image_picker/image_picker.dart';
 
 class AdminWorkerDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> worker;
@@ -164,6 +165,2668 @@ class _AdminWorkerDetailsScreenState
         return await pr.networkImage(CompanyLogoHelper.defaultLogoUrl);
       } catch (_) {
         return null;
+      }
+    }
+  }
+
+  Future<String> _loadCompanyNameForPdf() async {
+    try {
+      final adminId = supabase.auth.currentUser?.id;
+      if (adminId == null) return 'Workio';
+
+      final row = await supabase
+          .from('company_settings')
+          .select('company_name')
+          .eq('admin_auth_id', adminId)
+          .maybeSingle();
+
+      final name = (row?['company_name'] ?? '').toString().trim();
+
+      return name.isEmpty ? 'Workio' : name;
+    } catch (_) {
+      return 'Workio';
+    }
+  }
+
+  Future<void> _openWorkerPdfMenuSheet() async {
+    final worker = workerFull ?? widget.worker;
+    final workerName = (worker['name'] ?? 'Worker').toString().trim();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(10, 38, 10, 10),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Container(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  16 + MediaQuery.of(sheetContext).padding.bottom,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(32),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF2B3038).withOpacity(0.98),
+                      const Color(0xFF232831).withOpacity(0.99),
+                      const Color(0xFF1A1F27).withOpacity(0.99),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.08),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.36),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.picture_as_pdf_rounded,
+                            color: Colors.redAccent,
+                            size: 30,
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'PDF Documents',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 21,
+                                    height: 1.05,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  workerName.isEmpty
+                                      ? 'Create or manage worker PDFs'
+                                      : 'Create or manage PDFs for $workerName',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.56),
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12.2,
+                                    height: 1.25,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(width: 6),
+
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(999),
+                              onTap: () => Navigator.pop(sheetContext),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.06),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.08),
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white.withOpacity(0.72),
+                                  size: 21,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Container(
+                          height: 1,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                              colors: [
+                                Colors.transparent,
+                                Colors.white.withOpacity(0.07),
+                                Colors.white.withOpacity(0.12),
+                                Colors.white.withOpacity(0.07),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.white.withOpacity(0.04),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.07),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.lock_outline_rounded,
+                              color: Colors.white.withOpacity(0.46),
+                              size: 17,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Saved PDFs stay attached only to this worker.',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.58),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11.6,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      _pdfMenuActionTile(
+                        icon: Icons.add_circle_outline_rounded,
+                        iconColor: Colors.greenAccent,
+                        title: 'Create PDF file',
+                        subtitle: 'Manual document, receipts, work proof',
+                        onTap: () async {
+                          Navigator.pop(sheetContext);
+
+                          await Future<void>.delayed(
+                            const Duration(milliseconds: 220),
+                          );
+
+                          if (!mounted) return;
+
+                          await _openManualPdfBuilderSheet();
+                        },
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      _pdfMenuActionTile(
+                        icon: Icons.folder_copy_rounded,
+                        iconColor: Colors.redAccent,
+                        title: 'PDF Archive',
+                        subtitle: 'Saved PDFs, open, share or delete',
+                        onTap: () async {
+                          Navigator.pop(sheetContext);
+
+                          await Future<void>.delayed(
+                            const Duration(milliseconds: 220),
+                          );
+
+                          if (!mounted) return;
+
+                          await _openWorkerPdfArchiveSheet();
+                        },
+                      ),
+
+                      const SizedBox(height: 4),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _pdfMenuActionTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: const Color(0xFF2A2F37).withOpacity(0.92),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.08),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.16),
+                blurRadius: 12,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: iconColor,
+                size: 24,
+              ),
+
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14.6,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.52),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.8,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Colors.white.withOpacity(0.35),
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  Future<List<Map<String, dynamic>>> _loadWorkerDocuments() async {
+    final adminId = supabase.auth.currentUser?.id;
+    if (adminId == null) return [];
+
+    final worker = workerFull ?? widget.worker;
+    final workerId = _s(worker['id']);
+
+    if (workerId.isEmpty) return [];
+
+    final rows = await supabase
+        .from('worker_documents')
+        .select()
+        .eq('admin_auth_id', adminId)
+        .eq('worker_id', workerId)
+        .order('created_at', ascending: false);
+
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> _openSavedWorkerPdf(Map<String, dynamic> doc) async {
+    try {
+      final path = _s(doc['file_path']);
+      if (path.isEmpty) {
+        _showError('PDF path not found');
+        return;
+      }
+
+      final bytes = await supabase.storage
+          .from('worker-documents')
+          .download(path);
+
+      await pr.Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+      );
+    } catch (e) {
+      _showError('Open PDF failed: $e');
+    }
+  }
+
+  Future<void> _shareSavedWorkerPdf(Map<String, dynamic> doc) async {
+    try {
+      final path = _s(doc['file_path']);
+      if (path.isEmpty) {
+        _showError('PDF path not found');
+        return;
+      }
+
+      final bytes = await supabase.storage
+          .from('worker-documents')
+          .download(path);
+
+      final fileName = _s(doc['file_name']).isEmpty
+          ? 'worker_document.pdf'
+          : _s(doc['file_name']);
+
+      await pr.Printing.sharePdf(
+        bytes: bytes,
+        filename: fileName,
+      );
+    } catch (e) {
+      _showError('Share PDF failed: $e');
+    }
+  }
+
+  Future<bool> _deleteSavedWorkerPdf(Map<String, dynamic> doc) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.60),
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 18),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF2A2024).withOpacity(0.98),
+                      const Color(0xFF211C22).withOpacity(0.99),
+                      const Color(0xFF171A21).withOpacity(0.99),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.redAccent.withOpacity(0.24),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.redAccent.withOpacity(0.12),
+                      blurRadius: 24,
+                      spreadRadius: -8,
+                      offset: const Offset(0, 12),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.36),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(15),
+                            color: Colors.redAccent.withOpacity(0.16),
+                            border: Border.all(
+                              color: Colors.redAccent.withOpacity(0.26),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.redAccent,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Delete PDF?',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 20,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Text(
+                      'This PDF will be deleted from this worker archive.',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.70),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                        height: 1.35,
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 52,
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: Colors.white.withOpacity(0.10),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: SizedBox(
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              icon: const Icon(Icons.delete_outline_rounded),
+                              label: const Text(
+                                'Delete',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (ok != true) return false;
+
+    try {
+      final id = _s(doc['id']);
+      final path = _s(doc['file_path']);
+
+      if (path.isNotEmpty) {
+        await supabase.storage.from('worker-documents').remove([path]);
+      }
+
+      if (id.isNotEmpty) {
+        await supabase.from('worker_documents').delete().eq('id', id);
+      }
+
+      if (!mounted) return false;
+
+      AppToast.success(context, 'PDF deleted');
+      return true;
+    } catch (e) {
+      _showError('Delete PDF failed: $e');
+      return false;
+    }
+  }
+
+  Future<void> _openWorkerPdfArchiveSheet() async {
+    Future<List<Map<String, dynamic>>> docsFuture = _loadWorkerDocuments();
+
+    String money(Object? v) {
+      final n = v is num ? v.toDouble() : double.tryParse(_s(v)) ?? 0;
+      return '\$${n.toStringAsFixed(2)}';
+    }
+
+    String dateText(Object? raw) {
+      final dt = DateTime.tryParse(_s(raw))?.toLocal();
+      if (dt == null) return '';
+      return DateFormat('MMM d • yyyy').format(dt);
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(10, 40, 10, 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.86,
+                    ),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      14,
+                      16,
+                      16 + MediaQuery.of(context).padding.bottom,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFF2A2E35).withOpacity(0.98),
+                          const Color(0xFF23272E).withOpacity(0.99),
+                          const Color(0xFF1B1F26).withOpacity(0.99),
+                        ],
+                      ),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.08),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.38),
+                          blurRadius: 30,
+                          offset: const Offset(0, 18),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.folder_copy_rounded,
+                                color: Colors.redAccent,
+                                size: 30,
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'PDF Archive',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 20,
+                                        height: 1.05,
+                                      ),
+                                    ),
+                                    SizedBox(height: 3),
+                                    Text(
+                                      'Saved PDFs for this worker',
+                                      style: TextStyle(
+                                        color: Colors.white54,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(999),
+                                  onTap: () => Navigator.pop(sheetContext),
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white.withOpacity(0.06),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.08),
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.white.withOpacity(0.72),
+                                      size: 21,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: Container(
+                              height: 1,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.white.withOpacity(0.07),
+                                    Colors.white.withOpacity(0.12),
+                                    Colors.white.withOpacity(0.07),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          Flexible(
+                            child: FutureBuilder<List<Map<String, dynamic>>>(
+                              future: docsFuture,
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 36),
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        color: Colors.lightBlueAccent,
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                final docs = snapshot.data ?? const <Map<String, dynamic>>[];
+
+                                if (docs.isEmpty) {
+                                  return Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(18),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(22),
+                                      color: Colors.white.withOpacity(0.045),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.08),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.picture_as_pdf_rounded,
+                                          color: Colors.white.withOpacity(0.42),
+                                          size: 36,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        const Text(
+                                          'No saved PDFs yet',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Create and save a PDF first.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.52),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          height: 48,
+                                          child: ElevatedButton.icon(
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.greenAccent,
+                                              foregroundColor: Colors.black,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(17),
+                                              ),
+                                            ),
+                                            onPressed: () async {
+                                              Navigator.pop(sheetContext);
+                                              await _openManualPdfBuilderSheet();
+                                            },
+                                            icon: const Icon(Icons.add_rounded),
+                                            label: const Text(
+                                              'Create PDF file',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+
+                                return ListView.separated(
+                                  shrinkWrap: true,
+                                  itemCount: docs.length,
+                                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                  itemBuilder: (context, index) {
+                                    final doc = docs[index];
+
+                                    final title = _s(doc['title']).isEmpty
+                                        ? 'Manual PDF'
+                                        : _s(doc['title']);
+
+                                    final method = _s(doc['payment_method']).isEmpty
+                                        ? 'Cash'
+                                        : _s(doc['payment_method']);
+
+                                    return Container(
+                                      padding: const EdgeInsets.all(14),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(22),
+                                        color: Colors.white.withOpacity(0.045),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.08),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      title,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.w900,
+                                                        fontSize: 14,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 3),
+                                                    Text(
+                                                      '${dateText(doc['created_at'])} • $method • ${money(doc['total_amount'])}',
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: Colors.white.withOpacity(0.50),
+                                                        fontWeight: FontWeight.w700,
+                                                        fontSize: 11.5,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+
+                                          const SizedBox(height: 12),
+
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: _pdfArchiveMiniButton(
+                                                  icon: Icons.visibility_rounded,
+                                                  iconColor: Colors.white,
+                                                  onTap: () => _openSavedWorkerPdf(doc),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: _pdfArchiveMiniButton(
+                                                  icon: Icons.ios_share_rounded,
+                                                  iconColor: Colors.white,
+                                                  onTap: () => _shareSavedWorkerPdf(doc),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: _pdfArchiveMiniButton(
+                                                  icon: Icons.delete_outline_rounded,
+                                                  iconColor: Colors.redAccent,
+                                                  onTap: () async {
+                                                    final deleted = await _deleteSavedWorkerPdf(doc);
+                                                    if (!deleted) return;
+
+                                                    setSheetState(() {
+                                                      docsFuture = _loadWorkerDocuments();
+                                                    });
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _pdfArchiveMiniButton({
+    required IconData icon,
+    required Color iconColor,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          height: 42,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            color: const Color(0xFF2A2F37).withOpacity(0.92),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.08),
+            ),
+          ),
+          child: Center(
+            child: Icon(
+              icon,
+              color: iconColor,
+              size: 18,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openManualPdfBuilderSheet() async {
+    final worker = workerFull ?? widget.worker;
+
+    final workerName = (worker['name'] ?? '').toString().trim();
+    final workerEmail = (worker['email'] ?? '').toString().trim();
+
+    final companyName = await _loadCompanyNameForPdf();
+
+    final titleCtrl = TextEditingController(text: 'Manual payment document');
+    final companyCtrl = TextEditingController(text: companyName);
+    final nameCtrl = TextEditingController(text: workerName);
+    final emailCtrl = TextEditingController(text: workerEmail);
+    final notesCtrl = TextEditingController();
+
+    String paymentMethod = 'Cash';
+    Uint8List? customDocumentLogoBytes;
+    final documentPhotoBytes = <Uint8List>[];
+
+    final items = <_ManualPdfLineItem>[
+      _ManualPdfLineItem(
+        work: 'Work completed',
+        qty: '1',
+        rate: '0',
+      ),
+    ];
+
+    double totalAmount() {
+      return items.fold<double>(0, (sum, item) => sum + item.amount);
+    }
+
+    String money(double v) => '\$${v.toStringAsFixed(2)}';
+
+    IconData paymentMethodIcon(String method) {
+      switch (method) {
+        case 'Cash':
+          return Icons.payments_rounded;
+        case 'Card':
+          return Icons.credit_card_rounded;
+        case 'Transfer':
+          return Icons.swap_horiz_rounded;
+        case 'Check':
+          return Icons.receipt_long_rounded;
+        default:
+          return Icons.more_horiz_rounded;
+      }
+    }
+
+    Future<Uint8List> buildManualPdfBytes() async {
+      final pdf = pw.Document();
+      final pw.ImageProvider? logoImage = customDocumentLogoBytes != null
+          ? pw.MemoryImage(customDocumentLogoBytes!)
+          : await _loadCompanyLogoForPdf();
+
+      final now = DateTime.now();
+      final cleanTitle = titleCtrl.text.trim().isEmpty
+          ? 'Manual payment document'
+          : titleCtrl.text.trim();
+
+      final cleanName = nameCtrl.text.trim().isEmpty
+          ? 'Worker'
+          : nameCtrl.text.trim();
+
+      final cleanEmail = emailCtrl.text.trim();
+      final cleanNotes = notesCtrl.text.trim();
+
+      final validItems = items.where((item) {
+        return item.workCtrl.text.trim().isNotEmpty ||
+            item.qty > 0 ||
+            item.rate > 0;
+      }).toList();
+
+      final total = validItems.fold<double>(
+        0,
+            (sum, item) => sum + item.amount,
+      );
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageTheme: const pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: pw.EdgeInsets.all(32),
+          ),
+          build: (context) {
+            return [
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      if (logoImage != null)
+                        pw.Container(
+                          width: 62,
+                          height: 46,
+                          margin: const pw.EdgeInsets.only(right: 12),
+                          child: pw.Image(
+                            logoImage,
+                            fit: pw.BoxFit.contain,
+                          ),
+                        ),
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(
+                            companyCtrl.text.trim().isEmpty
+                                ? 'Workio'
+                                : companyCtrl.text.trim(),
+                            style: pw.TextStyle(
+                              fontSize: 15,
+                              fontWeight: pw.FontWeight.bold,
+                            ),
+                          ),
+                          pw.SizedBox(height: 4),
+                          pw.Text(
+                            'Manual worker document',
+                            style: const pw.TextStyle(
+                              fontSize: 9,
+                              color: PdfColors.grey600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(
+                        cleanTitle.toUpperCase(),
+                        textAlign: pw.TextAlign.right,
+                        style: pw.TextStyle(
+                          fontSize: 15,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.SizedBox(height: 5),
+                      pw.Text(
+                        DateFormat.yMMMd().format(now),
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.grey600,
+                        ),
+                      ),
+                      pw.SizedBox(height: 3),
+                      pw.Text(
+                        'Payment method: $paymentMethod',
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.grey700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+              pw.SizedBox(height: 18),
+
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey100,
+                  borderRadius: pw.BorderRadius.circular(8),
+                  border: pw.Border.all(
+                    color: PdfColors.grey300,
+                    width: 0.5,
+                  ),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'Worker information',
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      cleanName,
+                      style: pw.TextStyle(
+                        fontSize: 12,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    if (cleanEmail.isNotEmpty) ...[
+                      pw.SizedBox(height: 3),
+                      pw.Text(
+                        cleanEmail,
+                        style: const pw.TextStyle(
+                          fontSize: 10,
+                          color: PdfColors.grey700,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              pw.SizedBox(height: 18),
+
+              pw.Text(
+                'Work items',
+                style: pw.TextStyle(
+                  fontSize: 12,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+
+              pw.SizedBox(height: 8),
+
+              pw.Table(
+                border: const pw.TableBorder(
+                  horizontalInside: pw.BorderSide(
+                    width: 0.3,
+                    color: PdfColors.grey300,
+                  ),
+                  bottom: pw.BorderSide(
+                    width: 0.5,
+                    color: PdfColors.grey400,
+                  ),
+                ),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(3),
+                  1: pw.FlexColumnWidth(1),
+                  2: pw.FlexColumnWidth(1),
+                  3: pw.FlexColumnWidth(1.3),
+                },
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColors.grey200,
+                    ),
+                    children: [
+                      _manualPdfTh('WORK'),
+                      _manualPdfTh('QTY'),
+                      _manualPdfTh('RATE'),
+                      _manualPdfTh('AMOUNT', align: pw.TextAlign.right),
+                    ],
+                  ),
+                  ...validItems.map((item) {
+                    return pw.TableRow(
+                      children: [
+                        _manualPdfTd(
+                          item.workCtrl.text.trim().isEmpty
+                              ? 'Work completed'
+                              : item.workCtrl.text.trim(),
+                        ),
+                        _manualPdfTd(item.qty.toStringAsFixed(2)),
+                        _manualPdfTd('\$${item.rate.toStringAsFixed(2)}'),
+                        _manualPdfTd(
+                          '\$${item.amount.toStringAsFixed(2)}',
+                          align: pw.TextAlign.right,
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+
+              pw.SizedBox(height: 16),
+
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Container(
+                  width: 210,
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey100,
+                    borderRadius: pw.BorderRadius.circular(8),
+                    border: pw.Border.all(
+                      color: PdfColors.grey300,
+                      width: 0.5,
+                    ),
+                  ),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'TOTAL',
+                        style: pw.TextStyle(
+                          fontSize: 12,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.Text(
+                        '\$${total.toStringAsFixed(2)}',
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.green700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (cleanNotes.isNotEmpty) ...[
+                pw.SizedBox(height: 18),
+                pw.Text(
+                  'Notes',
+                  style: pw.TextStyle(
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    borderRadius: pw.BorderRadius.circular(8),
+                    border: pw.Border.all(
+                      color: PdfColors.grey300,
+                      width: 0.5,
+                    ),
+                  ),
+                  child: pw.Text(
+                    cleanNotes,
+                    style: const pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                ),
+              ],
+
+              if (documentPhotoBytes.isNotEmpty) ...[
+                pw.SizedBox(height: 18),
+                pw.Text(
+                  'Proof photos & receipts',
+                  style: pw.TextStyle(
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 8),
+
+                ...documentPhotoBytes.map((bytes) {
+                  return pw.Container(
+                    margin: const pw.EdgeInsets.only(bottom: 12),
+                    height: 260,
+                    width: double.infinity,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(
+                        color: PdfColors.grey300,
+                        width: 0.5,
+                      ),
+                    ),
+                    child: pw.Image(
+                      pw.MemoryImage(bytes),
+                      fit: pw.BoxFit.contain,
+                    ),
+                  );
+                }),
+              ],
+
+              pw.SizedBox(height: 24),
+
+              pw.Container(
+                padding: const pw.EdgeInsets.only(top: 10),
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                    top: pw.BorderSide(
+                      width: 0.5,
+                      color: PdfColors.grey300,
+                    ),
+                  ),
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Generated by Workio',
+                      style: const pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColors.grey600,
+                      ),
+                    ),
+                    pw.Text(
+                      '© ${now.year}',
+                      style: const pw.TextStyle(
+                        fontSize: 9,
+                        color: PdfColors.grey600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ];
+          },
+        ),
+      );
+
+      return pdf.save();
+    }
+
+    Future<void> previewManualPdf() async {
+      final bytes = await buildManualPdfBytes();
+
+      await pr.Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+      );
+    }
+
+    String safeFileName(String input) {
+      final clean = input
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_')
+          .replaceAll(RegExp(r'^_|_$'), '');
+
+      return clean.isEmpty ? 'manual_worker_document' : clean;
+    }
+
+    Future<void> shareManualPdf() async {
+      final bytes = await buildManualPdfBytes();
+
+      final workerPart = safeFileName(nameCtrl.text);
+      final datePart = DateFormat('yyyy_MM_dd').format(DateTime.now());
+
+      final fileName = '${workerPart}_manual_pdf_$datePart.pdf';
+
+      await pr.Printing.sharePdf(
+        bytes: bytes,
+        filename: fileName,
+      );
+    }
+
+    Future<void> saveManualPdf() async {
+      final adminId = supabase.auth.currentUser?.id;
+      if (adminId == null) {
+        _showError('Admin session not found');
+        return;
+      }
+
+      final worker = workerFull ?? widget.worker;
+
+      final workerId = (worker['id'] ?? '').toString().trim();
+      final workerAuthId = (worker['auth_user_id'] ?? '').toString().trim();
+
+      if (workerId.isEmpty) {
+        _showError('Worker id not found');
+        return;
+      }
+
+      final bytes = await buildManualPdfBytes();
+
+      final cleanTitle = titleCtrl.text.trim().isEmpty
+          ? 'Manual payment document'
+          : titleCtrl.text.trim();
+
+      final workerPart = safeFileName(nameCtrl.text);
+      final datePart = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+
+      final fileName = '${workerPart}_manual_pdf_$datePart.pdf';
+      final filePath = '$adminId/$workerId/$fileName';
+
+      await supabase.storage.from('worker-documents').uploadBinary(
+        filePath,
+        bytes,
+        fileOptions: const FileOptions(
+          contentType: 'application/pdf',
+          upsert: false,
+        ),
+      );
+
+      await supabase.from('worker_documents').insert({
+        'admin_auth_id': adminId,
+        'worker_id': workerId,
+        'worker_auth_id': workerAuthId.isEmpty ? null : workerAuthId,
+        'title': cleanTitle,
+        'file_name': fileName,
+        'file_path': filePath,
+        'total_amount': double.parse(totalAmount().toStringAsFixed(2)),
+        'payment_method': paymentMethod,
+      });
+
+      if (!mounted) return;
+
+      AppToast.success(
+        context,
+        'PDF saved',
+      );
+    }
+
+    Widget label(
+        String text, {
+          IconData? icon,
+        }) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 7),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 15,
+                color: Colors.white.withOpacity(0.58),
+              ),
+              const SizedBox(width: 7),
+            ],
+            Text(
+              text,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.72),
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget field({
+      required TextEditingController controller,
+      required String hint,
+      TextInputType keyboardType = TextInputType.text,
+      int maxLines = 1,
+      void Function(String)? onChanged,
+    }) {
+      return TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        onChanged: onChanged,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 13.5,
+        ),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(
+            color: Colors.white.withOpacity(0.32),
+            fontWeight: FontWeight.w700,
+          ),
+          filled: true,
+          fillColor: const Color(0xFF151A21).withOpacity(0.92),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 13,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: Colors.white.withOpacity(0.08),
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: Colors.white.withOpacity(0.08),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: Colors.redAccent.withOpacity(0.45),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget sectionCard({
+      required IconData icon,
+      required String title,
+      String? subtitle,
+      required List<Widget> children,
+    }) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          color: const Color(0xFF2A2F37).withOpacity(0.92),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.08),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.14),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  color: Colors.redAccent,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14.8,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.48),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11.5,
+                  height: 1.25,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+
+            Container(
+              height: 1,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    Colors.white.withOpacity(0.08),
+                    Colors.white.withOpacity(0.12),
+                    Colors.white.withOpacity(0.08),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            ...children,
+          ],
+        ),
+      );
+    }
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  10,
+                  34,
+                  10,
+                  10 + MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: Container(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.92,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(30),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFF2A2E35).withOpacity(0.98),
+                            const Color(0xFF23272E).withOpacity(0.99),
+                            const Color(0xFF1B1F26).withOpacity(0.99),
+                          ],
+                        ),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.08),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.38),
+                            blurRadius: 30,
+                            offset: const Offset(0, 18),
+                          ),
+                        ],
+                      ),
+                      child: SafeArea(
+                        top: false,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(height: 10),
+
+                            Container(
+                              width: 44,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 14, 10, 10),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(15),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Colors.redAccent.withOpacity(0.95),
+                                          Colors.redAccent.withOpacity(0.62),
+                                        ],
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.redAccent.withOpacity(0.18),
+                                          blurRadius: 14,
+                                          spreadRadius: -4,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.picture_as_pdf_rounded,
+                                      color: Colors.white,
+                                      size: 22,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Create PDF file',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 20,
+                                            height: 1.05,
+                                          ),
+                                        ),
+                                        SizedBox(height: 3),
+                                        Text(
+                                          'Manual document for this worker',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: () => Navigator.pop(sheetContext),
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      color: Colors.white.withOpacity(0.70),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    sectionCard(
+                                      icon: Icons.business_rounded,
+                                      title: 'Company / Branding',
+                                      subtitle: 'Logo and company name for this PDF only',
+                                      children: [
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(14),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(20),
+                                            color: const Color(0xFF151A21).withOpacity(0.72),
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(0.07),
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    width: 48,
+                                                    height: 48,
+                                                    decoration: BoxDecoration(
+                                                      borderRadius: BorderRadius.circular(16),
+                                                      color: Colors.black.withOpacity(0.18),
+                                                      border: Border.all(
+                                                        color: Colors.white.withOpacity(0.08),
+                                                      ),
+                                                    ),
+                                                    child: customDocumentLogoBytes == null
+                                                        ? Icon(
+                                                      Icons.image_rounded,
+                                                      color: Colors.white.withOpacity(0.55),
+                                                      size: 22,
+                                                    )
+                                                        : ClipRRect(
+                                                      borderRadius: BorderRadius.circular(16),
+                                                      child: Image.memory(
+                                                        customDocumentLogoBytes!,
+                                                        fit: BoxFit.cover,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  const Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          'Company logo',
+                                                          style: TextStyle(
+                                                            color: Colors.white,
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: 13.5,
+                                                          ),
+                                                        ),
+                                                        SizedBox(height: 3),
+                                                        Text(
+                                                          'Default logo comes from Company Settings',
+                                                          style: TextStyle(
+                                                            color: Colors.white54,
+                                                            fontWeight: FontWeight.w700,
+                                                            fontSize: 11.5,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+
+                                              const SizedBox(height: 12),
+
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: SizedBox(
+                                                      height: 46,
+                                                      child: OutlinedButton.icon(
+                                                        style: OutlinedButton.styleFrom(
+                                                          side: BorderSide(
+                                                            color: Colors.white.withOpacity(0.12),
+                                                          ),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(16),
+                                                          ),
+                                                        ),
+                                                        onPressed: () async {
+                                                          final picker = ImagePicker();
+                                                          final file = await picker.pickImage(
+                                                            source: ImageSource.gallery,
+                                                            imageQuality: 85,
+                                                          );
+
+                                                          if (file == null) return;
+
+                                                          final bytes = await file.readAsBytes();
+
+                                                          setSheetState(() {
+                                                            customDocumentLogoBytes = bytes;
+                                                          });
+                                                        },
+                                                        icon: const Icon(
+                                                          Icons.swap_horiz_rounded,
+                                                          color: Colors.white70,
+                                                          size: 18,
+                                                        ),
+                                                        label: const Text(
+                                                          'Change for this PDF',
+                                                          style: TextStyle(
+                                                            color: Colors.white,
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: 12.5,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+
+                                                  if (customDocumentLogoBytes != null) ...[
+                                                    const SizedBox(width: 10),
+                                                    SizedBox(
+                                                      height: 46,
+                                                      width: 48,
+                                                      child: OutlinedButton(
+                                                        style: OutlinedButton.styleFrom(
+                                                          padding: EdgeInsets.zero,
+                                                          side: BorderSide(
+                                                            color: Colors.redAccent.withOpacity(0.25),
+                                                          ),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(16),
+                                                          ),
+                                                        ),
+                                                        onPressed: () {
+                                                          setSheetState(() {
+                                                            customDocumentLogoBytes = null;
+                                                          });
+                                                        },
+                                                        child: const Icon(
+                                                          Icons.close_rounded,
+                                                          color: Colors.redAccent,
+                                                          size: 20,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+
+                                              const SizedBox(height: 9),
+
+                                              Text(
+                                                'This logo will be used only for this PDF. Company Settings will not change.',
+                                                style: TextStyle(
+                                                  color: Colors.white.withOpacity(0.46),
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 11.2,
+                                                  height: 1.3,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+
+                                        const SizedBox(height: 14),
+
+                                        label(
+                                          'Company name on PDF',
+                                          icon: Icons.business_rounded,
+                                        ),
+                                        field(
+                                          controller: companyCtrl,
+                                          hint: 'Company name',
+                                        ),
+
+                                        const SizedBox(height: 6),
+
+                                        Text(
+                                          'This changes only this PDF, not Company Settings.',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.42),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 11.2,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 14),
+
+                                    sectionCard(
+                                      icon: Icons.description_rounded,
+                                      title: 'Document info',
+                                      subtitle: 'Title and worker details for this PDF only',
+                                      children: [
+                                        label(
+                                          'Document title',
+                                          icon: Icons.description_rounded,
+                                        ),
+                                        field(
+                                          controller: titleCtrl,
+                                          hint: 'Document title',
+                                        ),
+
+                                        const SizedBox(height: 12),
+
+                                        label(
+                                          'Name on document',
+                                          icon: Icons.person_outline_rounded,
+                                        ),
+                                        field(
+                                          controller: nameCtrl,
+                                          hint: 'Worker legal name',
+                                        ),
+
+                                        const SizedBox(height: 12),
+
+                                        label(
+                                          'Email on document',
+                                          icon: Icons.mail_outline_rounded,
+                                        ),
+                                        field(
+                                          controller: emailCtrl,
+                                          hint: 'Worker email',
+                                          keyboardType: TextInputType.emailAddress,
+                                        ),
+
+                                        const SizedBox(height: 6),
+
+                                        Text(
+                                          'Changes here affect only this PDF, not the worker profile.',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.42),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 11.2,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 14),
+
+                                    sectionCard(
+                                      icon: Icons.payments_outlined,
+                                      title: 'Payment',
+                                      subtitle: 'Select how this document payment was made',
+                                      children: [
+                                        label(
+                                          'Payment method',
+                                          icon: Icons.payments_outlined,
+                                        ),
+
+                                        Builder(
+                                          builder: (context) {
+                                            final methods = ['Cash', 'Card', 'Transfer', 'Check', 'Other'];
+                                            final activeIndex = methods.indexOf(paymentMethod) < 0
+                                                ? 0
+                                                : methods.indexOf(paymentMethod);
+
+                                            return Container(
+                                              width: double.infinity,
+                                              height: 56,
+                                              decoration: BoxDecoration(
+                                                borderRadius: BorderRadius.circular(24),
+                                                color: const Color(0xFF151A21).withOpacity(0.98),
+                                                border: Border.all(
+                                                  color: Colors.white.withOpacity(0.08),
+                                                ),
+                                              ),
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(24),
+                                                child: LayoutBuilder(
+                                                  builder: (context, constraints) {
+                                                    final itemWidth = constraints.maxWidth / methods.length;
+
+                                                    return Stack(
+                                                      children: [
+                                                        AnimatedPositioned(
+                                                          duration: const Duration(milliseconds: 260),
+                                                          curve: Curves.easeOutCubic,
+                                                          left: itemWidth * activeIndex,
+                                                          top: 0,
+                                                          bottom: 0,
+                                                          width: itemWidth,
+                                                          child: Container(
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.redAccent,
+                                                              borderRadius: BorderRadius.circular(24),
+                                                              boxShadow: [
+                                                                BoxShadow(
+                                                                  color: Colors.redAccent.withOpacity(0.28),
+                                                                  blurRadius: 14,
+                                                                  spreadRadius: -5,
+                                                                  offset: const Offset(0, 6),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+
+                                                        Row(
+                                                          children: [
+                                                            for (final method in methods)
+                                                              Expanded(
+                                                                child: GestureDetector(
+                                                                  behavior: HitTestBehavior.opaque,
+                                                                  onTap: () {
+                                                                    setSheetState(() {
+                                                                      paymentMethod = method;
+                                                                    });
+                                                                  },
+                                                                  child: Center(
+                                                                    child: AnimatedSwitcher(
+                                                                      duration: const Duration(milliseconds: 170),
+                                                                      switchInCurve: Curves.easeOutCubic,
+                                                                      switchOutCurve: Curves.easeInCubic,
+                                                                      transitionBuilder: (child, animation) {
+                                                                        return FadeTransition(
+                                                                          opacity: animation,
+                                                                          child: ScaleTransition(
+                                                                            scale: Tween<double>(
+                                                                              begin: 0.88,
+                                                                              end: 1.0,
+                                                                            ).animate(animation),
+                                                                            child: child,
+                                                                          ),
+                                                                        );
+                                                                      },
+                                                                      child: paymentMethod == method
+                                                                          ? Text(
+                                                                        method,
+                                                                        key: ValueKey('text_$method'),
+                                                                        maxLines: 1,
+                                                                        overflow: TextOverflow.ellipsis,
+                                                                        style: const TextStyle(
+                                                                          color: Colors.white,
+                                                                          fontWeight: FontWeight.w900,
+                                                                          fontSize: 12.4,
+                                                                        ),
+                                                                      )
+                                                                          : Icon(
+                                                                        paymentMethodIcon(method),
+                                                                        key: ValueKey('icon_$method'),
+                                                                        color: Colors.white.withOpacity(0.52),
+                                                                        size: 18,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                          ],
+                                                        ),
+                                                      ],
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 14),
+
+                                    sectionCard(
+                                      icon: Icons.format_list_bulleted_rounded,
+                                      title: 'Work items',
+                                      subtitle: 'Add work, hours or quantity, and rate',
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Expanded(
+                                              child: Text(
+                                                'Line items',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                            ),
+                                            TextButton.icon(
+                                              onPressed: () {
+                                                setSheetState(() {
+                                                  items.add(_ManualPdfLineItem());
+                                                });
+                                              },
+                                              icon: const Icon(
+                                                Icons.add_rounded,
+                                                size: 18,
+                                                color: Colors.green,
+                                              ),
+                                              label: const Text(
+                                                'Add item',
+                                                style: TextStyle(
+                                                  color: Colors.green,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+
+                                        const SizedBox(height: 8),
+
+                                        ...List.generate(items.length, (index) {
+                                          final item = items[index];
+
+                                          return Container(
+                                            margin: const EdgeInsets.only(bottom: 12),
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              borderRadius: BorderRadius.circular(20),
+                                              color: const Color(0xFF151A21).withOpacity(0.72),
+                                              border: Border.all(
+                                                color: Colors.white.withOpacity(0.07),
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Container(
+                                                      width: 28,
+                                                      height: 28,
+                                                      alignment: Alignment.center,
+                                                      decoration: BoxDecoration(
+                                                        shape: BoxShape.circle,
+                                                        color: Colors.white.withOpacity(0.07),
+                                                        border: Border.all(
+                                                          color: Colors.white.withOpacity(0.08),
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        '${index + 1}',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight: FontWeight.w900,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    const Expanded(
+                                                      child: Text(
+                                                        'Line item',
+                                                        style: TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight: FontWeight.w900,
+                                                          fontSize: 13.5,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (items.length > 1)
+                                                      IconButton(
+                                                        onPressed: () {
+                                                          setSheetState(() {
+                                                            final removed = items.removeAt(index);
+                                                            removed.dispose();
+                                                          });
+                                                        },
+                                                        icon: const Icon(
+                                                          Icons.delete_outline_rounded,
+                                                          color: Colors.redAccent,
+                                                          size: 20,
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+
+                                                const SizedBox(height: 10),
+
+                                                field(
+                                                  controller: item.workCtrl,
+                                                  hint: 'Work name',
+                                                ),
+
+                                                const SizedBox(height: 10),
+
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: field(
+                                                        controller: item.qtyCtrl,
+                                                        hint: 'Hours / Qty',
+                                                        keyboardType: const TextInputType.numberWithOptions(
+                                                          decimal: true,
+                                                        ),
+                                                        onChanged: (_) => setSheetState(() {}),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 10),
+                                                    Expanded(
+                                                      child: field(
+                                                        controller: item.rateCtrl,
+                                                        hint: 'Rate',
+                                                        keyboardType: const TextInputType.numberWithOptions(
+                                                          decimal: true,
+                                                        ),
+                                                        onChanged: (_) => setSheetState(() {}),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+
+                                                const SizedBox(height: 10),
+
+                                                Container(
+                                                  width: double.infinity,
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 11,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    borderRadius: BorderRadius.circular(15),
+                                                    color: Colors.black.withOpacity(0.18),
+                                                    border: Border.all(
+                                                      color: Colors.white.withOpacity(0.06),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    children: [
+                                                      Text(
+                                                        'Amount',
+                                                        style: TextStyle(
+                                                          color: Colors.white.withOpacity(0.55),
+                                                          fontWeight: FontWeight.w800,
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      Text(
+                                                        money(item.amount),
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight: FontWeight.w900,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        }),
+
+                                        const SizedBox(height: 2),
+
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(14),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(20),
+                                            color: const Color(0xFF151A21).withOpacity(0.72),
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(0.08),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Text(
+                                                'Total',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              const Spacer(),
+                                              Text(
+                                                money(totalAmount()),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 18,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 14),
+
+                                    sectionCard(
+                                      icon: Icons.verified_rounded,
+                                      title: 'Proof & Notes',
+                                      subtitle: 'Attach receipts, proof photos, and notes for accountant',
+                                      children: [
+                                        label(
+                                          'Proof photos & receipts',
+                                          icon: Icons.photo_library_outlined,
+                                        ),
+
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(14),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(20),
+                                            color: const Color(0xFF151A21).withOpacity(0.72),
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(0.07),
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.photo_library_rounded,
+                                                    color: Colors.white.withOpacity(0.62),
+                                                    size: 22,
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      documentPhotoBytes.isEmpty
+                                                          ? 'No proof / receipt photos added'
+                                                          : '${documentPhotoBytes.length} proof photo(s) added',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.w900,
+                                                        fontSize: 13.5,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+
+                                              const SizedBox(height: 12),
+
+                                              if (documentPhotoBytes.isNotEmpty)
+                                                SizedBox(
+                                                  height: 74,
+                                                  child: ListView.separated(
+                                                    scrollDirection: Axis.horizontal,
+                                                    itemCount: documentPhotoBytes.length,
+                                                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                                    itemBuilder: (_, index) {
+                                                      return Stack(
+                                                        children: [
+                                                          ClipRRect(
+                                                            borderRadius: BorderRadius.circular(14),
+                                                            child: Image.memory(
+                                                              documentPhotoBytes[index],
+                                                              width: 74,
+                                                              height: 74,
+                                                              fit: BoxFit.cover,
+                                                            ),
+                                                          ),
+                                                          Positioned(
+                                                            top: 4,
+                                                            right: 4,
+                                                            child: GestureDetector(
+                                                              onTap: () {
+                                                                setSheetState(() {
+                                                                  documentPhotoBytes.removeAt(index);
+                                                                });
+                                                              },
+                                                              child: Container(
+                                                                width: 22,
+                                                                height: 22,
+                                                                decoration: BoxDecoration(
+                                                                  shape: BoxShape.circle,
+                                                                  color: Colors.black.withOpacity(0.62),
+                                                                ),
+                                                                child: const Icon(
+                                                                  Icons.close_rounded,
+                                                                  color: Colors.white,
+                                                                  size: 15,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+
+                                              if (documentPhotoBytes.isNotEmpty)
+                                                const SizedBox(height: 12),
+
+                                              SizedBox(
+                                                width: double.infinity,
+                                                height: 46,
+                                                child: OutlinedButton.icon(
+                                                  style: OutlinedButton.styleFrom(
+                                                    side: BorderSide(
+                                                      color: Colors.white.withOpacity(0.12),
+                                                    ),
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(16),
+                                                    ),
+                                                  ),
+                                                  onPressed: () async {
+                                                    final picker = ImagePicker();
+
+                                                    final files = await picker.pickMultiImage(
+                                                      imageQuality: 78,
+                                                      maxWidth: 1600,
+                                                    );
+
+                                                    if (files.isEmpty) return;
+
+                                                    final selected = files.take(6).toList();
+
+                                                    final bytesList = <Uint8List>[];
+
+                                                    for (final file in selected) {
+                                                      bytesList.add(await file.readAsBytes());
+                                                    }
+
+                                                    setSheetState(() {
+                                                      documentPhotoBytes.addAll(bytesList);
+                                                    });
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.add_photo_alternate_rounded,
+                                                    color: Colors.white70,
+                                                    size: 19,
+                                                  ),
+                                                  label: const Text(
+                                                    'Add proof / receipt photos',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight: FontWeight.w900,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+
+                                              const SizedBox(height: 8),
+
+                                              Text(
+                                                'Add work photos, receipts, material bills, or payment proof. These photos will be included only in this PDF.',
+                                                style: TextStyle(
+                                                  color: Colors.white.withOpacity(0.44),
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 11.2,
+                                                  height: 1.3,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+
+                                        const SizedBox(height: 14),
+
+                                        label(
+                                          'Notes',
+                                          icon: Icons.sticky_note_2_outlined,
+                                        ),
+                                        field(
+                                          controller: notesCtrl,
+                                          hint: 'Optional notes for accountant...',
+                                          maxLines: 4,
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 14),
+
+                                    sectionCard(
+                                      icon: Icons.task_alt_rounded,
+                                      title: 'Actions',
+                                      subtitle: 'Preview, share, or save this PDF document',
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: SizedBox(
+                                                height: 54,
+                                                child: ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: const Color(
+                                                        0xFF404040).withOpacity(0.92),
+                                                    foregroundColor: Colors.white,
+                                                    elevation: 0,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(19),
+                                                    ),
+                                                  ),
+                                                  onPressed: () async {
+                                                    await previewManualPdf();
+                                                  },
+                                                  child: const Text(
+                                                    'Preview',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w900,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+
+                                            const SizedBox(width: 10),
+
+                                            Expanded(
+                                              child: SizedBox(
+                                                height: 54,
+                                                child: ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: const Color(
+                                                        0xFF404040).withOpacity(0.92),
+                                                    foregroundColor: Colors.white,
+                                                    elevation: 0,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(19),
+                                                    ),
+                                                  ),
+                                                  onPressed: () async {
+                                                    await shareManualPdf();
+                                                  },
+                                                  child: const Text(
+                                                    'Share',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w900,
+                                                      fontSize: 15,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+
+                                            const SizedBox(width: 10),
+
+                                            Expanded(
+                                              child: SizedBox(
+                                                height: 54,
+                                                child: ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: Colors.green,
+                                                    foregroundColor: Colors.white,
+                                                    elevation: 0,
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(19),
+                                                    ),
+                                                  ),
+                                                  onPressed: () async {
+                                                    await saveManualPdf();
+                                                  },
+                                                  child: const Text(
+                                                    'Save',
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w900,
+                                                      fontSize: 15,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+
+                                    const SizedBox(height: 10),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+
+      titleCtrl.dispose();
+      companyCtrl.dispose();
+      nameCtrl.dispose();
+      emailCtrl.dispose();
+      notesCtrl.dispose();
+
+      for (final item in items) {
+        item.dispose();
       }
     }
   }
@@ -530,6 +3193,8 @@ class _AdminWorkerDetailsScreenState
   Timer? _ticker;
 
   final supabase = Supabase.instance.client;
+
+  String _s(Object? v) => (v ?? '').toString().trim();
 
   List<Map<String, dynamic>> history = [];
   bool loading = true;
@@ -972,11 +3637,13 @@ class _AdminWorkerDetailsScreenState
     final data = await supabase
         .from('payments')
         .select('''
-        id,
-        created_at,
-        total_amount,
-        total_hours,
-        payment_items (
+         id,
+         created_at,
+         total_amount,
+         total_hours,
+         payment_method,
+         payment_note,
+         payment_items (
           id,
           amount,
           work_logs:work_log_id (
@@ -1005,6 +3672,23 @@ class _AdminWorkerDetailsScreenState
     }
 
     return list;
+  }
+
+  String _paymentMethodLabel(String v) {
+    switch (v.toLowerCase().trim()) {
+      case 'cash':
+        return 'Cash';
+      case 'card':
+        return 'Card';
+      case 'transfer':
+        return 'Transfer';
+      case 'check':
+        return 'Check';
+      case 'other':
+        return 'Other';
+      default:
+        return 'Cash';
+    }
   }
 
   Future<Map<String, dynamic>?> _loadLastPayment() async {
@@ -2155,6 +4839,8 @@ class _AdminWorkerDetailsScreenState
           'user_id': worker['auth_user_id'],
           'from': fromUtc.toIso8601String(),
           'to': toUtc.toIso8601String(),
+          'payment_method': 'cash',
+          'payment_note': null,
         },
         headers: {
           'Authorization': 'Bearer ${session.accessToken}',
@@ -2197,311 +4883,566 @@ class _AdminWorkerDetailsScreenState
     final totalAmount = ((preview['total_amount'] ?? 0) as num).toDouble();
     final unpaidCount = rows.length;
 
+    String paymentMethod = (preview['payment_method'] ?? 'cash')
+        .toString()
+        .toLowerCase()
+        .trim();
+
+    final paymentNoteCtrl = TextEditingController(
+      text: (preview['payment_note'] ?? '').toString(),
+    );
+
+    final shiftsScrollCtrl = ScrollController();
+
     showDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.55),
       builder: (ctx) {
-        return Dialog(
-          backgroundColor: const Color(0xFF1E1C22), // ✅ НЕ прозрачный
-          insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(26),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              // ✅ полностью НЕ прозрачный градиент (как твой стиль в приложении)
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF2F3036),
-                  Color(0xFF24252B),
-                  Color(0xFF1E1C22),
-                ],
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Dialog(
+              backgroundColor: const Color(0xFF1E1C22),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(26),
               ),
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: Colors.white10),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black54,
-                  blurRadius: 28,
-                  offset: Offset(0, 18),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // ===== TITLE =====
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.payments_rounded, color: Colors.greenAccent, size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        'Payment preview',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                        ),
-                      ),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF2F3036),
+                      Color(0xFF24252B),
+                      Color(0xFF1E1C22),
                     ],
                   ),
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: Colors.white10),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black54,
+                      blurRadius: 28,
+                      offset: Offset(0, 18),
+                    ),
+                  ],
                 ),
-
-                // ===== HEADER CARD (name/email/date) =====
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 14),
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1C1B20),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white.withOpacity(0.08)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.person, size: 14, color: Colors.deepPurpleAccent),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              (worker['name'] ?? '—').toString(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                              ),
-                            ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ===== TITLE =====
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                      child: Row(
+                        children: const [
+                          Icon(
+                            Icons.payments_rounded,
+                            color: Colors.greenAccent,
+                            size: 18,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.email_outlined, size: 13, color: Colors.white70),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              (worker['email'] ?? '—').toString(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white60, fontSize: 12),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_month, size: 13, color: Colors.lightBlueAccent),
-                          const SizedBox(width: 6),
+                          SizedBox(width: 8),
                           Text(
-                            '${DateFormat.yMMMd().format(fromUtc.toLocal())} - ${DateFormat.yMMMd().format(toUtc.toLocal())}',
-                            style: const TextStyle(color: Colors.white38, fontSize: 12),
+                            'Payment preview',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                const SizedBox(height: 12),
-
-                // ===== BODY CARD =====
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 14),
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white.withOpacity(0.10)),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    // ===== HEADER CARD =====
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 14),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C1B20),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _previewStat(Icons.timer, _fmtHmFromHours(totalHours),
-                              iconColor: Colors.lightBlueAccent),
-                          _previewStat(Icons.attach_money, totalAmount.toStringAsFixed(2),
-                              iconColor: Colors.greenAccent),
-                          _previewStat(Icons.warning_rounded, '$unpaidCount shifts',
-                              iconColor: Colors.amber),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.person,
+                                size: 14,
+                                color: Colors.deepPurpleAccent,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  (worker['name'] ?? '—').toString(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.email_outlined,
+                                size: 13,
+                                color: Colors.white70,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  (worker['email'] ?? '—').toString(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_month,
+                                size: 13,
+                                color: Colors.lightBlueAccent,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  '${DateFormat.yMMMd().format(fromUtc.toLocal())} - ${DateFormat.yMMMd().format(toUtc.toLocal())}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white38,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
+                    ),
 
-                      const SizedBox(height: 12),
-                      Divider(height: 1, color: Colors.white.withOpacity(0.10)),
-                      const SizedBox(height: 10),
+                    const SizedBox(height: 12),
 
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2A2C33),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: Colors.white.withOpacity(0.08)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
-                              blurRadius: 12,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: SizedBox(
-                          height: (rows.length.clamp(1, 3)) * 70.0,
-                          child: ScrollConfiguration(
-                            behavior: const _NoScrollbarNoGlow(),
-                            child: ListView.separated(
-                              padding: EdgeInsets.zero,
-                              itemCount: rows.length,
-                              physics: const BouncingScrollPhysics(),
-                              separatorBuilder: (_, __) => Divider(
-                                height: 1,
-                                color: Colors.white.withOpacity(0.08),
+                    // ===== BODY CARD =====
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 14),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.white.withOpacity(0.10)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _previewStat(
+                                Icons.timer,
+                                _fmtHmFromHours(totalHours),
+                                iconColor: Colors.lightBlueAccent,
                               ),
-                              itemBuilder: (context, index) {
-                                final r = rows[index];
-                                final start = DateTime.parse(r['start_time']).toLocal();
-                                final end = DateTime.parse(r['end_time']).toLocal();
-                                final amount = ((r['total_payment'] ?? 0) as num).toDouble();
+                              _previewStat(
+                                Icons.attach_money,
+                                totalAmount.toStringAsFixed(2),
+                                iconColor: Colors.greenAccent,
+                              ),
+                              _previewStat(
+                                Icons.warning_rounded,
+                                '$unpaidCount shifts',
+                                iconColor: Colors.amber,
+                              ),
+                            ],
+                          ),
 
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 30,
-                                        height: 30,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Colors.orange.withOpacity(0.16),
-                                        ),
-                                        child: Center(
-                                          child: Text(
-                                            '${index + 1}',
-                                            style: const TextStyle(
-                                              color: Colors.orangeAccent,
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 12,
+                          const SizedBox(height: 12),
+                          Divider(height: 1, color: Colors.white.withOpacity(0.10)),
+                          const SizedBox(height: 10),
+
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2A2C33),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.white.withOpacity(0.08)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.18),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
+                            ),
+                            child: RawScrollbar(
+                              controller: shiftsScrollCtrl,
+                              thumbVisibility: rows.length > 3,
+                              trackVisibility: false,
+                              thickness: 3,
+                              radius: const Radius.circular(999),
+                              thumbColor: Colors.white.withOpacity(0.70),
+                              padding: const EdgeInsets.only(
+                                top: 8,
+                                bottom: 8,
+                                right: -8,
+                              ),
+                              child: SizedBox(
+                                height: (rows.length.clamp(1, 3)) * 70.0,
+                                child: ListView.separated(
+                                  controller: shiftsScrollCtrl,
+                                  primary: false,
+                                  padding: const EdgeInsets.only(right: 24),
+                                  itemCount: rows.length,
+                                  physics: const BouncingScrollPhysics(),
+                                  separatorBuilder: (_, __) => Divider(
+                                    height: 1,
+                                    color: Colors.white.withOpacity(0.08),
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final r = rows[index];
+                                    final start = DateTime.parse(r['start_time']).toLocal();
+                                    final end = DateTime.parse(r['end_time']).toLocal();
+                                    final amount = ((r['total_payment'] ?? 0) as num).toDouble();
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 10,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 30,
+                                            height: 30,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Colors.orange.withOpacity(0.16),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '${index + 1}',
+                                                style: const TextStyle(
+                                                  color: Colors.orangeAccent,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  DateFormat.yMMMd().format(start),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: Colors.white70,
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 13.5,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${DateFormat.Hm().format(start)} - ${DateFormat.Hm().format(end)}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white54,
+                                                    fontSize: 12.5,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Text(
+                                            '\$${amount.toStringAsFixed(2)}',
+                                            style: const TextStyle(
+                                              color: Colors.greenAccent,
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          Text(
+                            '\$${totalAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.greenAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Column(
+                        children: [
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final methods = ['cash', 'card', 'transfer', 'check', 'other'];
+
+                              final selectedIndex = methods.indexOf(paymentMethod) < 0
+                                  ? 0
+                                  : methods.indexOf(paymentMethod);
+
+                              final itemWidth = constraints.maxWidth / methods.length;
+
+                              IconData methodIcon(String m) {
+                                switch (m) {
+                                  case 'cash':
+                                    return Icons.payments_rounded;
+                                  case 'card':
+                                    return Icons.credit_card_rounded;
+                                  case 'transfer':
+                                    return Icons.swap_horiz_rounded;
+                                  case 'check':
+                                    return Icons.receipt_long_rounded;
+                                  case 'other':
+                                    return Icons.more_horiz_rounded;
+                                  default:
+                                    return Icons.help_outline_rounded;
+                                }
+                              }
+
+                              return SizedBox(
+                                height: 48,
+                                width: double.infinity,
+                                child: ClipRect(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2B2D33),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.08),
+                                      ),
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                        AnimatedPositioned(
+                                          duration: const Duration(milliseconds: 230),
+                                          curve: Curves.easeOutCubic,
+                                          left: selectedIndex * itemWidth,
+                                          top: 0,
+                                          bottom: 0,
+                                          width: itemWidth,
+                                          child: Container(
+                                            color: const Color(0xFF4CAF50),
+                                          ),
+                                        ),
+
+                                        Row(
                                           children: [
-                                            Text(
-                                              DateFormat.yMMMd().format(start),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                color: Colors.white70,
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 13.5,
+                                            for (final m in methods)
+                                              Expanded(
+                                                child: GestureDetector(
+                                                  behavior: HitTestBehavior.opaque,
+                                                  onTap: () {
+                                                    setSheetState(() {
+                                                      paymentMethod = m;
+                                                    });
+                                                  },
+                                                  child: Container(
+                                                    height: double.infinity,
+                                                    alignment: Alignment.center,
+                                                    decoration: BoxDecoration(
+                                                      border: Border(
+                                                        right: m != methods.last
+                                                            ? BorderSide(
+                                                          color: Colors.white.withOpacity(0.08),
+                                                          width: 1,
+                                                        )
+                                                            : BorderSide.none,
+                                                      ),
+                                                    ),
+                                                    child: AnimatedSwitcher(
+                                                      duration: const Duration(milliseconds: 180),
+                                                      switchInCurve: Curves.easeOutCubic,
+                                                      switchOutCurve: Curves.easeOutCubic,
+                                                      transitionBuilder: (child, animation) {
+                                                        return FadeTransition(
+                                                          opacity: animation,
+                                                          child: ScaleTransition(
+                                                            scale: animation,
+                                                            child: child,
+                                                          ),
+                                                        );
+                                                      },
+                                                      child: paymentMethod == m
+                                                          ? FittedBox(
+                                                        key: ValueKey('text_$m'),
+                                                        fit: BoxFit.scaleDown,
+                                                        child: Text(
+                                                          _paymentMethodLabel(m),
+                                                          maxLines: 1,
+                                                          style: const TextStyle(
+                                                            color: Colors.black,
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: 11.5,
+                                                          ),
+                                                        ),
+                                                      )
+                                                          : Icon(
+                                                        methodIcon(m),
+                                                        key: ValueKey('icon_$m'),
+                                                        size: 17,
+                                                        color: Colors.white.withOpacity(0.88),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${DateFormat.Hm().format(start)} - ${DateFormat.Hm().format(end)}',
-                                              style: const TextStyle(
-                                                color: Colors.white54,
-                                                fontSize: 12.5,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
                                           ],
                                         ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        '\$${amount.toStringAsFixed(2)}',
-                                        style: const TextStyle(
-                                          color: Colors.greenAccent,
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
+                                ),
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          TextField(
+                            controller: paymentNoteCtrl,
+                            maxLines: 2,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'Payment note (optional)',
+                              hintStyle: TextStyle(
+                                color: Colors.white.withOpacity(0.35),
+                                fontWeight: FontWeight.w700,
+                              ),
+                              filled: true,
+                              fillColor: Colors.white.withOpacity(0.05),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide(
+                                  color: Colors.greenAccent.withOpacity(0.30),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // ===== ACTIONS =====
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _pillButton(
+                              label: 'Cancel',
+                              icon: Icons.close,
+                              bg: Colors.white.withOpacity(0.08),
+                              fg: Colors.white70,
+                              onTap: () => Navigator.pop(ctx),
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          Expanded(
+                            child: _pillButton(
+                              label: 'PAY',
+                              icon: Icons.attach_money,
+                              bg: (isOnShift || unpaidCount == 0)
+                                  ? Colors.white.withOpacity(0.08)
+                                  : const Color(0xFF4CAF50),
+                              fg: (isOnShift || unpaidCount == 0)
+                                  ? Colors.white38
+                                  : Colors.black,
+                              onTap: (isOnShift || unpaidCount == 0)
+                                  ? null
+                                  : () async {
+                                final selectedPaymentMethod = paymentMethod;
+
+                                final selectedPaymentNote =
+                                paymentNoteCtrl.text.trim().isEmpty
+                                    ? null
+                                    : paymentNoteCtrl.text.trim();
+
+                                Navigator.pop(ctx);
+
+                                await _payWorkerPeriod(
+                                  workerAuthId:
+                                  worker['auth_user_id'].toString(),
+                                  fromUtc: fromUtc,
+                                  toUtc: toUtc,
+                                  paymentMethod: selectedPaymentMethod,
+                                  paymentNote: selectedPaymentNote,
                                 );
                               },
                             ),
                           ),
-                        ),
+                        ],
                       ),
-
-                      const SizedBox(height: 10),
-
-                      Text(
-                        '\$${totalAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.greenAccent,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-
-                const SizedBox(height: 14),
-
-                // ===== ACTIONS =====
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _pillButton(
-                          label: 'Cancel',
-                          icon: Icons.close,
-                          bg: Colors.white.withOpacity(0.08),
-                          fg: Colors.white70,
-                          onTap: () => Navigator.pop(ctx),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _pillButton(
-                          label: 'PAY',
-                          icon: Icons.attach_money,
-                          bg: (isOnShift || unpaidCount == 0)
-                              ? Colors.white.withOpacity(0.08)
-                              : const Color(0xFF4CAF50),
-                          fg: (isOnShift || unpaidCount == 0)
-                              ? Colors.white38
-                              : Colors.black,
-                          onTap: (isOnShift || unpaidCount == 0)
-                              ? null
-                              : () async {
-                            Navigator.pop(ctx);
-                            await _payWorkerPeriod(
-                              workerAuthId: worker['auth_user_id'],
-                              fromUtc: fromUtc,
-                              toUtc: toUtc,
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
-    );
+    ).whenComplete(() {
+      paymentNoteCtrl.dispose();
+      shiftsScrollCtrl.dispose();
+    });
   }
 
   Widget _previewStat(IconData icon, String text, {required Color iconColor}) {
@@ -2588,6 +5529,8 @@ class _AdminWorkerDetailsScreenState
     required String workerAuthId,
     required DateTime fromUtc,
     required DateTime toUtc,
+    required String paymentMethod,
+    String? paymentNote,
   }) async {
     final session = supabase.auth.currentSession;
     if (session == null) return;
@@ -2608,6 +5551,8 @@ class _AdminWorkerDetailsScreenState
           'user_id': workerAuthId,
           'from': fromUtc.toIso8601String(),
           'to': toUtc.toIso8601String(),
+          'payment_method': paymentMethod,
+          'payment_note': paymentNote,
         },
         headers: {
           'Authorization': 'Bearer ${session.accessToken}',
@@ -2629,7 +5574,15 @@ class _AdminWorkerDetailsScreenState
       );
 
       await _loadHistory();
-      if (mounted) setState(() {});
+
+      if (mounted) {
+        setState(() {
+          _paymentsFuture = _loadPayments();
+          _lastPaymentFuture = _loadLastPayment();
+          _showPaymentsPanel = true;
+          _paymentsAutoOpenVersion++;
+        });
+      }
     } on FunctionException catch (e) {
       debugPrint('PAY FunctionException: ${e.details ?? e.reasonPhrase ?? e.toString()}');
       _showError(e.details ?? e.reasonPhrase ?? e.toString());
@@ -2839,6 +5792,9 @@ class _AdminWorkerDetailsScreenState
     final totalAmount = (payment['total_amount'] ?? 0).toDouble();
     final paidAt = DateTime.parse(payment['created_at']).toLocal();
 
+    final paymentMethodText = _paymentMethodLabel(payment['payment_method']);
+    final paymentNote = (payment['payment_note'] ?? '').toString().trim();
+
     final items = List<Map<String, dynamic>>.from(
       payment['payment_items'] ?? [],
     );
@@ -3001,6 +5957,61 @@ class _AdminWorkerDetailsScreenState
                   label: 'SHIFTS',
                   value: items.length.toString(),
                 ),
+              ],
+            ),
+          ),
+
+          pw.SizedBox(height: 14),
+
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              borderRadius: pw.BorderRadius.circular(10),
+              border: pw.Border.all(color: PdfColors.grey300),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'Accounting details',
+                  style: pw.TextStyle(
+                    fontSize: 11,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.grey800,
+                  ),
+                ),
+                pw.SizedBox(height: 8),
+                pw.Row(
+                  children: [
+                    pw.Text(
+                      'Payment method: ',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
+                    pw.Text(
+                      paymentMethodText,
+                      style: const pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.grey800,
+                      ),
+                    ),
+                  ],
+                ),
+                if (paymentNote.isNotEmpty) ...[
+                  pw.SizedBox(height: 5),
+                  pw.Text(
+                    'Payment note: $paymentNote',
+                    style: const pw.TextStyle(
+                      fontSize: 10,
+                      color: PdfColors.grey800,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -5442,6 +8453,8 @@ class _AdminWorkerDetailsScreenState
                         onSelected: (v) async {
                           if (v == 'statistics') {
                             _showWorkerSummarySheet();
+                          } else if (v == 'pdf_menu') {
+                            await _openWorkerPdfMenuSheet();
                           } else if (v == 'edit') {
                             await _editWorker();
                           } else if (v == 'delete_worker') {
@@ -5475,6 +8488,33 @@ class _AdminWorkerDetailsScreenState
                                       color: enabledColor,
                                       fontWeight: FontWeight.w700,
                                     ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'pdf_menu',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.picture_as_pdf_rounded,
+                                    size: 18,
+                                    color: enabledColor,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'PDF',
+                                      style: TextStyle(
+                                        color: enabledColor,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: Colors.white.withOpacity(0.45),
                                   ),
                                 ],
                               ),
@@ -5635,6 +8675,65 @@ class _AdminWorkerDetailsScreenState
       ),
     );
   }
+}
+
+class _ManualPdfLineItem {
+  final TextEditingController workCtrl;
+  final TextEditingController qtyCtrl;
+  final TextEditingController rateCtrl;
+
+  _ManualPdfLineItem({
+    String work = '',
+    String qty = '1',
+    String rate = '0',
+  })  : workCtrl = TextEditingController(text: work),
+        qtyCtrl = TextEditingController(text: qty),
+        rateCtrl = TextEditingController(text: rate);
+
+  double get qty => double.tryParse(qtyCtrl.text.trim()) ?? 0;
+  double get rate => double.tryParse(rateCtrl.text.trim()) ?? 0;
+  double get amount => qty * rate;
+
+  void dispose() {
+    workCtrl.dispose();
+    qtyCtrl.dispose();
+    rateCtrl.dispose();
+  }
+}
+
+pw.Widget _manualPdfTh(
+    String text, {
+      pw.TextAlign align = pw.TextAlign.left,
+    }) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.all(8),
+    child: pw.Text(
+      text,
+      textAlign: align,
+      style: pw.TextStyle(
+        fontSize: 9,
+        fontWeight: pw.FontWeight.bold,
+        color: PdfColors.grey800,
+      ),
+    ),
+  );
+}
+
+pw.Widget _manualPdfTd(
+    String text, {
+      pw.TextAlign align = pw.TextAlign.left,
+    }) {
+  return pw.Padding(
+    padding: const pw.EdgeInsets.all(8),
+    child: pw.Text(
+      text,
+      textAlign: align,
+      style: const pw.TextStyle(
+        fontSize: 10,
+        color: PdfColors.grey800,
+      ),
+    ),
+  );
 }
 
 // class _PaymentTile extends StatelessWidget {
@@ -5811,6 +8910,62 @@ String _fmtRangeNoYear(DateTime from, DateTime to) {
   return '${DateFormat.MMMd().format(from)} - ${DateFormat.MMMd().format(to)}'; // Jan 22 - Jan 25
 }
 
+String _paymentMethodText(Object? value) {
+  final v = (value ?? 'cash').toString().toLowerCase().trim();
+
+  switch (v) {
+    case 'cash':
+      return 'Cash';
+    case 'card':
+      return 'Card';
+    case 'transfer':
+      return 'Transfer';
+    case 'check':
+      return 'Check';
+    case 'other':
+      return 'Other';
+    default:
+      return 'Cash';
+  }
+}
+
+IconData _paymentMethodIconData(Object? value) {
+  final v = (value ?? 'cash').toString().toLowerCase().trim();
+
+  switch (v) {
+    case 'cash':
+      return Icons.payments_rounded;
+    case 'card':
+      return Icons.credit_card_rounded;
+    case 'transfer':
+      return Icons.swap_horiz_rounded;
+    case 'check':
+      return Icons.receipt_long_rounded;
+    case 'other':
+      return Icons.more_horiz_rounded;
+    default:
+      return Icons.payments_rounded;
+  }
+}
+
+Color _paymentMethodColor(Object? value) {
+  final v = (value ?? 'cash').toString().toLowerCase().trim();
+
+  switch (v) {
+    case 'cash':
+      return Colors.lightBlueAccent;
+    case 'card':
+      return Colors.greenAccent;
+    case 'transfer':
+      return Colors.redAccent;
+    case 'check':
+      return Colors.amberAccent;
+    case 'other':
+      return Colors.white70;
+    default:
+      return Colors.white70;
+  }
+}
 
 class _PaymentTile extends StatelessWidget {
   final Map<String, dynamic> payment;
@@ -5851,6 +9006,13 @@ class _PaymentTile extends StatelessWidget {
     final totalAmount = ((payment['total_amount'] ?? 0) as num).toDouble();
     final shiftCount = items.length;
     final paidText = 'Paid ${_fmtMonthDayNoYear(paidAt)}'; // -> "Paid Feb 26"
+
+    final paymentMethodText = _paymentMethodText(payment['payment_method']);
+    final paymentMethodIcon = _paymentMethodIconData(payment['payment_method']);
+    final paymentMethodColor = _paymentMethodColor(payment['payment_method']);
+    final paymentNote = (payment['payment_note'] ?? '').toString().trim();
+
+
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -5938,8 +9100,12 @@ class _PaymentTile extends StatelessWidget {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-                                Row(
+                                const SizedBox(height: 12),
+
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     Text(
                                       paidText,
@@ -5949,7 +9115,7 @@ class _PaymentTile extends StatelessWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+
                                     Text(
                                       '·',
                                       style: TextStyle(
@@ -5958,7 +9124,7 @@ class _PaymentTile extends StatelessWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+
                                     Text(
                                       '$shiftCount shifts',
                                       style: const TextStyle(
@@ -5967,7 +9133,7 @@ class _PaymentTile extends StatelessWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+
                                     Text(
                                       '·',
                                       style: TextStyle(
@@ -5976,7 +9142,7 @@ class _PaymentTile extends StatelessWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(width: 12),
+
                                     Text(
                                       '\$${totalAmount.toStringAsFixed(2)}',
                                       style: const TextStyle(
@@ -5985,8 +9151,76 @@ class _PaymentTile extends StatelessWidget {
                                         fontWeight: FontWeight.w800,
                                       ),
                                     ),
+
+                                    Text(
+                                      '·',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white.withOpacity(0.35),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          paymentMethodIcon,
+                                          size: 14,
+                                          color: paymentMethodColor,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          paymentMethodText,
+                                          style: TextStyle(
+                                            color: paymentMethodColor,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 11.8,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
+
+                                if (paymentNote.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.16),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.07),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(
+                                          Icons.edit_note_rounded,
+                                          size: 15,
+                                          color: Colors.white.withOpacity(0.45),
+                                        ),
+                                        const SizedBox(width: 7),
+                                        Expanded(
+                                          child: Text(
+                                            paymentNote,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(0.58),
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 11.4,
+                                              height: 1.25,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

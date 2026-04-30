@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'app_push_service.dart';
 
 class MessageService {
   MessageService._();
@@ -14,6 +16,127 @@ class MessageService {
   static String? _idOrNull(Object? v) {
     final s = _id(v);
     return s.isEmpty ? null : s;
+  }
+
+  static Future<Map<String, dynamic>?> _fetchThreadPushInfo(String threadId) async {
+    final cleanThreadId = threadId.trim();
+    if (cleanThreadId.isEmpty) return null;
+
+    final row = await _supabase
+        .from('message_threads')
+        .select('''
+        id,
+        admin_auth_id,
+        worker_auth_id,
+        workers(
+          id,
+          name,
+          email,
+          auth_user_id
+        )
+      ''')
+        .eq('id', cleanThreadId)
+        .maybeSingle();
+
+    if (row == null) return null;
+    return Map<String, dynamic>.from(row as Map);
+  }
+
+  static String _messagePushBody({
+    required String messageType,
+    String? text,
+    String? fileName,
+  }) {
+    final type = messageType.trim().toLowerCase();
+
+    if (type == 'image') return 'Sent a photo';
+    if (type == 'file') {
+      final name = _id(fileName);
+      return name.isEmpty ? 'Sent a file' : 'Sent a file: $name';
+    }
+
+    final body = _id(text);
+    if (body.isEmpty) return 'New message';
+    if (body.length <= 90) return body;
+    return '${body.substring(0, 90)}...';
+  }
+
+  static Future<void> _sendChatPush({
+    required String threadId,
+    required String senderRole, // admin | worker
+    required String messageType, // text | image | file
+    String? text,
+    String? fileName,
+  }) async {
+    try {
+      debugPrint('CHAT PUSH START role=$senderRole thread=$threadId type=$messageType');
+      final thread = await _fetchThreadPushInfo(threadId);
+      debugPrint('CHAT PUSH THREAD = $thread');
+      if (thread == null) return;
+
+      final cleanSenderRole = senderRole.trim().toLowerCase();
+
+      final adminAuthId = _id(thread['admin_auth_id']);
+      final workerAuthId = _id(thread['worker_auth_id']);
+
+      debugPrint('CHAT PUSH adminAuthId=$adminAuthId workerAuthId=$workerAuthId');
+
+      final workerMap = thread['workers'] is Map
+          ? Map<String, dynamic>.from(thread['workers'] as Map)
+          : <String, dynamic>{};
+
+      final workerName = _id(workerMap['name']).isNotEmpty
+          ? _id(workerMap['name'])
+          : 'Worker';
+
+      final pushBody = _messagePushBody(
+        messageType: messageType,
+        text: text,
+        fileName: fileName,
+      );
+
+      if (cleanSenderRole == 'admin') {
+        if (workerAuthId.isEmpty) return;
+
+        debugPrint('CHAT PUSH SEND TO WORKER = $workerAuthId');
+
+        await AppPushService.send(
+          toUserId: workerAuthId,
+          role: 'worker',
+          title: 'Message • Admin',
+          body: pushBody,
+          data: {
+            'type': 'chat',
+            'thread_id': threadId,
+            'sender_role': 'admin',
+            'chat_message_type': messageType,
+          },
+        );
+        return;
+      }
+
+      if (cleanSenderRole == 'worker') {
+        if (adminAuthId.isEmpty) return;
+
+        debugPrint('CHAT PUSH SEND TO ADMIN = $adminAuthId');
+
+        await AppPushService.send(
+          toUserId: adminAuthId,
+          role: 'admin',
+          title: 'Message • $workerName',
+          body: pushBody,
+          data: {
+            'type': 'chat',
+            'thread_id': threadId,
+            'sender_role': 'worker',
+            'chat_message_type': messageType,
+            'worker_auth_id': workerAuthId,
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('CHAT PUSH ERROR: $e');
+    }
   }
 
   // =========================================================
@@ -229,6 +352,8 @@ class MessageService {
     });
   }
 
+
+
   static Stream<Map<String, dynamic>?> watchWorkerThread() {
     final workerAuthId = _supabase.auth.currentUser?.id;
     if (workerAuthId == null) {
@@ -362,6 +487,13 @@ class MessageService {
       'body': body,
       'reply_to_message_id': _idOrNull(replyToMessageId),
     });
+
+    await _sendChatPush(
+      threadId: threadId,
+      senderRole: 'admin',
+      messageType: 'text',
+      text: body,
+    );
   }
 
   static Future<void> sendWorkerMessage({
@@ -382,6 +514,13 @@ class MessageService {
       'body': body,
       'reply_to_message_id': _idOrNull(replyToMessageId),
     });
+
+    await _sendChatPush(
+      threadId: threadId,
+      senderRole: 'worker',
+      messageType: 'text',
+      text: body,
+    );
   }
 
   static Future<void> markThreadRead(String threadId) async {
@@ -533,6 +672,13 @@ class MessageService {
       'file_size': upload['file_size'],
       'reply_to_message_id': _idOrNull(replyToMessageId),
     });
+
+    await _sendChatPush(
+      threadId: threadId,
+      senderRole: 'admin',
+      messageType: 'image',
+      fileName: upload['file_name']?.toString(),
+    );
   }
 
   static Future<void> sendWorkerImageMessage({
@@ -558,6 +704,13 @@ class MessageService {
       'file_size': upload['file_size'],
       'reply_to_message_id': _idOrNull(replyToMessageId),
     });
+
+    await _sendChatPush(
+      threadId: threadId,
+      senderRole: 'worker',
+      messageType: 'image',
+      fileName: upload['file_name']?.toString(),
+    );
   }
 
   static String _guessImageMime(String ext) {
@@ -731,6 +884,13 @@ class MessageService {
       'file_size': upload['file_size'],
       'reply_to_message_id': _idOrNull(replyToMessageId),
     });
+
+    await _sendChatPush(
+      threadId: threadId,
+      senderRole: 'admin',
+      messageType: 'file',
+      fileName: upload['file_name']?.toString(),
+    );
   }
 
   static Future<void> sendWorkerFileMessage({
@@ -756,6 +916,13 @@ class MessageService {
       'file_size': upload['file_size'],
       'reply_to_message_id': _idOrNull(replyToMessageId),
     });
+
+    await _sendChatPush(
+      threadId: threadId,
+      senderRole: 'worker',
+      messageType: 'file',
+      fileName: upload['file_name']?.toString(),
+    );
   }
 
   static String _guessFileMime(String ext) {

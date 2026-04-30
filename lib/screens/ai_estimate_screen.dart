@@ -68,6 +68,11 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   Set<String> _suppressedFollowupKeys = {};
   String? _guidedResolverHint;
 
+  Timer? _manualResolveDebounce;
+  bool _isResolvingManualRule = false;
+  int _manualResolveRequestId = 0;
+  String? _manualResolverHint;
+
   List<EstimateModel> _clientHistory = [];
   List<EstimateModel> _propertyHistory = [];
 
@@ -145,6 +150,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
     _guidedFollowupControllers.clear();
     _guidedResolveDebounce?.cancel();
+    _manualResolveDebounce?.cancel();
 
     super.dispose();
   }
@@ -239,14 +245,16 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     if (c.startsWith(q)) return 0.95;
     if (c.contains(q)) return 0.85;
 
-    final candidateAsWholeWordInQuery =
-    RegExp('(^|\\s)${RegExp.escape(c)}(\\s|\$)').hasMatch(q);
-    if (candidateAsWholeWordInQuery) {
-      return 0.82;
-    }
-
     final qWords = q.split(' ').where((e) => e.isNotEmpty).toList();
     final cWords = c.split(' ').where((e) => e.isNotEmpty).toList();
+
+    for (final cWord in cWords) {
+      for (final qWord in qWords) {
+        if (_isLooseWordMatch(qWord, cWord)) {
+          return 0.82;
+        }
+      }
+    }
 
     for (final word in cWords) {
       final distance = _levenshtein(q, word);
@@ -262,6 +270,117 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
 
     return 0;
+  }
+
+  bool _isLooseWordMatch(String queryWord, String candidateWord) {
+    final q = queryWord.trim().toLowerCase();
+    final c = candidateWord.trim().toLowerCase();
+
+    if (q.isEmpty || c.isEmpty) return false;
+    if (q == c) return true;
+
+    if (q.length >= 4 && c.length >= 4) {
+      if (q.startsWith(c) || c.startsWith(q)) return true;
+    }
+
+    final qStem = _simpleStem(q);
+    final cStem = _simpleStem(c);
+
+    if (qStem == cStem && qStem.length >= 4) return true;
+
+    final distance = _levenshtein(qStem, cStem);
+
+    if (qStem.length <= 4 || cStem.length <= 4) {
+      return distance <= 1;
+    }
+
+    return distance <= 2;
+  }
+
+  String _simpleStem(String value) {
+    var text = value.trim().toLowerCase();
+
+    for (final suffix in ['ing', 'ed', 'es', 's']) {
+      if (text.length > suffix.length + 3 && text.endsWith(suffix)) {
+        text = text.substring(0, text.length - suffix.length);
+        break;
+      }
+    }
+
+    return text;
+  }
+
+  bool _isGenericMatchWord(String value) {
+    final normalized = _normalizePromptSearch(value);
+
+    const genericWords = {
+      'repair',
+      'fix',
+      'install',
+      'installation',
+      'replace',
+      'replacement',
+      'service',
+      'job',
+      'work',
+      'urgent',
+      'rush',
+      'asap',
+      'labor',
+      'labour',
+      'materials',
+      'included',
+      'maintenance',
+      'inspection',
+      'inspect',
+      'troubleshoot',
+      'troubleshooting',
+      'issue',
+      'problem',
+      'broken',
+      'damaged',
+      'check',
+      'checking',
+      'connection',
+      'connect',
+      'connected',
+      'confirm',
+      'verify',
+      'basic',
+    };
+
+    return genericWords.contains(normalized);
+  }
+
+  bool _isWeakGenericOnlyMatch(String query, String candidate) {
+    final qWords = _normalizePromptSearch(query)
+        .split(' ')
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final cWords = _normalizePromptSearch(candidate)
+        .split(' ')
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (qWords.isEmpty || cWords.isEmpty) return false;
+
+    bool foundAnyMatch = false;
+    bool foundSpecificMatch = false;
+
+    for (final qWord in qWords) {
+      for (final cWord in cWords) {
+        if (!_isLooseWordMatch(qWord, cWord)) continue;
+
+        foundAnyMatch = true;
+
+        if (!_isGenericMatchWord(qWord) && !_isGenericMatchWord(cWord)) {
+          foundSpecificMatch = true;
+        }
+      }
+    }
+
+    return foundAnyMatch && !foundSpecificMatch;
   }
 
   EstimatePriceRuleModel? _findExactGuidedRule(String query) {
@@ -305,10 +424,16 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         (text: rule.serviceType.trim(), weight: 1.00),
         if ((rule.displayName ?? '').trim().isNotEmpty)
           (text: rule.displayName!.trim(), weight: 0.97),
+
         ...rule.aliases
             .map((e) => e.trim())
             .where((e) => e.isNotEmpty)
             .map((e) => (text: e, weight: 0.92)),
+
+        ...rule.aiKeywords
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .map((e) => (text: e, weight: 0.96)),
       ];
 
       double bestScore = 0;
@@ -320,6 +445,10 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
         final baseScore = _scorePromptCandidate(normalizedQuery, candidateText);
         if (baseScore <= 0) continue;
+
+        if (_isWeakGenericOnlyMatch(normalizedQuery, candidateText)) {
+          continue;
+        }
 
         final candidateWords = candidateText
             .split(' ')
@@ -345,7 +474,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         }
       }
 
-      if (bestScore < 0.78) continue;
+      if (bestScore < 0.70) continue;
 
       suggestions.add(
         _PromptSuggestion(
@@ -400,6 +529,75 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
 
     return null;
+  }
+
+  Future<void> _resolveManualRuleWithEdge(
+      String text,
+      List<_PromptSuggestion> suggestions,
+      ) async {
+    _manualResolveDebounce?.cancel();
+
+    if (text.trim().length < 4 || suggestions.isEmpty) {
+      if (!mounted) return;
+
+      setState(() {
+        _isResolvingManualRule = false;
+        _manualResolverHint = null;
+      });
+
+      return;
+    }
+
+    final requestId = ++_manualResolveRequestId;
+
+    _manualResolveDebounce = Timer(const Duration(milliseconds: 450), () async {
+      if (!mounted) return;
+
+      setState(() {
+        _isResolvingManualRule = true;
+        _manualResolverHint = null;
+      });
+
+      try {
+        final result = await EstimateRuleResolutionService.resolve(
+          prompt: text,
+          guidedAnswers: const <String, dynamic>{},
+          candidates: _buildResolverCandidates(suggestions),
+        );
+
+        if (!mounted) return;
+        if (requestId != _manualResolveRequestId) return;
+
+        final resolvedRule = _findRuleById(result.selectedRuleId);
+
+        if (resolvedRule != null && result.confidence >= 0.75) {
+          setState(() {
+            _activePromptRule = resolvedRule;
+            _promptSuggestions = [];
+            _manualResolverHint = null;
+            _isResolvingManualRule = false;
+          });
+
+          return;
+        }
+
+        setState(() {
+          _activePromptRule = null;
+          _manualResolverHint = result.shouldAskClarifyingQuestion
+              ? result.clarifyingQuestion
+              : null;
+          _isResolvingManualRule = false;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        if (requestId != _manualResolveRequestId) return;
+
+        setState(() {
+          _isResolvingManualRule = false;
+          _manualResolverHint = null;
+        });
+      }
+    });
   }
 
   Future<void> _resolveGuidedRuleWithEdge(
@@ -491,6 +689,14 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       return 'Workio says: describe the job in your own words.';
     }
 
+    if (_isResolvingManualRule) {
+      return 'Workio says: checking the best Price Rule...';
+    }
+
+    if ((_manualResolverHint ?? '').trim().isNotEmpty) {
+      return 'Workio says: $_manualResolverHint';
+    }
+
     if (_promptSuggestions.isNotEmpty && _activePromptRule == null) {
       return 'Workio says: pick the closest service or keep typing.';
     }
@@ -530,25 +736,39 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   void _onPromptChanged() {
     final text = _promptController.text.trim();
 
+    _manualResolveDebounce?.cancel();
+
     if (text.isEmpty) {
       if (!mounted) return;
+
       setState(() {
         _promptSuggestions = [];
         _activePromptRule = null;
+        _isResolvingManualRule = false;
+        _manualResolverHint = null;
       });
+
       return;
     }
 
     final suggestions = _buildPromptSuggestions(text);
 
     if (!mounted) return;
+
     setState(() {
       _promptSuggestions = suggestions;
-      _activePromptRule = suggestions.length == 1 ||
-          (suggestions.isNotEmpty && suggestions.first.score >= 0.92)
-          ? suggestions.first.rule
-          : null;
+      _activePromptRule = null;
+      _manualResolverHint = null;
     });
+
+    if (suggestions.isEmpty) {
+      setState(() {
+        _isResolvingManualRule = false;
+      });
+      return;
+    }
+
+    _resolveManualRuleWithEdge(text, suggestions);
   }
 
   void _applyPromptSuggestion(_PromptSuggestion suggestion) {
@@ -562,12 +782,28 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     if (rule == null) return const [];
 
     final chips = <String>[];
+    final seen = <String>{};
+
+    void addChip(String rawValue) {
+      final value = rawValue.trim();
+      if (value.isEmpty) return;
+
+      final normalized = value
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+
+      if (normalized.isEmpty) return;
+      if (seen.contains(normalized)) return;
+      if (_promptHasAny([value])) return;
+
+      seen.add(normalized);
+      chips.add(value);
+    }
 
     for (final keyword in rule.aiKeywords) {
-      final value = keyword.trim();
-      if (value.isNotEmpty && !_promptHasAny([value])) {
-        chips.add(value);
-      }
+      addChip(keyword);
     }
 
     for (final question in rule.aiFollowupQuestions) {
@@ -576,11 +812,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       if (options is! List) continue;
 
       for (final option in options) {
-        final value = option.toString().trim();
-
-        if (value.isNotEmpty && !_promptHasAny([value])) {
-          chips.add(value);
-        }
+        addChip(option.toString());
       }
     }
 
@@ -1021,6 +1253,110 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         .trim();
   }
 
+  Set<String> _ruleQuantityWords(EstimatePriceRuleModel? rule) {
+    if (rule == null) return {};
+
+    final raw = <String>[
+      rule.serviceType,
+      rule.displayName ?? '',
+      ...rule.aliases,
+      ...rule.aiKeywords,
+    ];
+
+    final words = <String>{};
+
+    for (final value in raw) {
+      final normalized = _normalizeMissingFieldText(value);
+
+      for (final word in normalized.split(' ')) {
+        final clean = word.trim();
+        if (clean.length < 3) continue;
+        if (_isGenericMatchWord(clean)) continue;
+
+        words.add(clean);
+
+        // simple singular/plural support
+        if (clean.endsWith('s') && clean.length > 4) {
+          words.add(clean.substring(0, clean.length - 1));
+        } else {
+          words.add('${clean}s');
+        }
+      }
+    }
+
+    return words;
+  }
+
+  bool _promptHasQuantityForActiveRule(String text) {
+    final rule = _activePromptRule;
+    if (rule == null) return false;
+
+    final unit = rule.unit.trim().toLowerCase();
+
+    // Для sqft/hour/room уже достаточно числа + unit слова
+    if (unit == 'sqft' || unit == 'hour' || unit == 'room') {
+      final hasNumber = RegExp(r'\b\d+(?:[.,]\d+)?\b').hasMatch(text);
+      return hasNumber;
+    }
+
+    final words = _ruleQuantityWords(rule);
+    if (words.isEmpty) return false;
+
+    // Убираем цены, чтобы "$150 door" не путало логику
+    final noMoney = text.replaceAll(
+      RegExp(r'\$+\s*\d+(?:[.,]\d+)?'),
+      ' ',
+    );
+
+    for (final word in words) {
+      final pattern = RegExp(
+        '\\b\\d+(?:[.,]\\d+)?\\s+[a-z0-9\\s]{0,24}\\b${RegExp.escape(word)}\\b',
+      );
+
+      if (pattern.hasMatch(noMoney)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  bool _promptHasWorkAction(String text) {
+    final words = text
+        .split(' ')
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    const actionWords = {
+      'repair',
+      'fix',
+      'install',
+      'installation',
+      'replace',
+      'replacement',
+      'remove',
+      'removal',
+      'inspect',
+      'inspection',
+      'diagnose',
+      'diagnostic',
+      'troubleshoot',
+      'adjust',
+      'maintenance',
+    };
+
+    for (final word in words) {
+      for (final action in actionWords) {
+        if (_isLooseWordMatch(word, action)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   bool _isMissingFieldAnsweredInPrompt({
     required AiMissingFieldModel field,
     required String prompt,
@@ -1036,7 +1372,17 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       return _activePromptRule != null;
     }
 
+    if (key == 'service_needed' ||
+        key == 'work_type' ||
+        key == 'job_type' ||
+        key == 'service_action' ||
+        key == 'work_action') {
+      return _promptHasWorkAction(text);
+    }
+
     if (key == 'project_size' ||
+        key == 'area_sqft' ||
+        key == 'sqft' ||
         key == 'quantity' ||
         key == 'quantity_value' ||
         key == 'size') {
@@ -1067,6 +1413,13 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       return RegExp(
         r'\b(prep|preparation|setup|site prep|prep included|no prep)\b',
       ).hasMatch(text);
+    }
+
+    if (key == 'units_count' ||
+        key == 'unit_count' ||
+        key == 'fixtures_count' ||
+        key == 'items_count') {
+      return _promptHasQuantityForActiveRule(text);
     }
 
     if (field.options.isNotEmpty) {
@@ -1306,6 +1659,11 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       return;
     }
 
+    if (_isResolvingManualRule) {
+      _showSnack('Workio is still checking the best Price Rule');
+      return;
+    }
+
     if (_needsManualServiceChoice) {
       _showSnack('Choose the closest Price Rule first');
       return;
@@ -1498,7 +1856,9 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   }
 
   void _openSimilarSuggestionsSheet() {
-    final suggestions = _smartResult?.historyContext?.suggestions ?? const [];
+    final suggestions = (_smartResult?.historyContext?.suggestions ?? const [])
+        .where((suggestion) => suggestion.score >= 0.85)
+        .toList();
 
     if (suggestions.isEmpty) return;
 
@@ -2500,13 +2860,21 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     final bestSuggestion = result.historyContext?.bestSuggestion;
     final visibleMissing = _visibleMissingFields(result);
 
+    final hasGeneratedItems = result.items.isNotEmpty;
+    final hasOptionalDetails = hasGeneratedItems && visibleMissing.isNotEmpty;
+
     String confidenceLabel;
-    if (result.confidence >= 0.80) {
+
+    if (hasGeneratedItems) {
+      confidenceLabel = hasOptionalDetails
+          ? 'Draft Ready • Details Optional'
+          : 'Draft Ready';
+    } else if (result.confidence >= 0.80) {
       confidenceLabel = 'High';
     } else if (result.confidence >= 0.55) {
       confidenceLabel = 'Medium';
     } else {
-      confidenceLabel = 'Low';
+      confidenceLabel = 'Needs Details';
     }
 
     return _buildSectionCard(
@@ -2595,7 +2963,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Missing Questions',
+                'Optional Details',
                 style: TextStyle(
                   color: Color(0xFFB6BCD0),
                   fontSize: 13,
@@ -2635,7 +3003,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                 child: _isGenerating
                     ? const CupertinoActivityIndicator(color: Colors.white)
                     : const Text(
-                  'Answer Questions',
+                  'Add Details',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -2649,9 +3017,17 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   Widget _buildHistorySuggestionsCard() {
     final historyContext = _smartResult?.historyContext;
 
-    if (historyContext == null || !historyContext.hasSuggestions) {
+    final filteredSuggestions = historyContext?.suggestions
+        .where((suggestion) => suggestion.score >= 0.85)
+        .toList() ??
+        const <AiHistorySuggestionModel>[];
+
+    if (historyContext == null || filteredSuggestions.isEmpty) {
       return const SizedBox.shrink();
     }
+
+    final visibleCount =
+    filteredSuggestions.length > 3 ? 3 : filteredSuggestions.length;
 
     return _buildSectionCard(
       title: 'Similar Estimates',
@@ -2659,25 +3035,17 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ...List.generate(
-            historyContext.suggestions.length > 3
-                ? 3
-                : historyContext.suggestions.length,
-                (index) {
-              final suggestion = historyContext.suggestions[index];
-              final visibleCount = historyContext.suggestions.length > 3
-                  ? 3
-                  : historyContext.suggestions.length;
+          ...List.generate(visibleCount, (index) {
+            final suggestion = filteredSuggestions[index];
 
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: index == visibleCount - 1 ? 0 : 10,
-                ),
-                child: _buildHistorySuggestionTile(suggestion),
-              );
-            },
-          ),
-          if (historyContext.suggestions.length > 3) ...[
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: index == visibleCount - 1 ? 0 : 10,
+              ),
+              child: _buildHistorySuggestionTile(suggestion),
+            );
+          }),
+          if (filteredSuggestions.length > 3) ...[
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -2687,7 +3055,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                 borderRadius: BorderRadius.circular(16),
                 onPressed: _openSimilarSuggestionsSheet,
                 child: Text(
-                  'View all suggestions (${historyContext.suggestions.length})',
+                  'View all suggestions (${filteredSuggestions.length})',
                   style: const TextStyle(
                     color: Color(0xFFB6BCD0),
                     fontSize: 14,

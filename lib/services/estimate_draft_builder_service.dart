@@ -16,12 +16,13 @@ class EstimateDraftBuilderService {
     final assumptions = parsed.assumptions;
     final canAutoGenerate = parsed.canBuildDraft;
 
+    final rule = await _loadMainRule(parsed.serviceType);
+
     final title = _buildTitle(
       serviceType: parsed.serviceType,
       propertyCity: propertyCity,
+      currentRule: rule,
     );
-
-    final rule = await _loadMainRule(parsed.serviceType);
 
     final scope = _buildScope(
       parsed,
@@ -54,9 +55,14 @@ class EstimateDraftBuilderService {
   static String _buildTitle({
     required String? serviceType,
     String? propertyCity,
+    EstimatePriceRuleModel? currentRule,
   }) {
     final normalizedServiceType = (serviceType ?? '').trim().toLowerCase();
-    final serviceLabel = _serviceLabel(normalizedServiceType);
+
+    final serviceLabel = _resolveRuleLabel(
+      serviceType: normalizedServiceType,
+      currentRule: currentRule,
+    );
 
     final city = (propertyCity ?? '').trim();
     final citySuffix = city.isEmpty ? '' : ' • $city';
@@ -69,11 +75,6 @@ class EstimateDraftBuilderService {
         EstimatePriceRuleModel? currentRule,
         String? aiScopeTemplate,
       }) {
-    final aiTemplate = aiScopeTemplate?.trim() ?? '';
-    if (aiTemplate.isNotEmpty) {
-      return _applyAiTemplate(aiTemplate, parsed);
-    }
-
     final serviceType = (parsed.serviceType ?? '').trim().toLowerCase();
 
     final ruleLabel = _resolveRuleLabel(
@@ -81,15 +82,36 @@ class EstimateDraftBuilderService {
       currentRule: currentRule,
     );
 
+    final requestText = _extractScopeRequestText(
+      parsed.rawPrompt,
+      ruleLabel: ruleLabel,
+    );
     final details = <String>[];
 
-    details.add(
-      'Complete the requested ${ruleLabel.toLowerCase()} work as described by the client.',
-    );
+    if (requestText.isNotEmpty) {
+      details.add(
+        'Complete the requested work for ${ruleLabel.toLowerCase()}: $requestText.',
+      );
+    } else {
+      final aiTemplate = aiScopeTemplate?.trim() ?? '';
+
+      if (aiTemplate.isNotEmpty) {
+        details.add(_applyAiTemplate(aiTemplate, parsed));
+      } else {
+        details.add(
+          'Complete the requested ${ruleLabel.toLowerCase()} work as described by the client.',
+        );
+      }
+    }
 
     final laborDescription = currentRule?.aiLaborDescription?.trim() ?? '';
     if (laborDescription.isNotEmpty) {
-      details.add(laborDescription);
+      details.add(_applyAiTemplate(laborDescription, parsed));
+    }
+
+    final materialText = _buildScopeMaterialsText(parsed);
+    if (materialText.isNotEmpty) {
+      details.add(materialText);
     }
 
     final hasSqft = (parsed.sqft ?? 0) > 0;
@@ -110,34 +132,256 @@ class EstimateDraftBuilderService {
       );
     }
 
-    if (parsed.materialsIncluded == true) {
-      details.add('Materials are included in this estimate.');
-    } else if (parsed.laborOnly == true) {
-      details.add('This estimate is for labor only.');
-    }
-
     if (parsed.prep) {
       final prepDescription = currentRule?.aiPrepDescription?.trim() ?? '';
+
       details.add(
         prepDescription.isNotEmpty
-            ? prepDescription
-            : 'Preparation and setup are included where specified.',
+            ? _applyAiTemplate(prepDescription, parsed)
+            : 'Include required preparation and setup before the main work begins.',
       );
     }
 
     if (parsed.rush) {
       final rushDescription = currentRule?.aiRushDescription?.trim() ?? '';
+
+      final cleanRushDescription = rushDescription.isNotEmpty
+          ? _applyAiTemplate(rushDescription, parsed)
+          .replaceAll(RegExp(r'\{[^}]*\}'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim()
+          : '';
+
       details.add(
-        rushDescription.isNotEmpty
-            ? rushDescription
-            : 'Rush scheduling is included where specified.',
+        cleanRushDescription.isNotEmpty
+            ? cleanRushDescription
+            : 'Provide expedited scheduling where available.',
       );
     }
 
-    details.add('Final cleanup of the work area upon completion.');
+    details.add(
+      'Verify the completed work where applicable and leave the work area clean upon completion.',
+    );
 
-    return details.join(' ');
+    return _cleanScopeText(details.join(' '));
   }
+
+  static String _extractScopeRequestText(
+      String rawPrompt, {
+        String? ruleLabel,
+      }) {
+    var text = rawPrompt.trim();
+
+    if (text.isEmpty) return '';
+
+    final requestMatch = RegExp(
+      r'request\s*:\s*(.*)$',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(text);
+
+    if (requestMatch != null) {
+      text = requestMatch.group(1)?.trim() ?? text;
+    }
+
+    text = text
+        .replaceAll(
+      RegExp(
+        r'\bservice_type\s*:\s*[^.]+\.?',
+        caseSensitive: false,
+      ),
+      '',
+    )
+        .replaceAll(
+      RegExp(
+        r'\bservice_label\s*:\s*[^.]+\.?',
+        caseSensitive: false,
+      ),
+      '',
+    )
+        .trim();
+
+    final materialMarker = RegExp(
+      r'\b(materials?\s+(are\s+)?included|materials?)\s*:',
+      caseSensitive: false,
+    ).firstMatch(text);
+
+    if (materialMarker != null) {
+      text = text.substring(0, materialMarker.start).trim();
+    }
+
+    final label = (ruleLabel ?? '').trim();
+
+    if (label.isNotEmpty) {
+      text = text.replaceFirst(
+        RegExp(
+          '^\\s*need\\s+(a\\s+|an\\s+)?${RegExp.escape(label)}\\s+'
+              '(repair|service|work|job)'
+              '(\\s+(in|at)\\s+[a-z\\s]+)?\\.?\\s*',
+          caseSensitive: false,
+        ),
+        '',
+      );
+    }
+
+    text = text.replaceFirst(
+      RegExp(
+        r'^\s*(we\s+)?need\s+(a\s+|an\s+)?[^.]*?\s+work\s+(in|at)\s+[a-z\s]+\.?\s*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    text = text
+        .replaceAll(
+      RegExp(
+        r'\binclude\s+(basic|standard)?\s*materials?\.?',
+        caseSensitive: false,
+      ),
+      '',
+    )
+
+        .replaceAll(
+      RegExp(
+        r'\bthe\s+work\s+is\s*\.?',
+        caseSensitive: false,
+      ),
+      '',
+    )
+
+        .replaceAll(
+      RegExp(
+        r'\bmaterials?\s+(are\s+)?included\.?',
+        caseSensitive: false,
+      ),
+      '',
+    )
+        .replaceAll(
+      RegExp(
+        r'\b(labor|labour)\s+only\b',
+        caseSensitive: false,
+      ),
+      '',
+    )
+        .replaceAll(
+      RegExp(
+        r'\b(urgent|rush|asap|priority)\b',
+        caseSensitive: false,
+      ),
+      '',
+    )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAllMapped(
+      RegExp(r'\s+([,.;:])'),
+          (match) => match.group(1) ?? '',
+    )
+        .replaceAll(RegExp(r'^[,.;:\s]+'), '')
+        .trim();
+
+    if (text.endsWith('.') || text.endsWith(',') || text.endsWith(':')) {
+      text = text.substring(0, text.length - 1).trim();
+    }
+
+    return text;
+  }
+
+  static String _buildScopeMaterialsText(AiParsedRequestModel parsed) {
+    if (parsed.laborOnly == true) {
+      return 'This estimate is for labor only; materials are not included unless listed separately.';
+    }
+
+    final parsedMaterials = parsed.parsedMaterials;
+
+    final pricedMaterials = parsedMaterials.where((item) {
+      final unitPrice = _toPositiveDouble(item['unit_price']);
+      final lineTotal = _toPositiveDouble(item['line_total']);
+      return unitPrice != null || lineTotal != null;
+    }).toList();
+
+    if (pricedMaterials.isNotEmpty) {
+      final names = <String>[];
+
+      for (final item in pricedMaterials) {
+        final name = (item['name'] ?? '').toString().trim();
+        final quantity = item['quantity'];
+
+        final measureValue = _toPositiveDouble(item['measure_value']);
+        final measureUnit = (item['measure_unit'] ?? '').toString().trim();
+
+        if (name.isEmpty) continue;
+
+        if (measureValue != null &&
+            measureUnit.isNotEmpty &&
+            !['each', 'item', 'items', 'pc', 'pcs'].contains(measureUnit.toLowerCase())) {
+          final valueText = measureValue % 1 == 0
+              ? measureValue.toInt().toString()
+              : measureValue.toString();
+
+          names.add('$valueText $measureUnit of $name');
+        } else if (quantity is num && quantity > 0) {
+          final qtyText = quantity % 1 == 0
+              ? quantity.toInt().toString()
+              : quantity.toString();
+
+          names.add('$qtyText $name');
+        } else {
+          names.add(name);
+        }
+      }
+
+      if (names.isNotEmpty) {
+        return 'Include listed materials: ${_joinHumanList(names)}.';
+      }
+    }
+
+    if (parsed.materialsIncluded == true) {
+      return 'Include basic materials and parts required for the requested work.';
+    }
+
+    return '';
+  }
+
+  static String _joinHumanList(List<String> values) {
+    final cleanValues = values
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+
+    if (cleanValues.isEmpty) return '';
+    if (cleanValues.length == 1) return cleanValues.first;
+    if (cleanValues.length == 2) {
+      return '${cleanValues.first} and ${cleanValues.last}';
+    }
+
+    return '${cleanValues.take(cleanValues.length - 1).join(', ')}, and ${cleanValues.last}';
+  }
+
+  static double? _toPositiveDouble(dynamic value) {
+    if (value == null) return null;
+
+    if (value is num) {
+      final result = value.toDouble();
+      return result > 0 ? result : null;
+    }
+
+    final parsed = double.tryParse(value.toString().replaceAll(',', '.'));
+    if (parsed == null || parsed <= 0) return null;
+
+    return parsed;
+  }
+
+  static String _cleanScopeText(String value) {
+    return value
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAllMapped(
+      RegExp(r'\s+([,.;:])'),
+          (match) => match.group(1) ?? '',
+    )
+        .replaceAll(RegExp(r'\.\s*\.'), '.')
+        .replaceAll(RegExp(r'\s+\.'), '.')
+        .trim();
+  }
+
 
   static String _buildNotes(
       AiParsedRequestModel parsed, {
@@ -209,12 +453,12 @@ class EstimateDraftBuilderService {
         .join(' ');
   }
 
-  static Future<dynamic> _loadMainRule(String? serviceType) async {
+  static Future<EstimatePriceRuleModel?> _loadMainRule(String? serviceType) async {
     final normalized = (serviceType ?? '').trim().toLowerCase();
     if (normalized.isEmpty) return null;
 
     try {
-      return await EstimatePriceRulesService.findMainRule(normalized);
+      return await EstimatePriceRulesService.findBestRuleByServiceType(normalized);
     } catch (_) {
       return null;
     }
@@ -244,11 +488,11 @@ class EstimateDraftBuilderService {
     )
         .replaceAll(
       '{rush}',
-      parsed.rush ? 'rush service included' : 'standard scheduling',
+      parsed.rush ? 'rush service included' : '',
     )
         .replaceAll(
       '{prep}',
-      parsed.prep ? 'prep included' : 'prep not included',
+      parsed.prep ? 'prep included' : '',
     )
         .trim();
   }

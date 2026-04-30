@@ -5,6 +5,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:convert';
+
+import 'screens/admin_chat_screen.dart';
+import 'screens/worker_chat_screen.dart';
+import 'screens/admin_tasks_screen.dart';
+import 'screens/worker_tasks_screen.dart';
 
 
 import 'ui/app_toast.dart';
@@ -24,7 +30,203 @@ const AndroidNotificationChannel highChannel = AndroidNotificationChannel(
   importance: Importance.max,
 );
 
+String _pushIconForType(Object? type) {
+  final t = (type ?? '').toString().trim().toLowerCase();
 
+  if (t == 'chat') return 'ic_push_chat';
+  if (t == 'task') return 'ic_push_task';
+  if (t == 'reminder') return 'ic_push_reminder';
+
+  return 'ic_push_default';
+}
+
+String _pushTypeFromData(Map<String, dynamic> data) {
+  final type = (data['type'] ?? '').toString().trim().toLowerCase();
+
+  if (type == 'chat') return 'chat';
+  if (type == 'task') return 'task';
+  if (type == 'reminder') return 'reminder';
+
+  if (!data.containsKey('thread_id') && !data.containsKey('task_id')) {
+    return 'reminder';
+  }
+
+  return '';
+}
+
+String _pushTitleForForeground({
+  required String rawTitle,
+  required Map<String, dynamic> data,
+}) {
+  final title = rawTitle.trim();
+  final type = _pushTypeFromData(data);
+
+  if (type == 'reminder' && !title.startsWith('Reminder •')) {
+    return 'Reminder • $title';
+  }
+
+  return title.isEmpty ? 'Workio' : title;
+}
+
+String _pushS(Object? v) => (v ?? '').toString().trim();
+
+Future<String> _currentPushUserRole() async {
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user == null) return '';
+
+  try {
+    final worker = await Supabase.instance.client
+        .from('workers')
+        .select('id, access_mode')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+
+    if (worker != null) return 'worker';
+  } catch (_) {}
+
+  return 'admin';
+}
+
+Future<bool> _currentWorkerIsViewOnly() async {
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user == null) return false;
+
+  try {
+    final worker = await Supabase.instance.client
+        .from('workers')
+        .select('access_mode')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+
+    final mode = _pushS(worker?['access_mode']).toLowerCase();
+
+    return mode == 'readonly' ||
+        mode == 'viewonly' ||
+        mode == 'view_only' ||
+        mode == 'view-only' ||
+        mode == 'view';
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<void> _openAdminChatFromPush(String threadId) async {
+  if (threadId.isEmpty) return;
+
+  final row = await Supabase.instance.client
+      .from('message_threads')
+      .select('''
+        id,
+        worker_auth_id,
+        workers(
+          id,
+          name,
+          email,
+          avatar_url,
+          auth_user_id
+        )
+      ''')
+      .eq('id', threadId)
+      .maybeSingle();
+
+  if (row == null) return;
+
+  final map = Map<String, dynamic>.from(row as Map);
+  final worker = map['workers'] is Map
+      ? Map<String, dynamic>.from(map['workers'] as Map)
+      : <String, dynamic>{};
+
+  navigatorKey.currentState?.push(
+    MaterialPageRoute(
+      builder: (_) => AdminChatScreen(
+        threadId: threadId,
+        workerName: _pushS(worker['name']).isEmpty
+            ? 'Worker'
+            : _pushS(worker['name']),
+        workerEmail: _pushS(worker['email']),
+        avatarUrl: _pushS(worker['avatar_url']),
+        workerAuthId: _pushS(map['worker_auth_id']).isEmpty
+            ? _pushS(worker['auth_user_id'])
+            : _pushS(map['worker_auth_id']),
+      ),
+    ),
+  );
+}
+
+Future<void> _openPushData(Map<String, dynamic> data) async {
+  debugPrint('PUSH TAP DATA => $data');
+
+  final user = Supabase.instance.client.auth.currentUser;
+  if (user == null) {
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (_) => false,
+    );
+    return;
+  }
+
+  final type = _pushS(data['type']).toLowerCase();
+
+  if (type == 'chat') {
+    final senderRole = _pushS(data['sender_role']).toLowerCase();
+    final threadId = _pushS(data['thread_id']);
+
+    if (senderRole == 'admin') {
+      final isViewOnly = await _currentWorkerIsViewOnly();
+
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => WorkerChatScreen(
+            isViewOnly: isViewOnly,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (senderRole == 'worker') {
+      await _openAdminChatFromPush(threadId);
+      return;
+    }
+  }
+
+  if (type == 'task') {
+    final role = await _currentPushUserRole();
+
+    if (role == 'worker') {
+      final isViewOnly = await _currentWorkerIsViewOnly();
+
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => WorkerTasksScreen(
+            isViewOnly: isViewOnly,
+          ),
+        ),
+      );
+      return;
+    }
+
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => const AdminTasksScreen(),
+      ),
+    );
+  }
+}
+
+void _handleLocalNotificationTap(NotificationResponse response) {
+  final payload = response.payload;
+  if (payload == null || payload.trim().isEmpty) return;
+
+  try {
+    final decoded = jsonDecode(payload);
+    if (decoded is Map) {
+      _openPushData(Map<String, dynamic>.from(decoded));
+    }
+  } catch (e) {
+    debugPrint('LOCAL PUSH TAP ERROR: $e');
+  }
+}
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -41,6 +243,7 @@ Future<void> main() async {
 
   await localNotifications.initialize(
     const InitializationSettings(android: androidInit),
+    onDidReceiveNotificationResponse: _handleLocalNotificationTap,
   );
 
   await localNotifications
@@ -57,24 +260,30 @@ Future<void> main() async {
 
   FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     final notification = message.notification;
+    if (notification == null) return;
 
-    if (notification != null) {
-      await localNotifications.show(
-        notification.hashCode,
-        notification.title ?? 'Reminder',
-        notification.body ?? '',
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            highChannel.id,
-            highChannel.name,
-            channelDescription: highChannel.description,
-            importance: Importance.max,
-            priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
-          ),
+    final data = Map<String, dynamic>.from(message.data);
+    final pushType = _pushTypeFromData(data);
+
+    await localNotifications.show(
+      notification.hashCode,
+      _pushTitleForForeground(
+        rawTitle: notification.title ?? 'Reminder',
+        data: data,
+      ),
+      notification.body ?? '',
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          highChannel.id,
+          highChannel.name,
+          channelDescription: highChannel.description,
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: _pushIconForType(pushType),
         ),
-      );
-    }
+      ),
+      payload: jsonEncode(data),
+    );
   });
 
   await Supabase.initialize(
@@ -106,6 +315,7 @@ class _MyAppState extends State<MyApp> {
     super.initState();
     _listenSupabaseEvents();
     _initDeepLinks();
+    _initPushOpenHandlers();
   }
 
   void _listenSupabaseEvents() {
@@ -202,6 +412,20 @@ class _MyAppState extends State<MyApp> {
         MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
             (_) => false,
       );
+    });
+  }
+
+  Future<void> _initPushOpenHandlers() async {
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+
+    if (initialMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openPushData(initialMessage.data);
+      });
+    }
+
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _openPushData(message.data);
     });
   }
 

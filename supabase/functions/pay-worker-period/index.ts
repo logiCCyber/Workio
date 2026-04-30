@@ -16,6 +16,23 @@ function escapeHtml(s: string) {
         .replaceAll("'", "&#039;");
 }
 
+function paymentMethodLabel(v: string) {
+    switch ((v ?? "").toLowerCase().trim()) {
+        case "cash":
+            return "Cash";
+        case "card":
+            return "Card";
+        case "transfer":
+            return "Transfer";
+        case "check":
+            return "Check";
+        case "other":
+            return "Other";
+        default:
+            return "Cash";
+    }
+}
+
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -90,13 +107,40 @@ serve(async (req) => {
         }
 
         // 5) body
-        const { user_id, from, to } = await req.json();
+        const body = await req.json();
+
+        const {
+            user_id,
+            from,
+            to,
+            payment_method = "cash",
+            payment_note = null,
+        } = body;
+
         if (!user_id || !from || !to) {
             return new Response(JSON.stringify({ error: "user_id, from, to required" }), {
                 status: 400,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
         }
+
+        const normalizedMethod = String(payment_method ?? "cash")
+            .toLowerCase()
+            .trim();
+
+        const allowedMethods = ["cash", "card", "transfer", "check", "other"];
+
+        if (!allowedMethods.includes(normalizedMethod)) {
+            return new Response(JSON.stringify({ error: "Invalid payment_method" }), {
+                status: 400,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
+
+        const cleanPaymentNote =
+            typeof payment_note === "string" && payment_note.trim() !== ""
+                ? payment_note.trim()
+                : null;
 
         // 🔎 get worker info
         const { data: worker, error: workerErr } = await supabase
@@ -150,6 +194,8 @@ serve(async (req) => {
                 period_to: to,
                 total_hours: totalHours,
                 total_amount: totalAmount,
+                payment_method: normalizedMethod,
+                payment_note: cleanPaymentNote,
             })
             .select()
             .single();
@@ -200,6 +246,9 @@ serve(async (req) => {
             });
 
         const periodText = `${formatDate(from)} → ${formatDate(to)}`;
+
+        const paymentMethodText = paymentMethodLabel(normalizedMethod);
+        const paymentNoteText = cleanPaymentNote ? escapeHtml(cleanPaymentNote) : "";
 
         const html = `<!doctype html>
 <html style="margin:0;padding:0;background:#0B0D12;">
@@ -411,6 +460,30 @@ serve(async (req) => {
                       </table>
 
                       <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
+                      
+                      <!-- PAYMENT METHOD -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td width="42" valign="middle" style="padding:10px 0;">
+      <table role="presentation" width="32" cellpadding="0" cellspacing="0" border="0"
+             style="background:rgba(52,211,153,0.08);
+                    border:1px solid rgba(52,211,153,0.14);
+                    border-radius:10px;">
+        <tr><td align="center" valign="middle" style="height:32px;font-size:14px;">💳</td></tr>
+      </table>
+    </td>
+    <td width="118" valign="middle"
+        style="padding:10px 0;color:rgba(183,188,203,0.88);font-size:12px;font-weight:800;letter-spacing:0.5px;">
+      Method
+    </td>
+    <td valign="middle"
+        style="padding:10px 0;color:#FFFFFF;font-size:14px;font-weight:900;word-break:break-word;">
+      ${escapeHtml(paymentMethodText)}
+    </td>
+  </tr>
+</table>
+
+<div style="height:1px;background:rgba(255,255,255,0.06);"></div>
 
                       <!-- TOTAL HOURS -->
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -507,12 +580,12 @@ serve(async (req) => {
                   <tr>
                     <td style="padding:14px 16px 14px 16px;">
                       <div style="color:#F3F5F8;font-size:13px;line-height:18px;font-weight:900;">
-                        Payment note
-                      </div>
-                      <div style="height:6px;"></div>
-                      <div style="color:rgba(183,188,203,0.84);font-size:12.5px;line-height:19px;font-weight:700;">
-                        If you have any questions about this payment, please contact your administrator.
-                      </div>
+  Payment note
+</div>
+<div style="height:6px;"></div>
+<div style="color:rgba(183,188,203,0.84);font-size:12.5px;line-height:19px;font-weight:700;">
+  ${paymentNoteText || "If you have any questions about this payment, please contact your administrator."}
+</div>
                     </td>
                   </tr>
                 </table>

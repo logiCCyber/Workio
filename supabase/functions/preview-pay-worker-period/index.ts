@@ -34,7 +34,14 @@ serve(async (req) => {
 
     // 3) тело
     const body = await req.json();
-    const { user_id, from, to } = body;
+
+    const {
+      user_id,
+      from,
+      to,
+      payment_method = "cash",
+      payment_note = null,
+    } = body;
 
     if (!user_id || !from || !to) {
       return new Response(JSON.stringify({ error: "user_id, from, to required" }), {
@@ -42,6 +49,24 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    const normalizedMethod = String(payment_method ?? "cash")
+        .toLowerCase()
+        .trim();
+
+    const allowedMethods = ["cash", "card", "transfer", "check", "other"];
+
+    if (!allowedMethods.includes(normalizedMethod)) {
+      return new Response(JSON.stringify({ error: "Invalid payment_method" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const cleanPaymentNote =
+        typeof payment_note === "string" && payment_note.trim() !== ""
+            ? payment_note.trim()
+            : null;
 
     // ✅ Берём смены (закончены, но не оплачены) за период
     const { data: rows, error } = await supabase
@@ -65,16 +90,18 @@ serve(async (req) => {
     const total_amount = (rows ?? []).reduce((s, r) => s + Number(r.total_payment ?? 0), 0);
 
     return new Response(
-      JSON.stringify({
-        user_id,
-        from,
-        to,
-        shifts: rows?.length ?? 0,
-        total_hours,
-        total_amount,
-        rows: rows ?? [],
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
+        JSON.stringify({
+          user_id,
+          from,
+          to,
+          shifts: rows?.length ?? 0,
+          total_hours,
+          total_amount,
+          rows: rows ?? [],
+          payment_method: normalizedMethod,
+          payment_note: cleanPaymentNote,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e) }), {

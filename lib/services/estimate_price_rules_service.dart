@@ -73,6 +73,36 @@ class EstimatePriceRulesService {
     );
   }
 
+  static Future<EstimatePriceRuleModel?> findBestRuleByServiceType(
+      String serviceType,
+      ) async {
+    final normalized = serviceType.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
+
+    // 1) Сначала пробуем main
+    final mainRule = await findMainRule(normalized);
+    if (mainRule != null) return mainRule;
+
+    // 2) Если main нет — берём любой active rule этого service_type
+    final adminAuthId = _requireAdminAuthId();
+
+    final response = await _client
+        .from(_table)
+        .select()
+        .eq('admin_auth_id', adminAuthId)
+        .eq('service_type', normalized)
+        .eq('is_active', true)
+        .order('category')
+        .limit(1);
+
+    final list = response as List;
+    if (list.isEmpty) return null;
+
+    return EstimatePriceRuleModel.fromMap(
+      Map<String, dynamic>.from(list.first),
+    );
+  }
+
   static Future<EstimatePriceRuleModel?> getRuleById(String id) async {
     final adminAuthId = _requireAdminAuthId();
 

@@ -261,14 +261,24 @@ class EstimateQuestionService {
     required bool? projectSizeRequired,
     required bool hasDetailedMaterials,
   }) {
-    if (projectSizeRequired != null) {
-      return projectSizeRequired;
-    }
-
     final normalizedUnit =
     (currentRule?.unit ?? '').toString().trim().toLowerCase();
 
+    // Price Rule unit is the main truth.
+    // Fixed/item/hour services should NOT ask for sqft or rooms.
+    if (normalizedUnit == 'fixed' ||
+        normalizedUnit == 'item' ||
+        normalizedUnit == 'hour') {
+      return false;
+    }
+
+    // Only size-based rules require size.
     if (normalizedUnit == 'sqft' || normalizedUnit == 'room') {
+      return true;
+    }
+
+    // Fallback only when unit is unknown.
+    if (projectSizeRequired == true && !hasDetailedMaterials) {
       return true;
     }
 
@@ -547,8 +557,7 @@ class EstimateQuestionService {
         rule: rule,
       );
 
-      final effectiveIsRequired =
-      parsedMaterials.isEmpty ? isRequired : false;
+      final effectiveIsRequired = false;
 
       if (key.isEmpty || question.isEmpty || answerType.isEmpty) {
         continue;

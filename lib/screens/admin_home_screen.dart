@@ -1727,15 +1727,6 @@ const _warningAccentPool = <Color>[
   Color(0xFF2DD4BF), // teal
 ];
 
-const _warningBgPool = <Color>[
-  Color(0xFF1B1D23),
-  Color(0xFF1C1F26),
-  Color(0xFF1E2028),
-  Color(0xFF20222A),
-  Color(0xFF1A1C22),
-  Color(0xFF21242C),
-];
-
 
 class _WarningItem {
   final String warningKey;
@@ -2427,8 +2418,6 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
   bool _loadingDb = false;
   int _index = 0;
   bool _expanded = false;
-  late final int _bgSeed;
-  late final List<Color> _bgShuffled;
 
   late final AnimationController _restoreFx = AnimationController(
     vsync: this,
@@ -3052,8 +3041,6 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
   @override
   void initState() {
     super.initState();
-    _bgSeed = Random().nextInt(0x7fffffff);
-    _bgShuffled = [..._warningBgPool]..shuffle(Random(_bgSeed));
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _reloadAllWarnings();
@@ -3399,9 +3386,7 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
     if (_index >= visible.length) _index = 0;
 
     final has = visible.isNotEmpty;
-    final bgBase = has
-        ? _bgShuffled[_index % _bgShuffled.length]
-        : Color.lerp(AppPalette.cardBottom, Colors.black, 0.12)!;
+    final bgBase = const Color(0xFF1F2025);
 
     final canRestoreAll = visible.isEmpty && hiddenNow.isNotEmpty;
 
@@ -4316,17 +4301,21 @@ class _WorkerRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Text(
-          _statusText(),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: _statusColor(),
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
+
+        if (mode != 'active') ...[
+          Text(
+            _statusText(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: _statusColor(),
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
+          const SizedBox(width: 8),
+        ],
+
         Icon(
           Icons.chevron_right_rounded,
           color: Colors.white.withOpacity(0.42),

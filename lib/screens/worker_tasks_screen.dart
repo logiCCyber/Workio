@@ -29,6 +29,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
   final Map<String, bool> _expandedSubtasks = {};
 
   final Map<String, TextEditingController> _noteCtrls = {};
+  final Map<String, String> _draftTaskStatuses = {};
 
   String _uploadedByLabel(Map<String, dynamic> attachment) {
     final role = _s(attachment['uploaded_by_role']).toLowerCase();
@@ -552,6 +553,39 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
     }
 
     return groups;
+  }
+
+  List<Map<String, dynamic>> _visibleTasksOnly(List<Map<String, dynamic>> input) {
+    var tasks = List<Map<String, dynamic>>.from(input);
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    tasks = tasks.where((t) {
+      final status = _s(t['status']).toLowerCase();
+
+      if (status != 'done') return true;
+
+      final completedAt = DateTime.tryParse(_s(t['completed_at']))?.toLocal();
+      if (completedAt == null) return true;
+
+      final completedDay = DateTime(
+        completedAt.year,
+        completedAt.month,
+        completedAt.day,
+      );
+
+      return completedDay == today;
+    }).toList();
+
+    tasks = tasks.where((t) {
+      final due = DateTime.tryParse(_s(t['due_at']))?.toLocal();
+      if (due == null) return true;
+
+      return !due.isBefore(DateTime.now());
+    }).toList();
+
+    return tasks;
   }
 
   @override
@@ -1140,7 +1174,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       taskId,
       () => TextEditingController(),
     );
-    String status = _s(task['status']).isEmpty ? 'todo' : _s(task['status']);
+    String status = _draftTaskStatuses[taskId] ??
+        (_s(task['status']).isEmpty ? 'todo' : _s(task['status']));
 
     final description = _s(task['description']);
     final cleanDescription = TaskService.stripChecklistFromDescription(description);
@@ -1287,7 +1322,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                 ),
                                 onSelected: isLockedNow()
                                     ? (_) {}
-                                    : (v) => setLocalState(() => status = v),
+                                    : (v) {
+                                  setState(() {
+                                    _draftTaskStatuses[taskId] = v;
+                                  });
+                                },
                                 itemBuilder: (_) => [
                                   _statusMenuItem(
                                     value: 'todo',
@@ -1846,36 +1885,23 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
                                                       if (!confirmed) return;
 
-                                                      try {
-                                                        await TaskService.setTaskSubtaskStatus(
-                                                          subtaskId: subtaskId,
-                                                          status: reason,
-                                                        );
-
-                                                        setLocalState(() {
-                                                          for (final st in subtasks) {
-                                                            final id = _s(st['id']);
-                                                            if (id.isNotEmpty && id != subtaskId) {
-                                                              _expandedSubtasks[id] = false;
-                                                            }
+                                                      setLocalState(() {
+                                                        for (final st in subtasks) {
+                                                          final id = _s(st['id']);
+                                                          if (id.isNotEmpty && id != subtaskId) {
+                                                            _expandedSubtasks[id] = false;
                                                           }
+                                                        }
 
-                                                          _reasonTargetSubtaskByTask[taskId] = subtaskId;
-                                                          _reasonTargetStatusByTask[taskId] = reason;
-                                                          _expandedSubtasks[subtaskId] = true;
-                                                          noteCtrl.text = _reasonPrefix(reason);
-                                                          noteCtrl.selection = TextSelection.collapsed(
-                                                            offset: noteCtrl.text.length,
-                                                          );
-                                                        });
-                                                      } catch (e) {
-                                                        if (!mounted) return;
-                                                        _showTaskToast(
-                                                          'Status update failed: $e',
-                                                          icon: Icons.error_outline_rounded,
-                                                          accent: _TaskPalette.red,
+                                                        _reasonTargetSubtaskByTask[taskId] = subtaskId;
+                                                        _reasonTargetStatusByTask[taskId] = reason;
+                                                        _expandedSubtasks[subtaskId] = true;
+
+                                                        noteCtrl.text = _reasonPrefix(reason);
+                                                        noteCtrl.selection = TextSelection.collapsed(
+                                                          offset: noteCtrl.text.length,
                                                         );
-                                                      }
+                                                      });
                                                     },
                                                   ),
                                                 ],
@@ -2432,6 +2458,8 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                               status: _s(status).isEmpty ? 'todo' : _s(status),
                               workerNote: text.isEmpty ? savedWorkerNote : text,
                             );
+
+                            _draftTaskStatuses.remove(taskId);
 
                             setLocalState(() {
                               if (text.isNotEmpty) {

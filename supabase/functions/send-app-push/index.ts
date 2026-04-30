@@ -118,6 +118,17 @@ Deno.serve(async (req) => {
 
         const results = []
 
+        const pushType = dataPayload['type'] ?? ''
+
+        const androidIcon =
+            pushType === 'chat'
+                ? 'ic_push_chat'
+                : pushType === 'task'
+                    ? 'ic_push_task'
+                    : pushType === 'reminder'
+                        ? 'ic_push_reminder'
+                        : 'ic_push_default'
+
         for (const row of rows) {
             const message: Record<string, unknown> = {
                 token: row.token,
@@ -129,6 +140,7 @@ Deno.serve(async (req) => {
                     priority: 'high',
                     notification: {
                         sound: 'default',
+                        icon: androidIcon,
                     },
                 },
                 apns: {

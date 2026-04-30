@@ -19,13 +19,13 @@ class EstimatePricingEngineService {
     final serviceType = (parsed.serviceType ?? '').trim().toLowerCase();
     if (serviceType.isEmpty) return const [];
 
-    final rule = await EstimatePriceRulesService.findMainRule(serviceType);
+    final rule = await EstimatePriceRulesService.findBestRuleByServiceType(serviceType);
     if (rule == null) {
       return const [];
     }
 
     final items = <EstimateItemModel>[];
-    final quantity = _resolveDynamicQuantity(parsed, rule.unit);
+    final quantity = _resolveDynamicQuantity(parsed, rule);
 
     if (quantity <= 0) {
       return const [];
@@ -97,13 +97,29 @@ class EstimatePricingEngineService {
 
     if (materialsIncluded) {
       if (parsed.parsedMaterials.isNotEmpty) {
-        items.addAll(
-          _buildParsedMaterialItems(
-            parsedMaterials: parsed.parsedMaterials,
-            fallbackTitle: materialsTitle,
-            fallbackDescription: materialsDescription,
-          ),
+        final parsedMaterialItems = _buildParsedMaterialItems(
+          parsedMaterials: parsed.parsedMaterials,
+          fallbackTitle: materialsTitle,
+          fallbackDescription: materialsDescription,
         );
+
+        if (parsedMaterialItems.isNotEmpty) {
+          items.addAll(parsedMaterialItems);
+        } else {
+          final fixedRate = rule.materialFixedRate ?? 0;
+
+          if (fixedRate > 0) {
+            items.add(
+              _item(
+                title: materialsTitle,
+                description: materialsDescription,
+                unit: 'fixed',
+                quantity: 1,
+                unitPrice: fixedRate,
+              ),
+            );
+          }
+        }
       } else {
         final perSqftRate = rule.materialRatePerSqft ?? 0;
         final fixedRate = rule.materialFixedRate ?? 0;
@@ -162,15 +178,24 @@ class EstimatePricingEngineService {
 
     for (final material in parsedMaterials) {
       final rawName = (material['name'] ?? '').toString().trim();
+      final normalizedName = _normalizeMaterialName(rawName);
       final quantity = _toPositiveDouble(material['quantity']) ?? 1;
-      final unitPrice = _toPositiveDouble(material['unit_price']) ?? 0;
+      final lineTotal = _toPositiveDouble(material['line_total']);
+      final unitPriceFromPrompt = _toPositiveDouble(material['unit_price']);
+
+      final unitPrice = unitPriceFromPrompt ??
+          (lineTotal != null && quantity > 0 ? lineTotal / quantity : 0);
+
+      if (unitPrice <= 0) {
+        continue;
+      }
       final measureValue = _toPositiveDouble(material['measure_value']);
       final measureUnit = (material['measure_unit'] ?? '').toString().trim();
       final rawText = (material['raw_text'] ?? '').toString().trim();
 
-      final title = rawName.isEmpty
+      final title = normalizedName.isEmpty
           ? fallbackTitle
-          : _toTitleCase(rawName);
+          : _toTitleCase(normalizedName);
 
       final description = _buildParsedMaterialDescription(
         rawName: rawName,
@@ -249,11 +274,159 @@ class EstimatePricingEngineService {
         .join(' ');
   }
 
+  static String _normalizeMaterialName(String value) {
+    final text = value.trim().toLowerCase();
+
+    const replacements = {
+      'wirings': 'wiring',
+      'wires': 'wire',
+      'bulbs': 'bulb',
+      'outlets': 'outlet',
+      'pipes': 'pipe',
+      'fittings': 'fitting',
+    };
+
+    return replacements[text] ?? value.trim();
+  }
+
+  static String _normalizeForQuantity(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static String _workOnlyPrompt(String rawPrompt) {
+    var text = rawPrompt.trim();
+
+    final requestMatch = RegExp(
+      r'request\s*:\s*(.*)$',
+      caseSensitive: false,
+      dotAll: true,
+    ).firstMatch(text);
+
+    if (requestMatch != null) {
+      text = requestMatch.group(1)?.trim() ?? text;
+    }
+
+    final materialMarker = RegExp(
+      r'\b(materials?\s+(are\s+)?included|materials?)\s*:',
+      caseSensitive: false,
+    ).firstMatch(text);
+
+    if (materialMarker != null) {
+      text = text.substring(0, materialMarker.start).trim();
+    }
+
+    return _normalizeForQuantity(text);
+  }
+
+  static bool _isGenericQuantityWord(String word) {
+    const genericWords = {
+      'repair',
+      'fix',
+      'install',
+      'installation',
+      'replace',
+      'replacement',
+      'service',
+      'job',
+      'work',
+      'urgent',
+      'rush',
+      'asap',
+      'labor',
+      'labour',
+      'materials',
+      'included',
+      'main',
+      'new',
+      'old',
+      'and',
+      'the',
+      'for',
+      'with',
+      'from',
+      'into',
+      'inside',
+      'outside',
+      'room',
+      'kitchen',
+      'bathroom',
+      'bedroom',
+    };
+
+    return genericWords.contains(word);
+  }
+
+  static Set<String> _ruleQuantityWords(EstimatePriceRuleModel rule) {
+    final raw = <String>[
+      rule.serviceType,
+      rule.displayName ?? '',
+      ...rule.aliases,
+      ...rule.aiKeywords,
+    ];
+
+    final words = <String>{};
+
+    for (final value in raw) {
+      final normalized = _normalizeForQuantity(value);
+
+      for (final word in normalized.split(' ')) {
+        final clean = word.trim();
+        if (clean.length < 3) continue;
+        if (_isGenericQuantityWord(clean)) continue;
+
+        words.add(clean);
+
+        if (clean.endsWith('s') && clean.length > 4) {
+          words.add(clean.substring(0, clean.length - 1));
+        } else {
+          words.add('${clean}s');
+        }
+      }
+    }
+
+    return words;
+  }
+
+  static double _countRuleItemsInWorkPrompt(
+      String rawPrompt,
+      EstimatePriceRuleModel rule,
+      ) {
+    final text = _workOnlyPrompt(rawPrompt);
+    if (text.isEmpty) return 0;
+
+    final words = _ruleQuantityWords(rule);
+    if (words.isEmpty) return 0;
+
+    final tokens = text.split(' ').where((e) => e.trim().isNotEmpty).toList();
+
+    double total = 0;
+
+    for (var i = 0; i < tokens.length; i++) {
+      final number = double.tryParse(tokens[i].replaceAll(',', '.'));
+      if (number == null || number <= 0) continue;
+
+      final end = (i + 6) > tokens.length ? tokens.length : i + 6;
+      final window = tokens.sublist(i + 1, end);
+
+      final hasRuleWord = window.any((token) => words.contains(token));
+
+      if (hasRuleWord) {
+        total += number;
+      }
+    }
+
+    return total;
+  }
+
   static double _resolveDynamicQuantity(
       AiParsedRequestModel parsed,
-      String unit,
+      EstimatePriceRuleModel rule,
       ) {
-    final normalizedUnit = unit.trim().toLowerCase();
+    final normalizedUnit = rule.unit.trim().toLowerCase();
 
     if (normalizedUnit == 'sqft') {
       if ((parsed.sqft ?? 0) > 0) return parsed.sqft!;
@@ -271,7 +444,8 @@ class EstimatePricingEngineService {
     }
 
     if (normalizedUnit == 'item') {
-      return 1;
+      final count = _countRuleItemsInWorkPrompt(parsed.rawPrompt, rule);
+      return count > 0 ? count : 1;
     }
 
     if (normalizedUnit == 'fixed') {

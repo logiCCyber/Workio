@@ -90,15 +90,43 @@ Deno.serve(async (req) => {
           )
         : {}
 
+    if (!dataPayload['type']) {
+      dataPayload['type'] = 'reminder'
+    }
+
+    const pushType = dataPayload['type'] ?? 'reminder'
+
+    const androidIcon =
+        pushType === 'chat'
+            ? 'ic_push_chat'
+            : pushType === 'task'
+                ? 'ic_push_task'
+                : pushType === 'reminder'
+                    ? 'ic_push_reminder'
+                    : 'ic_push_default'
+
+    const cleanTitle =
+        pushType === 'reminder' && !String(title).startsWith('Reminder •')
+            ? `Reminder • ${title}`
+            : title
+
+    console.log('SEND ADMIN PUSH RAW TITLE:', title)
+    console.log('SEND ADMIN PUSH CLEAN TITLE:', cleanTitle)
+    console.log('SEND ADMIN PUSH DATA:', dataPayload)
+    console.log('SEND ADMIN PUSH ICON:', androidIcon)
+
     const results = []
 
     for (const row of rows) {
       const message: Record<string, unknown> = {
         token: row.token,
-        notification: { title, body },
+        notification: { title: cleanTitle, body },
         android: {
           priority: 'high',
-          notification: { sound: 'default' },
+          notification: {
+            sound: 'default',
+            icon: androidIcon,
+          },
         },
         apns: {
           headers: { 'apns-priority': '10' },

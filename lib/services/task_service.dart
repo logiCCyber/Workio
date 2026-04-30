@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'app_push_service.dart';
 
 class TaskService {
   TaskService();
@@ -12,6 +13,321 @@ class TaskService {
   static final ImagePicker _picker = ImagePicker();
 
   static String _s(Object? v) => (v ?? '').toString().trim();
+
+  static String _shortText(String value, {int max = 90}) {
+    final text = value.trim();
+    if (text.length <= max) return text;
+    return '${text.substring(0, max)}...';
+  }
+
+  static String _prettyStatus(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'todo':
+        return 'To do';
+      case 'in_progress':
+        return 'In progress';
+      case 'done':
+        return 'Done';
+      case 'cancelled':
+        return 'Cancelled';
+      case 'blocked':
+        return 'Blocked';
+      case 'not_needed':
+        return 'Not needed';
+      case 'partial':
+        return 'Partially done';
+      default:
+        return status.trim().isEmpty ? 'Updated' : status.trim();
+    }
+  }
+
+  static String _taskPushTitleForStatus({
+    required String status,
+    String? workerName,
+  }) {
+    final clean = status.trim().toLowerCase();
+    final by = workerName == null || workerName.trim().isEmpty
+        ? ''
+        : ' by ${workerName.trim()}';
+
+    switch (clean) {
+      case 'done':
+        return 'Task • Completed$by';
+      case 'cancelled':
+        return 'Task • Cancelled$by';
+      case 'in_progress':
+        return 'Task • Started$by';
+      case 'needs_review':
+        return 'Task • Needs review$by';
+      default:
+        return 'Task • Status changed$by';
+    }
+  }
+
+  static String _taskPushTitleForUpdate({
+    required List<String> changedParts,
+    String? workerName,
+  }) {
+    final hasStatus = changedParts.any(
+          (e) => e.trim().toLowerCase().startsWith('status'),
+    );
+
+    if (hasStatus) {
+      return _taskPushTitleForStatus(
+        status: '',
+        workerName: workerName,
+      );
+    }
+
+    final by = workerName == null || workerName.trim().isEmpty
+        ? ''
+        : ' by ${workerName.trim()}';
+
+    if (changedParts.any((e) => e.toLowerCase().contains('due'))) {
+      return 'Task • Due date changed$by';
+    }
+
+    if (changedParts.any((e) => e.toLowerCase().contains('priority'))) {
+      return 'Task • Priority changed$by';
+    }
+
+    if (changedParts.any((e) => e.toLowerCase().contains('note'))) {
+      return 'Task • Note updated$by';
+    }
+
+    return 'Task • Updated$by';
+  }
+
+  static String _taskPushStatusBody({
+    required String taskTitle,
+    required String status,
+  }) {
+    final title = taskTitle.trim().isEmpty ? 'Task' : taskTitle.trim();
+    return '$title • ${_prettyStatus(status)}';
+  }
+
+  // =========================================================
+  // ATTACHMENTS
+  // =========================================================
+
+  static bool _isProofAttachmentUpload({
+    required Map<String, dynamic> upload,
+    String? proofSubtaskId,
+    String? proofKind,
+    Map<String, dynamic>? proofMeta,
+  }) {
+    final fileName = _s(upload['file_name']).toLowerCase();
+    final mediaPath = _s(upload['media_path']).toLowerCase();
+
+    if (_s(proofSubtaskId).isNotEmpty) return true;
+    if (_s(proofKind).isNotEmpty) return true;
+    if (proofMeta != null && proofMeta.isNotEmpty) return true;
+
+    return fileName.startsWith('proof__') || mediaPath.contains('proof__');
+  }
+
+  static Future<String> _attachmentWorkerName(String workerAuthId) async {
+    final id = workerAuthId.trim();
+    if (id.isEmpty) return 'Worker';
+
+    try {
+      final row = await _supabase
+          .from('workers')
+          .select('name, email')
+          .eq('auth_user_id', id)
+          .maybeSingle();
+
+      if (row == null) return 'Worker';
+
+      final map = Map<String, dynamic>.from(row as Map);
+      final name = _s(map['name']);
+      if (name.isNotEmpty) return name;
+
+      final email = _s(map['email']);
+      if (email.isNotEmpty) return email;
+
+      return 'Worker';
+    } catch (_) {
+      return 'Worker';
+    }
+  }
+
+  static Future<void> _notifyTaskAttachmentUploaded({
+    required String taskId,
+    required String uploadedByRole, // admin | worker
+    required String attachmentType, // image | file
+    required Map<String, dynamic> upload,
+    String? proofSubtaskId,
+    String? proofKind,
+    Map<String, dynamic>? proofMeta,
+  }) async {
+    try {
+      // ✅ proof photo от checklist не пушим второй раз
+      if (_isProofAttachmentUpload(
+        upload: upload,
+        proofSubtaskId: proofSubtaskId,
+        proofKind: proofKind,
+        proofMeta: proofMeta,
+      )) {
+        return;
+      }
+
+      final task = await _fetchTaskById(taskId);
+      if (task == null) return;
+
+      final cleanRole = uploadedByRole.trim().toLowerCase();
+      final cleanType = attachmentType.trim().toLowerCase();
+
+      final isImage = cleanType == 'image';
+      final eventType = isImage ? 'photo_added' : 'file_added';
+
+      final taskTitle = _s(task['title']).isEmpty ? 'Task' : _s(task['title']);
+      final fileName = _s(upload['file_name']);
+      final bodyFile = fileName.isEmpty
+          ? (isImage ? 'Photo' : 'File')
+          : fileName;
+
+      try {
+        await _insertTaskEvent(
+          taskId: taskId,
+          actorRole: cleanRole,
+          eventType: eventType,
+          meta: {
+            'attachment_type': cleanType,
+            'file_name': fileName,
+          },
+        );
+      } catch (e) {
+        debugPrint('TASK ATTACHMENT EVENT ERROR: $e');
+      }
+
+      if (cleanRole == 'worker') {
+        final adminAuthId = _s(task['admin_auth_id']);
+        if (adminAuthId.isEmpty) return;
+
+        final workerName = await _attachmentWorkerName(_s(task['worker_auth_id']));
+
+        await AppPushService.send(
+          toUserId: adminAuthId,
+          role: 'admin',
+          title: isImage
+              ? 'Task • Photo uploaded by $workerName'
+              : 'Task • File uploaded by $workerName',
+          body: '$taskTitle • $bodyFile',
+          data: {
+            'type': 'task',
+            'task_id': taskId,
+            'event_type': eventType,
+            'attachment_type': cleanType,
+            'uploaded_by_role': 'worker',
+          },
+        );
+
+        return;
+      }
+
+      if (cleanRole == 'admin') {
+        final workerAuthId = _s(task['worker_auth_id']);
+        if (workerAuthId.isEmpty) return;
+
+        await AppPushService.send(
+          toUserId: workerAuthId,
+          role: 'worker',
+          title: isImage
+              ? 'Task • Photo uploaded'
+              : 'Task • File uploaded',
+          body: '$taskTitle • $bodyFile',
+          data: {
+            'type': 'task',
+            'task_id': taskId,
+            'event_type': eventType,
+            'attachment_type': cleanType,
+            'uploaded_by_role': 'admin',
+          },
+        );
+      }
+    } catch (e) {
+      debugPrint('TASK ATTACHMENT PUSH ERROR: $e');
+    }
+  }
+
+  static Future<String> _workerDisplayName(String workerAuthId) async {
+    final id = workerAuthId.trim();
+    if (id.isEmpty) return 'Worker';
+
+    try {
+      final row = await _supabase
+          .from('workers')
+          .select('name, email')
+          .eq('auth_user_id', id)
+          .maybeSingle();
+
+      if (row == null) return 'Worker';
+
+      final map = Map<String, dynamic>.from(row as Map);
+      final name = _s(map['name']);
+      if (name.isNotEmpty) return name;
+
+      final email = _s(map['email']);
+      if (email.isNotEmpty) return email;
+
+      return 'Worker';
+    } catch (_) {
+      return 'Worker';
+    }
+  }
+
+  static Future<void> _pushTaskToWorker({
+    required Map<String, dynamic> task,
+    required String title,
+    required String body,
+    required String eventType,
+    Map<String, dynamic>? extraData,
+  }) async {
+    final workerAuthId = _s(task['worker_auth_id']);
+    final taskId = _s(task['id']);
+
+    if (workerAuthId.isEmpty || taskId.isEmpty) return;
+
+    await AppPushService.send(
+      toUserId: workerAuthId,
+      role: 'worker',
+      title: title,
+      body: _shortText(body),
+      data: {
+        'type': 'task',
+        'task_id': taskId,
+        'event_type': eventType,
+        ...?extraData,
+      },
+    );
+  }
+
+  static Future<void> _pushTaskToAdmin({
+    required Map<String, dynamic> task,
+    required String title,
+    required String body,
+    required String eventType,
+    Map<String, dynamic>? extraData,
+  }) async {
+    final adminAuthId = _s(task['admin_auth_id']);
+    final taskId = _s(task['id']);
+
+    if (adminAuthId.isEmpty || taskId.isEmpty) return;
+
+    await AppPushService.send(
+      toUserId: adminAuthId,
+      role: 'admin',
+      title: title,
+      body: _shortText(body),
+      data: {
+        'type': 'task',
+        'task_id': taskId,
+        'event_type': eventType,
+        ...?extraData,
+      },
+    );
+  }
 
   static final RegExp _checklistRegExp =
   RegExp(r'^\s*(?:\d+[.):]|[-•])\s+(.+?)\s*$');
@@ -348,6 +664,17 @@ class TaskService {
 
       final created = Map<String, dynamic>.from(inserted);
 
+      await _pushTaskToWorker(
+        task: created,
+        title: 'Task • New assignment',
+        body: '$cleanTitle • ${priority.toUpperCase()}',
+        eventType: 'task_created',
+        extraData: {
+          'priority': priority,
+          'status': 'todo',
+        },
+      );
+
       try {
         await _insertTaskEvent(
           taskId: _s(created['id']),
@@ -490,6 +817,66 @@ class TaskService {
         meta: {'is_archived': isArchived},
       );
     }
+
+    final changedParts = <String>[];
+
+    if (_s(existing['title']) != cleanTitle) {
+      changedParts.add('title');
+    }
+
+    if (!_sameNullableText(oldDescriptionBody, newDescriptionBody)) {
+      changedParts.add('description');
+    }
+
+    if (_s(existing['priority']).toLowerCase() != priority.toLowerCase()) {
+      changedParts.add('priority');
+    }
+
+    if (!_sameDueValue(existing['due_at'], dueAt)) {
+      changedParts.add('due time');
+    }
+
+    if (cleanStatus.isNotEmpty &&
+        _s(existing['status']).toLowerCase() != cleanStatus.toLowerCase()) {
+      changedParts.add('status ${_prettyStatus(cleanStatus)}');
+    }
+
+    if (isArchived != null && (existing['is_archived'] == true) != isArchived) {
+      changedParts.add(isArchived ? 'archived' : 'unarchived');
+    }
+
+    if (changedParts.isNotEmpty) {
+      final nextStatus = cleanStatus.isEmpty
+          ? _s(existing['status'])
+          : cleanStatus;
+
+      final statusWasChanged = cleanStatus.isNotEmpty &&
+          _s(existing['status']).toLowerCase() != cleanStatus.toLowerCase();
+
+      await _pushTaskToWorker(
+        task: {
+          ...existing,
+          'id': taskId,
+          'title': cleanTitle,
+          'priority': priority,
+          'status': nextStatus,
+        },
+        title: statusWasChanged
+            ? _taskPushTitleForStatus(status: nextStatus)
+            : _taskPushTitleForUpdate(changedParts: changedParts),
+        body: statusWasChanged
+            ? _taskPushStatusBody(
+          taskTitle: cleanTitle,
+          status: nextStatus,
+        )
+            : '$cleanTitle • ${changedParts.join(', ')}',
+        eventType: statusWasChanged ? 'status_changed' : 'task_updated',
+        extraData: {
+          'changes': changedParts.join(','),
+          'status': nextStatus,
+        },
+      );
+    }
   }
 
   static Future<void> archiveAdminTask(String taskId) async {
@@ -605,12 +992,6 @@ class TaskService {
         final acknowledged = _s(e['worker_acknowledged_at']).isNotEmpty;
         return !(isTerminal && acknowledged);
       })
-          .where((e) {
-        final status = _s(e['status']).toLowerCase();
-        final isTerminal = status == 'done' || status == 'cancelled';
-        final acknowledged = _s(e['worker_acknowledged_at']).isNotEmpty;
-        return !(isTerminal && acknowledged);
-      })
           .toList();
 
       list.sort((a, b) {
@@ -668,6 +1049,47 @@ class TaskService {
         meta: {'has_note': cleanWorkerNote != null},
       );
     }
+
+    final changedParts = <String>[];
+
+    if (_s(existing['status']).toLowerCase() != cleanStatus.toLowerCase()) {
+      changedParts.add('status ${_prettyStatus(cleanStatus)}');
+    }
+
+    if (!_sameNullableText(_s(existing['worker_note']), cleanWorkerNote)) {
+      changedParts.add('note');
+    }
+
+    if (changedParts.isNotEmpty) {
+      final workerName = await _workerDisplayName(_s(existing['worker_auth_id']));
+
+      final statusWasChanged =
+          _s(existing['status']).toLowerCase() != cleanStatus.toLowerCase();
+
+      await _pushTaskToAdmin(
+        task: existing,
+        title: statusWasChanged
+            ? _taskPushTitleForStatus(
+          status: cleanStatus,
+          workerName: workerName,
+        )
+            : _taskPushTitleForUpdate(
+          changedParts: changedParts,
+          workerName: workerName,
+        ),
+        body: statusWasChanged
+            ? _taskPushStatusBody(
+          taskTitle: _s(existing['title']),
+          status: cleanStatus,
+        )
+            : '${_s(existing['title'])} • ${changedParts.join(', ')}',
+        eventType: statusWasChanged ? 'status_changed' : 'worker_task_updated',
+        extraData: {
+          'worker_auth_id': _s(existing['worker_auth_id']),
+          'status': cleanStatus,
+        },
+      );
+    }
   }
 
   static Future<void> acknowledgeWorkerTerminalTask({
@@ -696,18 +1118,73 @@ class TaskService {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('No authenticated user');
 
+    final existingSubtask = await _fetchSubtaskById(subtaskId);
+    if (existingSubtask == null) {
+      throw Exception('Checklist item not found');
+    }
+
+    final taskId = _s(existingSubtask['task_id']);
+    final task = taskId.isEmpty ? null : await _fetchTaskById(taskId);
+
     final now = DateTime.now().toUtc().toIso8601String();
+    final cleanStatus = status.trim().toLowerCase();
+    final cleanNote = _nullableTrim(note);
 
     await _supabase.from('task_subtasks').update({
-      'status': status,
-      'status_note': _nullableTrim(note),
-      'is_done': status == 'done',
-      'done_at': status == 'done' ? now : null,
-      'done_by_auth_id': status == 'done' ? userId : null,
+      'status': cleanStatus,
+      'status_note': cleanNote,
+      'is_done': cleanStatus == 'done',
+      'done_at': cleanStatus == 'done' ? now : null,
+      'done_by_auth_id': cleanStatus == 'done' ? userId : null,
       'status_updated_at': now,
       'status_set_by_auth_id': userId,
       'updated_at': now,
     }).eq('id', subtaskId);
+
+    if (task == null) return;
+
+    final actorRole = await _resolveActorRoleForTask(taskId);
+    final subtaskTitle = _s(existingSubtask['title']);
+    final prettyStatus = _prettyStatus(cleanStatus);
+
+    await _insertTaskEvent(
+      taskId: taskId,
+      actorRole: actorRole,
+      eventType: 'subtask_status_changed',
+      meta: {
+        'subtask_id': subtaskId,
+        'subtask_title': subtaskTitle,
+        'status': cleanStatus,
+        'has_note': cleanNote != null,
+      },
+    );
+
+    if (actorRole == 'worker') {
+      final workerName = await _workerDisplayName(_s(task['worker_auth_id']));
+
+      await _pushTaskToAdmin(
+        task: task,
+        title: 'Task • Checklist updated by $workerName',
+        body: '$subtaskTitle • $prettyStatus',
+        eventType: 'subtask_status_changed',
+        extraData: {
+          'subtask_id': subtaskId,
+          'status': cleanStatus,
+          'worker_auth_id': _s(task['worker_auth_id']),
+        },
+      );
+    } else if (actorRole == 'admin') {
+      await _pushTaskToWorker(
+        task: task,
+        title: 'Task • Checklist updated',
+        body: '$subtaskTitle • $prettyStatus',
+        eventType: 'subtask_status_changed',
+        extraData: {
+          'subtask_id': subtaskId,
+          'status': cleanStatus,
+        },
+      );
+    }
   }
 
   // =========================================================
@@ -1171,6 +1648,16 @@ class TaskService {
       if (proofMeta != null && proofMeta.isNotEmpty)
         'proof_meta': proofMeta,
     });
+
+    await _notifyTaskAttachmentUploaded(
+      taskId: taskId,
+      uploadedByRole: 'admin',
+      attachmentType: 'image',
+      upload: upload,
+      proofSubtaskId: proofSubtaskId,
+      proofKind: proofKind,
+      proofMeta: proofMeta,
+    );
   }
 
   static Future<void> addWorkerTaskImage({
@@ -1202,6 +1689,16 @@ class TaskService {
       if (proofMeta != null && proofMeta.isNotEmpty)
         'proof_meta': proofMeta,
     });
+
+    await _notifyTaskAttachmentUploaded(
+      taskId: taskId,
+      uploadedByRole: 'worker',
+      attachmentType: 'image',
+      upload: upload,
+      proofSubtaskId: proofSubtaskId,
+      proofKind: proofKind,
+      proofMeta: proofMeta,
+    );
   }
 
   static Future<void> addAdminTaskFile({
@@ -1233,6 +1730,16 @@ class TaskService {
       if (proofMeta != null && proofMeta.isNotEmpty)
         'proof_meta': proofMeta,
     });
+
+    await _notifyTaskAttachmentUploaded(
+      taskId: taskId,
+      uploadedByRole: 'admin',
+      attachmentType: 'file',
+      upload: upload,
+      proofSubtaskId: proofSubtaskId,
+      proofKind: proofKind,
+      proofMeta: proofMeta,
+    );
   }
 
   static Future<void> addWorkerTaskFile({
@@ -1264,6 +1771,16 @@ class TaskService {
       if (proofMeta != null && proofMeta.isNotEmpty)
         'proof_meta': proofMeta,
     });
+
+    await _notifyTaskAttachmentUploaded(
+      taskId: taskId,
+      uploadedByRole: 'worker',
+      attachmentType: 'file',
+      upload: upload,
+      proofSubtaskId: proofSubtaskId,
+      proofKind: proofKind,
+      proofMeta: proofMeta,
+    );
   }
 
   // =========================================================
