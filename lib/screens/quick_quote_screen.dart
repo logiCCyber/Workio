@@ -1,5 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:io';
+import 'dart:convert';
 
 import '../models/ai_estimate_result_model.dart';
 import '../models/estimate_item_model.dart';
@@ -15,6 +19,7 @@ import '../models/estimate_model.dart';
 import '../services/client_service.dart';
 import '../services/property_service.dart';
 import '../services/estimate_service.dart';
+import '../services/estimate_price_rules_service.dart';
 
 import 'estimate_details_screen.dart';
 
@@ -27,10 +32,19 @@ class QuickQuoteScreen extends StatefulWidget {
 
 class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
   final TextEditingController _promptController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
+
+  bool _photoMode = false;
+  XFile? _selectedPhoto;
 
   bool _isLoading = true;
   bool _isGenerating = false;
   bool _isConverting = false;
+  bool _isAnalyzingPhoto = false;
+  String? _photoDetectedIssue;
+  String? _photoWarning;
+  String? _photoMatchedService;
+  double? _photoConfidence;
 
   List<ClientModel> _clients = [];
   List<PropertyModel> _properties = [];
@@ -148,6 +162,118 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
       _promptController.clear();
       _result = null;
     });
+  }
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 1600,
+      );
+
+      if (picked == null) return;
+
+      setState(() {
+        _selectedPhoto = picked;
+        _result = null;
+      });
+    } catch (_) {
+      _showSnack('Failed to pick photo');
+    }
+  }
+
+  void _clearPhoto() {
+    setState(() {
+      _selectedPhoto = null;
+      _result = null;
+    });
+  }
+
+  Future<void> _analyzePhotoQuote() async {
+    final photo = _selectedPhoto;
+
+    if (photo == null) {
+      _showSnack('Choose a photo first');
+      return;
+    }
+
+    setState(() {
+      _isAnalyzingPhoto = true;
+      _photoDetectedIssue = null;
+      _photoWarning = null;
+      _photoMatchedService = null;
+      _photoConfidence = null;
+      _result = null;
+    });
+
+    try {
+      final bytes = await photo.readAsBytes();
+      final imageBase64 = base64Encode(bytes);
+
+      final rules = await EstimatePriceRulesService.getRules();
+
+      final activeRules = rules
+          .where((rule) => rule.isActive == true)
+          .map((rule) {
+        return {
+          'service_type': rule.serviceType,
+          'display_name': rule.displayName,
+          'aliases': rule.aliases,
+          'ai_keywords': rule.aiKeywords,
+        };
+      }).toList();
+
+      final response = await Supabase.instance.client.functions.invoke(
+        'analyze-quick-quote-photo',
+        body: {
+          'imageBase64': imageBase64,
+          'mimeType': photo.mimeType ?? 'image/jpeg',
+          'priceRules': activeRules,
+        },
+      );
+
+      final data = Map<String, dynamic>.from(response.data as Map);
+
+      final matched = data['matched'] == true;
+      final confidence = (data['confidence'] is num)
+          ? (data['confidence'] as num).toDouble()
+          : 0.0;
+
+      if (!mounted) return;
+
+      if (!matched) {
+        setState(() {
+          _photoConfidence = confidence;
+          _photoDetectedIssue = (data['detected_issue'] ?? '').toString();
+          _photoWarning = (data['warning'] ?? 'No matching Price Rule found.').toString();
+        });
+
+        _showSnack('No matching Price Rule found');
+        return;
+      }
+
+      final suggestedPrompt = (data['suggested_prompt'] ?? '').toString().trim();
+
+      setState(() {
+        _photoMode = false;
+        _promptController.text = suggestedPrompt;
+        _photoConfidence = confidence;
+        _photoDetectedIssue = (data['detected_issue'] ?? '').toString();
+        _photoMatchedService = (data['service_label'] ?? '').toString();
+        _photoWarning = (data['warning'] ?? '').toString();
+      });
+
+      _showSnack('Photo analyzed. Review the suggested prompt.');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Failed to analyze photo');
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isAnalyzingPhoto = false;
+      });
+    }
   }
 
   Future<void> _loadPropertiesForClient(ClientModel client) async {
@@ -329,69 +455,122 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
           children: [
-            _SectionCard(
-              title: 'Text Quick Quote',
-              subtitle: 'Fast rough pricing using Price Rules',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Workio says: describe the job, quantity, materials, and urgency.',
-                    style: TextStyle(
-                      color: Color(0xFF8E93A6),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      height: 1.35,
-                    ),
+        _SectionCard(
+        title: _photoMode ? 'Photo Quick Quote' : 'Text Quick Quote',
+          subtitle: _photoMode
+              ? 'Upload a job photo and let Workio prepare a rough quote'
+              : 'Fast rough pricing using Price Rules',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ModeSwitch(
+                photoMode: _photoMode,
+                onChanged: (value) {
+                  setState(() {
+                    _photoMode = value;
+                    _result = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+
+              if (!_photoMode) ...[
+                const Text(
+                  'Workio says: describe the job, quantity, materials, and urgency.',
+                  style: TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
                   ),
-                  const SizedBox(height: 10),
-                  _PremiumTextField(
-                    controller: _promptController,
-                    label: 'Prompt',
-                    hintText: 'Repair roof shingles, 120 sqft, urgent, materials included',
-                    maxLines: 6,
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CupertinoButton(
-                          color: const Color(0xFF5B8CFF),
-                          borderRadius: BorderRadius.circular(16),
-                          onPressed: _isGenerating ? null : _generateQuote,
-                          child: _isGenerating
-                              ? const CupertinoActivityIndicator(
+                ),
+                const SizedBox(height: 10),
+                _PremiumTextField(
+                  controller: _promptController,
+                  label: 'Prompt',
+                  hintText: 'Repair roof shingles, 120 sqft, urgent, materials included',
+                  maxLines: 6,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CupertinoButton(
+                        color: const Color(0xFF5B8CFF),
+                        borderRadius: BorderRadius.circular(16),
+                        onPressed: _isGenerating ? null : _generateQuote,
+                        child: _isGenerating
+                            ? const CupertinoActivityIndicator(color: Colors.white)
+                            : const Text(
+                          'Generate Quote',
+                          style: TextStyle(
                             color: Colors.white,
-                          )
-                              : const Text(
-                            'Generate Quote',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      CupertinoButton(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        color: const Color(0xFF101117),
-                        borderRadius: BorderRadius.circular(16),
-                        onPressed: _isGenerating ? null : _clearQuote,
-                        child: const Icon(
-                          CupertinoIcons.clear,
-                          color: Color(0xFFB6BCD0),
-                          size: 20,
-                        ),
+                    ),
+                    const SizedBox(width: 10),
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
                       ),
-                    ],
+                      color: const Color(0xFF101117),
+                      borderRadius: BorderRadius.circular(16),
+                      onPressed: _isGenerating ? null : _clearQuote,
+                      child: const Icon(
+                        CupertinoIcons.clear,
+                        color: Color(0xFFB6BCD0),
+                        size: 20,
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                const Text(
+                  'Workio says: add a clear photo of the issue. AI photo analysis will be connected next.',
+                  style: TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
                   ),
-                ],
-              ),
-            ),
+                ),
+                const SizedBox(height: 12),
+
+                _PhotoPickerBlock(
+                  photo: _selectedPhoto,
+                  onCamera: () => _pickPhoto(ImageSource.camera),
+                  onGallery: () => _pickPhoto(ImageSource.gallery),
+                  onClear: _clearPhoto,
+                ),
+
+                const SizedBox(height: 16),
+
+                SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton(
+                    color: const Color(0xFF5B8CFF),
+                    borderRadius: BorderRadius.circular(16),
+                    onPressed: _selectedPhoto == null || _isAnalyzingPhoto
+                        ? null
+                        : _analyzePhotoQuote,
+                    child: _isAnalyzingPhoto
+                        ? const CupertinoActivityIndicator(color: Colors.white)
+                        : const Text(
+                      'Analyze Photo',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
             const SizedBox(height: 14),
             if (result == null)
               const _EmptyQuoteState()
@@ -871,14 +1050,17 @@ class _QuickQuoteItemTile extends StatelessWidget {
   });
 
   bool get _isMaterial {
-    final text = '${item.title} ${item.description ?? ''}'.toLowerCase();
-    return text.contains('material') ||
-        text.contains('outlet') ||
-        text.contains('fixture') ||
-        text.contains('bulb') ||
-        text.contains('wire') ||
-        text.contains('pipe') ||
-        text.contains('part');
+    final title = item.title.toLowerCase();
+    final description = (item.description ?? '').toLowerCase();
+
+    if (title.contains('labor') || title.contains('diagnostic')) {
+      return false;
+    }
+
+    return title.contains('material') ||
+        title.contains('parts') ||
+        title.contains('consumables') ||
+        description.contains('parsed from prompt');
   }
 
   bool get _isRush {
@@ -1311,6 +1493,248 @@ class _SelectionSheet<T> extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ModeSwitch extends StatelessWidget {
+  final bool photoMode;
+  final ValueChanged<bool> onChanged;
+
+  const _ModeSwitch({
+    required this.photoMode,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ModeSwitchButton(
+              label: 'Text',
+              icon: CupertinoIcons.text_alignleft,
+              active: !photoMode,
+              onTap: () => onChanged(false),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _ModeSwitchButton(
+              label: 'Photo',
+              icon: CupertinoIcons.camera_fill,
+              active: photoMode,
+              onTap: () => onChanged(true),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeSwitchButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _ModeSwitchButton({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(14),
+      color: active ? const Color(0xFF5B8CFF) : Colors.transparent,
+      onPressed: onTap,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 17,
+            color: active ? Colors.white : const Color(0xFFB6BCD0),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.white : const Color(0xFFB6BCD0),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoPickerBlock extends StatelessWidget {
+  final XFile? photo;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final VoidCallback onClear;
+
+  const _PhotoPickerBlock({
+    required this.photo,
+    required this.onCamera,
+    required this.onGallery,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = photo;
+
+    if (selected != null) {
+      return Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: const Color(0xFF101117),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF23252E)),
+        ),
+        child: Column(
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: Image.file(
+                File(selected.path),
+                width: double.infinity,
+                height: 220,
+                fit: BoxFit.cover,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Photo ready for analysis',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    color: const Color(0xFF1C1D24),
+                    borderRadius: BorderRadius.circular(12),
+                    onPressed: onClear,
+                    child: const Icon(
+                      CupertinoIcons.trash,
+                      color: Color(0xFFFF6B6B),
+                      size: 18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: const Color(0xFF5B8CFF).withOpacity(0.14),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: const Color(0xFF5B8CFF).withOpacity(0.22),
+              ),
+            ),
+            child: const Icon(
+              CupertinoIcons.camera_fill,
+              color: Color(0xFF8FB0FF),
+              size: 26,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Add job photo',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Use a clear photo of the damaged area, fixture, leak, roof, wall, or electrical issue.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF8E93A6),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: CupertinoButton(
+                  color: const Color(0xFF1C1D24),
+                  borderRadius: BorderRadius.circular(16),
+                  onPressed: onCamera,
+                  child: const Text(
+                    'Camera',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: CupertinoButton(
+                  color: const Color(0xFF1C1D24),
+                  borderRadius: BorderRadius.circular(16),
+                  onPressed: onGallery,
+                  child: const Text(
+                    'Gallery',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
