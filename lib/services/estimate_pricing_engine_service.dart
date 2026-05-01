@@ -290,8 +290,14 @@ class EstimatePricingEngineService {
   }
 
   static String _normalizeForQuantity(String value) {
-    return value
-        .toLowerCase()
+    var text = value.toLowerCase();
+
+    text = text.replaceAllMapped(
+      RegExp(r'\b(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)\b'),
+          (match) => match.group(2) ?? match.group(1) ?? '',
+    );
+
+    return text
         .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
@@ -318,6 +324,11 @@ class EstimatePricingEngineService {
     if (materialMarker != null) {
       text = text.substring(0, materialMarker.start).trim();
     }
+
+    text = text.replaceAll(
+      RegExp(r'\$+\s*\d+(?:[.,]\d+)?'),
+      ' ',
+    );
 
     return _normalizeForQuantity(text);
   }
@@ -391,6 +402,36 @@ class EstimatePricingEngineService {
     return words;
   }
 
+  static Set<String> _wordForms(String value) {
+    final clean = value.trim().toLowerCase();
+    if (clean.isEmpty) return {};
+
+    final words = <String>{clean};
+
+    if (clean.endsWith('s') && clean.length > 3) {
+      words.add(clean.substring(0, clean.length - 1));
+    } else {
+      words.add('${clean}s');
+    }
+
+    return words;
+  }
+
+  static Set<String> _unitQuantityWords(String unit) {
+    final normalized = _normalizeForQuantity(unit);
+    if (normalized.isEmpty) return {};
+
+    final words = <String>{};
+
+    for (final part in normalized.split(' ')) {
+      final clean = part.trim();
+      if (clean.isEmpty) continue;
+      words.addAll(_wordForms(clean));
+    }
+
+    return words;
+  }
+
   static double _countRuleItemsInWorkPrompt(
       String rawPrompt,
       EstimatePriceRuleModel rule,
@@ -422,37 +463,81 @@ class EstimatePricingEngineService {
     return total;
   }
 
+  static double _countQuantityNearWords({
+    required String rawPrompt,
+    required Set<String> words,
+  }) {
+    final text = _workOnlyPrompt(rawPrompt);
+    if (text.isEmpty || words.isEmpty) return 0;
+
+    final tokens = text
+        .split(' ')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    double total = 0;
+
+    for (var i = 0; i < tokens.length; i++) {
+      final number = double.tryParse(tokens[i].replaceAll(',', '.'));
+      if (number == null || number <= 0) continue;
+
+      final end = (i + 7) > tokens.length ? tokens.length : i + 7;
+      final nearbyWords = tokens.sublist(i + 1, end);
+
+      final hasMatch = nearbyWords.any((token) => words.contains(token));
+
+      if (hasMatch) {
+        total += number;
+      }
+    }
+
+    return total;
+  }
+
   static double _resolveDynamicQuantity(
       AiParsedRequestModel parsed,
       EstimatePriceRuleModel rule,
       ) {
     final normalizedUnit = rule.unit.trim().toLowerCase();
 
-    if (normalizedUnit == 'sqft') {
-      if ((parsed.sqft ?? 0) > 0) return parsed.sqft!;
-      return 0;
-    }
-
-    if (normalizedUnit == 'room') {
-      if ((parsed.rooms ?? 0) > 0) return parsed.rooms!.toDouble();
-      return 0;
-    }
-
-    if (normalizedUnit == 'hour') {
-      if ((parsed.hours ?? 0) > 0) return parsed.hours!;
-      return 0;
-    }
-
-    if (normalizedUnit == 'item') {
-      final count = _countRuleItemsInWorkPrompt(parsed.rawPrompt, rule);
-      return count > 0 ? count : 1;
-    }
-
     if (normalizedUnit == 'fixed') {
       return 1;
     }
 
-    return 1;
+    if (normalizedUnit == 'sqft') {
+      if ((parsed.sqft ?? 0) > 0) return parsed.sqft!;
+    }
+
+    if (normalizedUnit == 'room') {
+      if ((parsed.rooms ?? 0) > 0) return parsed.rooms!.toDouble();
+    }
+
+    if (normalizedUnit == 'hour') {
+      if ((parsed.hours ?? 0) > 0) return parsed.hours!;
+    }
+
+    final unitQuantity = _countQuantityNearWords(
+      rawPrompt: parsed.rawPrompt,
+      words: _unitQuantityWords(normalizedUnit),
+    );
+
+    if (unitQuantity > 0) {
+      return unitQuantity;
+    }
+
+    if (normalizedUnit == 'item') {
+      final itemQuantity = _countQuantityNearWords(
+        rawPrompt: parsed.rawPrompt,
+        words: _ruleQuantityWords(rule),
+      );
+
+      if (itemQuantity > 0) {
+        return itemQuantity;
+      }
+    }
+
+    return 0;
   }
 
   static String _serviceLabel(String serviceType) {

@@ -34,6 +34,26 @@ class EstimateQuestionService {
     final serviceTypeOptions = await _loadServiceTypeOptions();
     final currentRule = await _loadMainRule(serviceType);
 
+    final ruleHasMaterialPricing = _ruleHasMaterialPricing(currentRule);
+    final hasParsedMaterials = parsedMaterials.isNotEmpty;
+
+    if (materialsIncluded == null &&
+        laborOnly == null &&
+        !ruleHasMaterialPricing &&
+        !hasParsedMaterials) {
+      laborOnly = true;
+      materialsIncluded = false;
+
+      assumptions.add(
+        const AiAssumptionModel(
+          key: 'materials_included',
+          label: 'Materials',
+          value: 'Not included',
+          reason: 'This Price Rule has no material pricing, so the estimate is treated as labor/service only unless materials are listed.',
+        ),
+      );
+    }
+
     final missingFields = _buildMissingFields(
       projectSizeRequired: projectSizeRequired,
       parsedMaterials: parsedMaterials,
@@ -177,6 +197,25 @@ class EstimateQuestionService {
     return result;
   }
 
+  static bool _ruleHasMaterialPricing(dynamic rule) {
+    if (rule == null) return true;
+
+    final materialPerSqft = _dynamicNumber(rule.materialRatePerSqft);
+    final materialFixed = _dynamicNumber(rule.materialFixedRate);
+
+    return materialPerSqft > 0 || materialFixed > 0;
+  }
+
+  static double _dynamicNumber(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+
+    return double.tryParse(
+      value.toString().trim().replaceAll(',', '.'),
+    ) ??
+        0;
+  }
+
   static List<AiMissingFieldModel> _buildMissingFields({
     required String? serviceType,
     required double? sqft,
@@ -214,13 +253,16 @@ class EstimateQuestionService {
     );
 
     if (requiresProjectSize && !hasAreaInfo) {
+      final normalizedRuleUnit =
+      (currentRule?.unit ?? '').toString().trim().toLowerCase();
+
       fields.add(
-        const AiMissingFieldModel(
+        AiMissingFieldModel(
           key: 'project_size',
-          question: 'What is the approximate size: sqft or number of rooms?',
+          question: _projectSizeQuestionForUnit(normalizedRuleUnit),
           isRequired: true,
           answerType: 'text',
-          hint: 'Example: 1200 sqft or 3 rooms.',
+          hint: _projectSizeHintForUnit(normalizedRuleUnit),
         ),
       );
     }
@@ -264,25 +306,46 @@ class EstimateQuestionService {
     final normalizedUnit =
     (currentRule?.unit ?? '').toString().trim().toLowerCase();
 
-    // Price Rule unit is the main truth.
-    // Fixed/item/hour services should NOT ask for sqft or rooms.
-    if (normalizedUnit == 'fixed' ||
-        normalizedUnit == 'item' ||
-        normalizedUnit == 'hour') {
-      return false;
+    // ✅ Price Rule unit is the source of truth.
+    // Only sqft/room should ask the old project-size question.
+    if (normalizedUnit.isNotEmpty) {
+      return normalizedUnit == 'sqft' || normalizedUnit == 'room';
     }
 
-    // Only size-based rules require size.
-    if (normalizedUnit == 'sqft' || normalizedUnit == 'room') {
-      return true;
-    }
-
-    // Fallback only when unit is unknown.
+    // Fallback only when there is no Price Rule / no unit.
     if (projectSizeRequired == true && !hasDetailedMaterials) {
       return true;
     }
 
     return false;
+  }
+
+  static String _projectSizeQuestionForUnit(String unit) {
+    final normalized = unit.trim().toLowerCase();
+
+    if (normalized == 'sqft') {
+      return 'What is the approximate size in square feet?';
+    }
+
+    if (normalized == 'room') {
+      return 'How many rooms are included?';
+    }
+
+    return 'What is the approximate project size?';
+  }
+
+  static String _projectSizeHintForUnit(String unit) {
+    final normalized = unit.trim().toLowerCase();
+
+    if (normalized == 'sqft') {
+      return 'Example: 1200 sqft.';
+    }
+
+    if (normalized == 'room') {
+      return 'Example: 3 rooms.';
+    }
+
+    return 'Example: 1200 sqft or 3 rooms.';
   }
 
   static double _recalculateConfidence({
@@ -513,7 +576,7 @@ class EstimateQuestionService {
     if (normalized.isEmpty) return null;
 
     try {
-      return await EstimatePriceRulesService.findMainRule(normalized);
+      return await EstimatePriceRulesService.findBestRuleByServiceType(normalized);
     } catch (_) {
       return null;
     }

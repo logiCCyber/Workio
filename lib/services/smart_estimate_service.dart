@@ -186,7 +186,7 @@ class SmartEstimateService {
       parsedMaterials: mini.parsedMaterials.isNotEmpty
           ? mini.parsedMaterials
           : localParsed.parsedMaterials,
-      projectSizeRequired: mini.projectSizeRequired,
+      projectSizeRequired: localParsed.projectSizeRequired,
       reasoningHints: mini.reasoningHints.isNotEmpty
           ? mini.reasoningHints
           : localParsed.reasoningHints,

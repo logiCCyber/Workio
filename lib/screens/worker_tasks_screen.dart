@@ -2533,33 +2533,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                       }
 
                       var tasks = snapshot.data ?? <Map<String, dynamic>>[];
-
-                      final now = DateTime.now();
-                      final today = DateTime(now.year, now.month, now.day);
-
-                      tasks = tasks.where((t) {
-                        final status = _s(t['status']).toLowerCase();
-
-                        if (status != 'done') return true;
-
-                        final completedAt = DateTime.tryParse(_s(t['completed_at']))?.toLocal();
-                        if (completedAt == null) return true;
-
-                        final completedDay = DateTime(
-                          completedAt.year,
-                          completedAt.month,
-                          completedAt.day,
-                        );
-
-                        return completedDay == today;
-                      }).toList();
-
-                      tasks = tasks.where((t) {
-                        final due = DateTime.tryParse(_s(t['due_at']))?.toLocal();
-                        if (due == null) return true;
-
-                        return !due.isBefore(DateTime.now());
-                      }).toList();
+                      tasks = _visibleTasksOnly(tasks);
 
                       if (tasks.isNotEmpty) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {

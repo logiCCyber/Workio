@@ -1352,8 +1352,35 @@ class TaskService {
     final workerId = _supabase.auth.currentUser?.id;
     if (workerId == null) return Stream.value(0);
 
+    bool isVisibleTask(Map<String, dynamic> task) {
+      final status = _s(task['status']).toLowerCase();
+
+      if (status == 'done') {
+        final completedAt = DateTime.tryParse(_s(task['completed_at']))?.toLocal();
+        if (completedAt != null) {
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final completedDay = DateTime(
+            completedAt.year,
+            completedAt.month,
+            completedAt.day,
+          );
+
+          if (completedDay != today) return false;
+        }
+      }
+
+      final due = DateTime.tryParse(_s(task['due_at']))?.toLocal();
+      if (due != null && due.isBefore(DateTime.now())) {
+        return false;
+      }
+
+      return true;
+    }
+
     return watchWorkerTasks(includeArchived: true).asyncExpand((tasks) {
       final taskIds = tasks
+          .where(isVisibleTask)
           .map((e) => _s(e['id']))
           .where((e) => e.isNotEmpty)
           .toSet();

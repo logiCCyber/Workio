@@ -20,7 +20,6 @@ import '../services/property_service.dart';
 import '../services/estimate_template_service.dart';
 import '../services/company_settings_service.dart';
 import '../services/smart_estimate_service.dart';
-import '../services/guided_estimate_flow_service.dart';
 import '../services/estimate_rule_resolution_service.dart';
 
 import '../utils/estimate_calculator.dart';
@@ -62,12 +61,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   bool _isHistoryLoading = false;
   bool _isTemplatesLoading = false;
 
-  Timer? _guidedResolveDebounce;
-  bool _isResolvingGuidedRule = false;
-  int _guidedResolveRequestId = 0;
-  Set<String> _suppressedFollowupKeys = {};
-  String? _guidedResolverHint;
-
   Timer? _manualResolveDebounce;
   bool _isResolvingManualRule = false;
   int _manualResolveRequestId = 0;
@@ -79,7 +72,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   List<ClientModel> _clients = [];
   List<PropertyModel> _properties = [];
   List<EstimateTemplateModel> _templates = [];
-  final Map<String, TextEditingController> _guidedFollowupControllers = {};
 
   ClientModel? _selectedClient;
   PropertyModel? _selectedProperty;
@@ -98,28 +90,10 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   List<_PromptSuggestion> _promptSuggestions = [];
   EstimatePriceRuleModel? _activePromptRule;
 
-  bool _isGuidedMode = false;
-
-  final TextEditingController _guidedServiceController = TextEditingController();
-  final FocusNode _guidedServiceFocusNode = FocusNode();
-  final Map<String, dynamic> _guidedAnswers = {};
-  final TextEditingController _guidedWorkDetailsController =
-  TextEditingController();
-  final FocusNode _guidedWorkDetailsFocusNode = FocusNode();
-  final TextEditingController _guidedQuantityController = TextEditingController();
-  final FocusNode _guidedQuantityFocusNode = FocusNode();
-  final TextEditingController _guidedMaterialsListController =
-  TextEditingController();
-  final FocusNode _guidedMaterialsListFocusNode = FocusNode();
-
   @override
   void initState() {
     super.initState();
     _promptController.addListener(_onPromptChanged);
-    _guidedServiceController.addListener(_onGuidedServiceChanged);
-    _guidedWorkDetailsController.addListener(_onGuidedWorkDetailsChanged);
-    _guidedQuantityController.addListener(_onGuidedQuantityChanged);
-    _guidedMaterialsListController.addListener(_onGuidedMaterialsListChanged);
     _loadClients();
   }
 
@@ -128,28 +102,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     _promptController.removeListener(_onPromptChanged);
     _promptController.dispose();
     _promptFocusNode.dispose();
-
-    _guidedServiceController.removeListener(_onGuidedServiceChanged);
-    _guidedServiceController.dispose();
-    _guidedServiceFocusNode.dispose();
-
-    _guidedQuantityController.removeListener(_onGuidedQuantityChanged);
-    _guidedQuantityController.dispose();
-    _guidedQuantityFocusNode.dispose();
-
-    _guidedMaterialsListController.removeListener(_onGuidedMaterialsListChanged);
-    _guidedMaterialsListController.dispose();
-    _guidedMaterialsListFocusNode.dispose();
-
-    _guidedWorkDetailsController.removeListener(_onGuidedWorkDetailsChanged);
-    _guidedWorkDetailsController.dispose();
-    _guidedWorkDetailsFocusNode.dispose();
-
-    for (final controller in _guidedFollowupControllers.values) {
-      controller.dispose();
-    }
-    _guidedFollowupControllers.clear();
-    _guidedResolveDebounce?.cancel();
     _manualResolveDebounce?.cancel();
 
     super.dispose();
@@ -222,17 +174,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
 
     return matrix[a.length][b.length];
-  }
-
-  TextEditingController _followupControllerFor(String key) {
-    final existing = _guidedFollowupControllers[key];
-    if (existing != null) return existing;
-
-    final initialValue = (_guidedAnswers[key] ?? '').toString();
-
-    final controller = TextEditingController(text: initialValue);
-    _guidedFollowupControllers[key] = controller;
-    return controller;
   }
 
   double _scorePromptCandidate(String query, String candidate) {
@@ -383,27 +324,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return foundAnyMatch && !foundSpecificMatch;
   }
 
-  EstimatePriceRuleModel? _findExactGuidedRule(String query) {
-    final normalizedQuery = _normalizePromptSearch(query);
-    if (normalizedQuery.isEmpty) return null;
-
-    for (final rule in _rules) {
-      final candidates = <String>[
-        rule.serviceType.trim(),
-        (rule.displayName ?? '').trim(),
-        ...rule.aliases.map((e) => e.trim()),
-      ].where((e) => e.isNotEmpty).toList();
-
-      for (final candidate in candidates) {
-        if (_normalizePromptSearch(candidate) == normalizedQuery) {
-          return rule;
-        }
-      }
-    }
-
-    return null;
-  }
-
   List<_PromptSuggestion> _buildPromptSuggestions(String query) {
     final normalizedQuery = _normalizePromptSearch(query);
     if (normalizedQuery.isEmpty) return const [];
@@ -531,6 +451,27 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return null;
   }
 
+  EstimatePriceRuleModel? _findExactRule(String query) {
+    final normalizedQuery = _normalizePromptSearch(query);
+    if (normalizedQuery.isEmpty) return null;
+
+    for (final rule in _rules) {
+      final candidates = <String>[
+        rule.serviceType.trim(),
+        (rule.displayName ?? '').trim(),
+        ...rule.aliases.map((e) => e.trim()),
+      ].where((e) => e.isNotEmpty).toList();
+
+      for (final candidate in candidates) {
+        if (_normalizePromptSearch(candidate) == normalizedQuery) {
+          return rule;
+        }
+      }
+    }
+
+    return null;
+  }
+
   Future<void> _resolveManualRuleWithEdge(
       String text,
       List<_PromptSuggestion> suggestions,
@@ -600,88 +541,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     });
   }
 
-  Future<void> _resolveGuidedRuleWithEdge(
-      String text,
-      List<_PromptSuggestion> suggestions,
-      ) async {
-    _guidedResolveDebounce?.cancel();
-
-    if (text.trim().length < 4 || suggestions.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _isResolvingGuidedRule = false;
-        _guidedResolverHint = null;
-        _suppressedFollowupKeys = {};
-      });
-      return;
-    }
-
-    final requestId = ++_guidedResolveRequestId;
-
-    _guidedResolveDebounce = Timer(const Duration(milliseconds: 350), () async {
-      if (!mounted) return;
-
-      setState(() {
-        _isResolvingGuidedRule = true;
-        _guidedResolverHint = null;
-        _suppressedFollowupKeys = {};
-      });
-
-      try {
-        final result = await EstimateRuleResolutionService.resolve(
-          prompt: text,
-          guidedAnswers: Map<String, dynamic>.from(_guidedAnswers),
-          candidates: _buildResolverCandidates(suggestions),
-        );
-
-        if (!mounted) return;
-        if (requestId != _guidedResolveRequestId) return;
-
-        final resolvedRule = _findRuleById(result.selectedRuleId);
-
-        if (resolvedRule != null) {
-          final normalizedWork = result.normalizedRequestedWork.trim();
-
-          if (_guidedWorkDetailsController.text.trim().isEmpty &&
-              normalizedWork.isNotEmpty) {
-            _guidedWorkDetailsController.text = normalizedWork;
-            _guidedWorkDetailsController.selection = TextSelection.fromPosition(
-              TextPosition(offset: _guidedWorkDetailsController.text.length),
-            );
-          }
-
-          setState(() {
-            _activePromptRule = resolvedRule;
-            _promptSuggestions = [];
-            _suppressedFollowupKeys = result.suppressQuestionKeys.toSet();
-            _guidedResolverHint = null;
-            _isResolvingGuidedRule = false;
-          });
-
-          return;
-        }
-
-        setState(() {
-          _activePromptRule = null;
-          _suppressedFollowupKeys = result.suppressQuestionKeys.toSet();
-          _guidedResolverHint = result.shouldAskClarifyingQuestion
-              ? result.clarifyingQuestion
-              : null;
-          _isResolvingGuidedRule = false;
-        });
-      } catch (_) {
-        if (!mounted) return;
-        if (requestId != _guidedResolveRequestId) return;
-
-        setState(() {
-          _isResolvingGuidedRule = false;
-          _guidedResolverHint = null;
-          _suppressedFollowupKeys = {};
-        });
-      }
-    });
-  }
-
   String _buildWorkioHint() {
     final text = _promptController.text.trim();
 
@@ -718,8 +577,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   bool get _hasNoMatchingManualRule {
     final text = _promptController.text.trim();
 
-    return !_isGuidedMode &&
-        text.isNotEmpty &&
+    return text.isNotEmpty &&
         _promptSuggestions.isEmpty &&
         _activePromptRule == null;
   }
@@ -727,8 +585,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   bool get _needsManualServiceChoice {
     final text = _promptController.text.trim();
 
-    return !_isGuidedMode &&
-        text.isNotEmpty &&
+    return text.isNotEmpty &&
         _promptSuggestions.isNotEmpty &&
         _activePromptRule == null;
   }
@@ -858,243 +715,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     _promptController.text = next;
     _promptController.selection = TextSelection.fromPosition(
       TextPosition(offset: _promptController.text.length),
-    );
-  }
-
-  void _onGuidedServiceChanged() {
-    final text = _guidedServiceController.text.trim();
-
-    for (final controller in _guidedFollowupControllers.values) {
-      controller.dispose();
-    }
-    _guidedFollowupControllers.clear();
-
-    _guidedQuantityController.clear();
-    _guidedMaterialsListController.clear();
-    _guidedWorkDetailsController.clear();
-    _guidedResolveDebounce?.cancel();
-
-    if (text.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _promptSuggestions = [];
-        _activePromptRule = null;
-        _guidedAnswers.clear();
-        _suppressedFollowupKeys = {};
-        _guidedResolverHint = null;
-        _isResolvingGuidedRule = false;
-      });
-      return;
-    }
-
-    final exactRule = _findExactGuidedRule(text);
-    if (exactRule != null) {
-      if (!mounted) return;
-      setState(() {
-        _promptSuggestions = [];
-        _activePromptRule = exactRule;
-        _guidedAnswers.clear();
-        _suppressedFollowupKeys = {};
-        _guidedResolverHint = null;
-        _isResolvingGuidedRule = false;
-      });
-      return;
-    }
-
-    final suggestions = _buildPromptSuggestions(text);
-
-    if (!mounted) return;
-    setState(() {
-      _promptSuggestions = suggestions;
-      _activePromptRule = null;
-      _guidedAnswers.clear();
-      _suppressedFollowupKeys = {};
-      _guidedResolverHint = null;
-    });
-
-    _resolveGuidedRuleWithEdge(text, suggestions);
-  }
-
-  void _toggleGuidedMode(bool value) {
-    for (final controller in _guidedFollowupControllers.values) {
-      controller.dispose();
-    }
-    _guidedFollowupControllers.clear();
-    setState(() {
-      _isGuidedMode = value;
-      _promptSuggestions = [];
-      _activePromptRule = null;
-      _guidedServiceController.clear();
-      _guidedQuantityController.clear();
-      _guidedAnswers.clear();
-      _guidedMaterialsListController.clear();
-      _guidedWorkDetailsController.clear();
-    });
-  }
-
-  void _setGuidedAnswer(String key, dynamic value) {
-    setState(() {
-      _guidedAnswers[key] = value;
-    });
-  }
-
-  void _onGuidedQuantityChanged() {
-    final text = _guidedQuantityController.text.trim();
-
-    setState(() {
-      _guidedAnswers['quantity_value'] = text;
-    });
-  }
-
-  void _onGuidedMaterialsListChanged() {
-    final text = _guidedMaterialsListController.text.trim();
-
-    setState(() {
-      _guidedAnswers['materials_list'] = text;
-    });
-  }
-
-  void _onGuidedWorkDetailsChanged() {
-    final text = _guidedWorkDetailsController.text.trim();
-
-    setState(() {
-      _guidedAnswers['requested_work'] = text;
-    });
-  }
-
-  String _guidedQuantityLabel() {
-    return GuidedEstimateFlowService.quantityLabel(_activePromptRule);
-  }
-
-  String _guidedQuantityHint() {
-    return GuidedEstimateFlowService.quantityHint(_activePromptRule);
-  }
-
-  List<Map<String, dynamic>> _guidedFollowupQuestions() {
-    final questions = GuidedEstimateFlowService.followupQuestions(_activePromptRule);
-
-    if (_suppressedFollowupKeys.isEmpty) {
-      return questions;
-    }
-
-    return questions.where((q) {
-      final key = (q['key'] ?? '').toString().trim().toLowerCase();
-      return !_suppressedFollowupKeys.contains(key);
-    }).toList();
-  }
-
-  bool _guidedRequiresQuantity() {
-    return GuidedEstimateFlowService.requiresQuantity(_activePromptRule);
-  }
-
-  bool _canGenerateGuidedDraft() {
-    return GuidedEstimateFlowService.canGenerate(
-      rule: _activePromptRule,
-      answers: _guidedAnswers,
-      suppressedQuestionKeys: _suppressedFollowupKeys,
-    );
-  }
-
-  String _buildGuidedPreviewPrompt() {
-    return GuidedEstimateFlowService.buildPrompt(
-      rule: _activePromptRule,
-      answers: _guidedAnswers,
-      suppressedQuestionKeys: _suppressedFollowupKeys,
-    );
-  }
-
-  Future<void> _generateGuidedDraft() async {
-    final prompt = _buildGuidedPreviewPrompt().trim();
-
-    if (_activePromptRule == null) {
-      final typed = _guidedServiceController.text.trim();
-
-      if (typed.isNotEmpty && _promptSuggestions.isEmpty) {
-        _showSnack(
-          'No matching Price Rule found for this service. Add one in Price Rules first.',
-        );
-      } else {
-        _showSnack('Choose a service first');
-      }
-      return;
-    }
-
-    if (!_canGenerateGuidedDraft()) {
-      _showSnack('Complete the guided answers first');
-      return;
-    }
-
-    if (_selectedClient == null) {
-      _showSnack('Select a client first');
-      return;
-    }
-
-    if (_selectedProperty == null) {
-      _showSnack('Select a property first');
-      return;
-    }
-
-    _promptController.text = prompt;
-    _promptController.selection = TextSelection.fromPosition(
-      TextPosition(offset: _promptController.text.length),
-    );
-
-    setState(() {
-      _isGenerating = true;
-    });
-
-    try {
-      final result = await SmartEstimateService.generate(
-        prompt: prompt,
-        propertyCity: _selectedProperty?.city,
-        clientId: _selectedClient?.id,
-        propertyId: _selectedProperty?.id,
-        ruleUnit: _activePromptRule?.unit,
-      );
-
-      if (!mounted) return;
-
-      _applySmartResult(result);
-      _showSmartResultMessage(result);
-    } catch (e) {
-      if (!mounted) return;
-      _showSnack('Failed to generate guided draft');
-    } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _isGenerating = false;
-      });
-    }
-  }
-
-  Widget _buildGuidedChoiceChip({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF5B8CFF) : const Color(0xFF101117),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected
-                ? const Color(0xFF5B8CFF)
-                : const Color(0xFF23252E),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : const Color(0xFFB6BCD0),
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
     );
   }
 
@@ -1229,8 +849,14 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
       if (!mounted) return;
 
+      final filteredClientHistory = property == null
+          ? clientHistory
+          : clientHistory
+          .where((estimate) => estimate.propertyId != property.id)
+          .toList();
+
       setState(() {
-        _clientHistory = clientHistory.take(5).toList();
+        _clientHistory = filteredClientHistory.take(5).toList();
         _propertyHistory = propertyHistory.take(5).toList();
         _isHistoryLoading = false;
       });
@@ -1948,7 +1574,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         ? templateServiceType
         : templateName;
 
-    EstimatePriceRuleModel? matchedRule = _findExactGuidedRule(lookupText);
+    EstimatePriceRuleModel? matchedRule = _findExactRule(lookupText);
 
     if (matchedRule == null) {
       final suggestions = _buildPromptSuggestions(lookupText);
@@ -2179,673 +1805,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
           child,
         ],
       ),
-    );
-  }
-
-  Widget _buildModeSwitch() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF23252E)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _toggleGuidedMode(false),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: !_isGuidedMode
-                      ? const Color(0xFF5B8CFF)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Manual',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: !_isGuidedMode ? Colors.white : const Color(0xFFB6BCD0),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _toggleGuidedMode(true),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: _isGuidedMode
-                      ? const Color(0xFF5B8CFF)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Guided',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _isGuidedMode ? Colors.white : const Color(0xFFB6BCD0),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGuidedWorkDetailsStep() {
-    if (_activePromptRule == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        const Text(
-          'Workio says: briefly describe the issue or requested work.',
-          style: TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _PremiumTextField(
-          controller: _guidedWorkDetailsController,
-          focusNode: _guidedWorkDetailsFocusNode,
-          label: 'Work Details',
-          hintText: 'Describe the requested work, issue, or task...',
-          maxLines: 2,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGuidedMaterialsStep() {
-    final selected = (_guidedAnswers['materials_mode'] ?? '').toString();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        const Text(
-          'Workio says: are materials included?',
-          style: TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildGuidedChoiceChip(
-              label: 'Labor Only',
-              selected: selected == 'labor_only',
-              onTap: () {
-                setState(() {
-                  _guidedAnswers['materials_mode'] = 'labor_only';
-                  _guidedAnswers.remove('materials_detail');
-                  _guidedAnswers.remove('materials_list');
-                  _guidedMaterialsListController.clear();
-                });
-              },
-            ),
-            _buildGuidedChoiceChip(
-              label: 'Materials Included',
-              selected: selected == 'materials_included',
-              onTap: () {
-                setState(() {
-                  _guidedAnswers['materials_mode'] = 'materials_included';
-                  _guidedAnswers.remove('materials_detail');
-                  _guidedAnswers.remove('materials_list');
-                  _guidedMaterialsListController.clear();
-                });
-              },
-            ),
-            _buildGuidedChoiceChip(
-              label: 'Customer Provides',
-              selected: selected == 'customer_provides',
-              onTap: () {
-                setState(() {
-                  _guidedAnswers['materials_mode'] = 'customer_provides';
-                  _guidedAnswers.remove('materials_detail');
-                  _guidedAnswers.remove('materials_list');
-                  _guidedMaterialsListController.clear();
-                });
-              },
-            ),
-            _buildGuidedChoiceChip(
-              label: 'After Inspection',
-              selected: selected == 'after_inspection',
-              onTap: () {
-                setState(() {
-                  _guidedAnswers['materials_mode'] = 'after_inspection';
-                  _guidedAnswers.remove('materials_detail');
-                  _guidedAnswers.remove('materials_list');
-                  _guidedMaterialsListController.clear();
-                });
-              },
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGuidedMaterialsDetailStep() {
-    final materialsMode =
-    (_guidedAnswers['materials_mode'] ?? '').toString().trim();
-
-    if (materialsMode != 'materials_included') {
-      return const SizedBox.shrink();
-    }
-
-    final selected =
-    (_guidedAnswers['materials_detail'] ?? '').toString().trim();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        const Text(
-          'Workio says: how should materials be handled?',
-          style: TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildGuidedChoiceChip(
-              label: 'Standard Included',
-              selected: selected == 'standard_included',
-              onTap: () {
-                setState(() {
-                  _guidedAnswers['materials_detail'] = 'standard_included';
-                  _guidedAnswers.remove('materials_list');
-                  _guidedMaterialsListController.clear();
-                });
-              },
-            ),
-            _buildGuidedChoiceChip(
-              label: 'Detailed List',
-              selected: selected == 'detailed_list',
-              onTap: () {
-                setState(() {
-                  _guidedAnswers['materials_detail'] = 'detailed_list';
-                });
-              },
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGuidedQuantityStep() {
-    final unit = (_activePromptRule?.unit ?? '').trim().toLowerCase();
-
-    if (unit != 'item' && unit != 'sqft' && unit != 'room') {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        Text(
-          'Workio says: now add ${_guidedQuantityLabel().toLowerCase()}.',
-          style: const TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _PremiumTextField(
-          controller: _guidedQuantityController,
-          focusNode: _guidedQuantityFocusNode,
-          label: _guidedQuantityLabel(),
-          hintText: _guidedQuantityHint(),
-          maxLines: 1,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGuidedDetailedMaterialsStep() {
-    final materialsMode =
-    (_guidedAnswers['materials_mode'] ?? '').toString().trim();
-    final materialsDetail =
-    (_guidedAnswers['materials_detail'] ?? '').toString().trim();
-
-    if (materialsMode != 'materials_included' ||
-        materialsDetail != 'detailed_list') {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        const Text(
-          'Workio says: add the materials list.',
-          style: TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _PremiumTextField(
-          controller: _guidedMaterialsListController,
-          focusNode: _guidedMaterialsListFocusNode,
-          label: 'Materials List',
-          hintText:
-          '1 material item at \$45 each\n2 parts at \$12 each\n1 supply box at \$9 each',
-          maxLines: 4,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGuidedFollowupStep() {
-    final questions = _guidedFollowupQuestions();
-    if (questions.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        const Text(
-          'Workio says: answer a few more details.',
-          style: TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Column(
-          children: questions.map((question) {
-            final key = (question['key'] ?? '').toString().trim();
-            final title = (question['question'] ?? '').toString().trim();
-            final hint = (question['hint'] ?? '').toString().trim();
-            final answerType = (question['answerType'] ?? 'text')
-                .toString()
-                .trim()
-                .toLowerCase();
-
-            final options = question['options'] is List
-                ? (question['options'] as List)
-                .map((e) => e.toString().trim())
-                .where((e) => e.isNotEmpty)
-                .toList()
-                : <String>[];
-
-            final selectedValue =
-            (_guidedAnswers[key] ?? '').toString().trim();
-
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF101117),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF23252E)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (hint.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        hint,
-                        style: const TextStyle(
-                          color: Color(0xFF8E93A6),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    if (answerType == 'single_select' && options.isNotEmpty)
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: options.map((option) {
-                          return _buildGuidedChoiceChip(
-                            label: option,
-                            selected: selectedValue == option,
-                            onTap: () => _setGuidedAnswer(key, option),
-                          );
-                        }).toList(),
-                      )
-                    else
-                      TextField(
-                        controller: _followupControllerFor(key),
-                        onChanged: (value) => _setGuidedAnswer(key, value),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        cursorColor: const Color(0xFF5B8CFF),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          hintText: 'Enter answer',
-                          hintStyle: TextStyle(
-                            color: Color(0xFF697086),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                          ),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      )
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGuidedModeStub() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Workio says: start typing the service you want.',
-          style: TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 10),
-        _PremiumTextField(
-          controller: _guidedServiceController,
-          focusNode: _guidedServiceFocusNode,
-          label: 'Service',
-          hintText: 'Type the service you want...',
-          maxLines: 1,
-        ),
-        if (_isResolvingGuidedRule) ...[
-          const SizedBox(height: 8),
-          const Row(
-            children: [
-              CupertinoActivityIndicator(radius: 8),
-              SizedBox(width: 8),
-              Text(
-                'Workio is matching the best service...',
-                style: TextStyle(
-                  color: Color(0xFF8E93A6),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ],
-
-        if ((_guidedResolverHint ?? '').trim().isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            _guidedResolverHint!,
-            style: const TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-            ),
-          ),
-        ],
-        if (_promptSuggestions.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          const Text(
-            'Suggestions',
-            style: TextStyle(
-              color: Color(0xFFB6BCD0),
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Column(
-            children: _promptSuggestions.map((suggestion) {
-              final subtitle = suggestion.matchText.trim().isEmpty
-                  ? suggestion.rule.serviceType
-                  : '${suggestion.rule.category} • ${suggestion.matchText}';
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: GestureDetector(
-                  onTap: () {
-                    _guidedServiceController.text = suggestion.label;
-                    _guidedServiceController.selection = TextSelection.fromPosition(
-                      TextPosition(offset: _guidedServiceController.text.length),
-                    );
-
-                    for (final controller in _guidedFollowupControllers.values) {
-                      controller.dispose();
-                    }
-                    _guidedFollowupControllers.clear();
-
-                    _guidedQuantityController.clear();
-                    _guidedMaterialsListController.clear();
-                    _guidedWorkDetailsController.clear();
-
-                    setState(() {
-                      _activePromptRule = suggestion.rule;
-                      _promptSuggestions = [];
-                      _guidedAnswers.clear();
-                      _suppressedFollowupKeys = {};
-                      _guidedResolverHint = null;
-                    });
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF101117),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF23252E)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          suggestion.label,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(
-                            color: Color(0xFF8E93A6),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-
-        if (_needsManualServiceChoice) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101117),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF23252E)),
-            ),
-            child: const Text(
-              'Pick the closest Price Rule before generating the draft.',
-              style: TextStyle(
-                color: Color(0xFFB6BCD0),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-
-        if (_hasNoMatchingManualRule) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101117),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF23252E)),
-            ),
-            child: const Text(
-              'No matching Price Rule found for this request. Add one in Price Rules first.',
-              style: TextStyle(
-                color: Color(0xFFB6BCD0),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
-
-        if (_activePromptRule != null) ...[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101117),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF23252E)),
-            ),
-            child: Text(
-              'Selected: ${_activePromptRule!.displayName?.trim().isNotEmpty == true ? _activePromptRule!.displayName! : _activePromptRule!.serviceType}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          _buildGuidedWorkDetailsStep(),
-          _buildGuidedMaterialsStep(),
-          _buildGuidedMaterialsDetailStep(),
-          _buildGuidedDetailedMaterialsStep(),
-          _buildGuidedQuantityStep(),
-          _buildGuidedFollowupStep(),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101117),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF23252E)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Preview Prompt',
-                  style: TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _buildGuidedPreviewPrompt(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (!_canGenerateGuidedDraft()) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'Complete all required guided answers to continue.',
-              style: TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: CupertinoButton(
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(16),
-              onPressed: _isGenerating || !_canGenerateGuidedDraft()
-                  ? null
-                  : _generateGuidedDraft,
-              child: _isGenerating
-                  ? const CupertinoActivityIndicator(color: Colors.white)
-                  : const Text(
-                'Generate Guided Draft',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
-        ],
-      ],
     );
   }
 
@@ -3283,155 +2242,135 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildModeSwitch(),
-                  const SizedBox(height: 12),
-                  _isGuidedMode
-                      ? _buildGuidedModeStub()
-                      : (() {
-                    final manualExamples = _buildManualExampleChips();
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _buildWorkioHint(),
+                      style: const TextStyle(
+                        color: Color(0xFF8E93A6),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _PremiumTextField(
+                    controller: _promptController,
+                    focusNode: _promptFocusNode,
+                    label: 'Prompt',
+                    hintText: 'Electrical repair, 2 outlets, labor only',
+                    maxLines: 6,
+                  ),
+                  if (_promptSuggestions.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Suggestions',
+                        style: TextStyle(
+                          color: Color(0xFFB6BCD0),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Column(
+                      children: _promptSuggestions.map((suggestion) {
+                        final subtitle = suggestion.matchText.trim().isEmpty
+                            ? suggestion.rule.serviceType
+                            : '${suggestion.rule.category} • ${suggestion.matchText}';
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            _buildWorkioHint(),
-                            style: const TextStyle(
-                              color: Color(0xFF8E93A6),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _PremiumTextField(
-                          controller: _promptController,
-                          focusNode: _promptFocusNode,
-                          label: 'Prompt',
-                          hintText: 'Electrical repair, 2 outlets, labor only',
-                          maxLines: 6,
-                        ),
-                        if (_promptSuggestions.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Suggestions',
-                              style: TextStyle(
-                                color: Color(0xFFB6BCD0),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: GestureDetector(
+                            onTap: () => _applyPromptSuggestion(suggestion),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF101117),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFF23252E)),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Column(
-                            children: _promptSuggestions.map((suggestion) {
-                              final subtitle = suggestion.matchText.trim().isEmpty
-                                  ? suggestion.rule.serviceType
-                                  : '${suggestion.rule.category} • ${suggestion.matchText}';
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: GestureDetector(
-                                  onTap: () => _applyPromptSuggestion(suggestion),
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF101117),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: const Color(0xFF23252E)),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          suggestion.label,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          subtitle,
-                                          style: const TextStyle(
-                                            color: Color(0xFF8E93A6),
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    suggestion.label,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                        if (_activePromptRule != null) ...[
-                          const SizedBox(height: 12),
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Quick Add',
-                              style: TextStyle(
-                                color: Color(0xFFB6BCD0),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    subtitle,
+                                    style: const TextStyle(
+                                      color: Color(0xFF8E93A6),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _buildPromptChips(_activePromptRule).map((chip) {
-                              return _QuickPromptChip(
-                                label: chip,
-                                onTap: () => _appendPromptToken(chip),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                        if (manualExamples.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: manualExamples.map((chip) {
-                              return _QuickPromptChip(
-                                label: chip,
-                                onTap: () => _appendPromptToken(chip),
-                              );
-                            }).toList(),
-                          ),
-                        ],
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: CupertinoButton(
-                            color: const Color(0xFF5B8CFF),
-                            borderRadius: BorderRadius.circular(16),
-                            onPressed: _isGenerating ||
-                                _needsManualServiceChoice ||
-                                _hasNoMatchingManualRule
-                                ? null
-                                : _generateDraft,
-                            child: _isGenerating
-                                ? const CupertinoActivityIndicator(color: Colors.white)
-                                : const Text(
-                              'Generate Draft',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                  if (_activePromptRule != null) ...[
+                    const SizedBox(height: 12),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Quick Add',
+                        style: TextStyle(
+                          color: Color(0xFFB6BCD0),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
                         ),
-                      ],
-                    );
-                  })(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _buildPromptChips(_activePromptRule).map((chip) {
+                        return _QuickPromptChip(
+                          label: chip,
+                          onTap: () => _appendPromptToken(chip),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Tip: mention the work, quantity, materials, and urgency for the best result.',
+                    style: TextStyle(
+                      color: Color(0xFF8E93A6),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton(
+                      color: const Color(0xFF5B8CFF),
+                      borderRadius: BorderRadius.circular(16),
+                      onPressed: _isGenerating ? null : _generateDraft,
+                      child: _isGenerating
+                          ? const CupertinoActivityIndicator(color: Colors.white)
+                          : const Text(
+                        'Generate Draft',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

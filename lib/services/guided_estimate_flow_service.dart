@@ -137,6 +137,12 @@ class GuidedEstimateFlowService {
       if (!isRequired || key.isEmpty) continue;
       if (suppressedQuestionKeys.contains(key)) continue;
 
+      // Work Details already answers this kind of question.
+      if ((key == 'issue_description' || key == 'requested_work') &&
+          requestedWork.isNotEmpty) {
+        continue;
+      }
+
       final value = (answers[key] ?? '').toString().trim();
       if (value.isEmpty) return false;
     }
@@ -219,7 +225,7 @@ class GuidedEstimateFlowService {
       final value = (answers[key] ?? '').toString().trim();
       if (value.isEmpty) continue;
 
-      parts.add(value);
+      parts.add('$key: $value');
     }
 
     final request = requestParts

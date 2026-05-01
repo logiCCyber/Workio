@@ -74,12 +74,12 @@ class EstimatePromptParserService {
 
     if (requiresProjectSize && !hasAreaInfo) {
       missingFields.add(
-        const AiMissingFieldModel(
+        AiMissingFieldModel(
           key: 'project_size',
-          question: 'What is the approximate project size: sqft or number of rooms?',
+          question: _quantityQuestionForUnit(normalizedRuleUnit),
           isRequired: true,
           answerType: 'text',
-          hint: 'Example: 1200 sqft or 3 rooms.',
+          hint: _quantityHintForUnit(normalizedRuleUnit),
         ),
       );
     }
@@ -157,6 +157,26 @@ class EstimatePromptParserService {
 
     return false;
   }
+  static String _quantityQuestionForUnit(String unit) {
+    final cleanUnit = unit.trim().toLowerCase();
+
+    if (cleanUnit.isEmpty) {
+      return 'What quantity or size should be used for this estimate?';
+    }
+
+    return 'What is the approximate quantity in $cleanUnit?';
+  }
+
+  static String _quantityHintForUnit(String unit) {
+    final cleanUnit = unit.trim().toLowerCase();
+
+    if (cleanUnit.isEmpty) {
+      return 'Example: 2 loads, 3 hours, 40 sqft, or 5 items.';
+    }
+
+    return 'Example: 2 $cleanUnit.';
+  }
+
 
   static double? _extractSquareFootage(String text) {
     final leadingUnitPatterns = [
