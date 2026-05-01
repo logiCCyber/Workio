@@ -146,16 +146,13 @@ class EstimateDraftBuilderService {
       final rushDescription = currentRule?.aiRushDescription?.trim() ?? '';
 
       final cleanRushDescription = rushDescription.isNotEmpty
-          ? _applyAiTemplate(rushDescription, parsed)
-          .replaceAll(RegExp(r'\{[^}]*\}'), ' ')
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim()
+          ? _cleanAiText(_applyAiTemplate(rushDescription, parsed))
           : '';
 
       details.add(
         cleanRushDescription.isNotEmpty
             ? cleanRushDescription
-            : 'Provide expedited scheduling where available.',
+            : 'Expedited response to prioritize scheduling; availability varies.',
       );
     }
 
@@ -317,7 +314,13 @@ class EstimateDraftBuilderService {
               ? measureValue.toInt().toString()
               : measureValue.toString();
 
-          names.add('$valueText $measureUnit of $name');
+          if (_materialNameAlreadyContainsUnit(name, measureUnit)) {
+            names.add(
+              '$valueText ${_pluralizeMaterialName(name, measureValue)}',
+            );
+          } else {
+            names.add('$valueText $measureUnit of $name');
+          }
         } else if (quantity is num && quantity > 0) {
           final qtyText = quantity % 1 == 0
               ? quantity.toInt().toString()
@@ -356,6 +359,68 @@ class EstimateDraftBuilderService {
     return '${cleanValues.take(cleanValues.length - 1).join(', ')}, and ${cleanValues.last}';
   }
 
+  static bool _materialNameAlreadyContainsUnit(String name, String unit) {
+    final normalizedName = name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final normalizedUnit = unit
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (normalizedName.isEmpty || normalizedUnit.isEmpty) return false;
+
+    final unitWords = normalizedUnit.split(' ');
+
+    for (final word in unitWords) {
+      if (word.isEmpty) continue;
+
+      final singular = word.endsWith('s') && word.length > 3
+          ? word.substring(0, word.length - 1)
+          : word;
+
+      if (normalizedName.split(' ').contains(word) ||
+          normalizedName.split(' ').contains(singular)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  static String _pluralizeMaterialName(String name, double quantity) {
+    final clean = name.trim();
+    if (clean.isEmpty) return clean;
+
+    if (quantity == 1) return clean;
+
+    final parts = clean.split(RegExp(r'\s+'));
+    if (parts.isEmpty) return clean;
+
+    final last = parts.last;
+
+    if (last.endsWith('s')) {
+      return clean;
+    }
+
+    String pluralLast;
+
+    if (last.endsWith('y') && last.length > 1) {
+      pluralLast = '${last.substring(0, last.length - 1)}ies';
+    } else {
+      pluralLast = '${last}s';
+    }
+
+    parts[parts.length - 1] = pluralLast;
+    return parts.join(' ');
+  }
+
   static double? _toPositiveDouble(dynamic value) {
     if (value == null) return null;
 
@@ -368,6 +433,15 @@ class EstimateDraftBuilderService {
     if (parsed == null || parsed <= 0) return null;
 
     return parsed;
+  }
+
+  static String _cleanAiText(String value) {
+    return value
+        .replaceAll(RegExp(r'\{[^}]+\}'), '')
+        .replaceAll(RegExp(r'\brush service included\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\bservice included\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   static String _cleanScopeText(String value) {

@@ -152,7 +152,7 @@ class EstimatePricingEngineService {
       items.add(
         _item(
           title: rushTitle,
-          description: rushDescription,
+          description: _cleanAiDescription(rushDescription),
           unit: 'fixed',
           quantity: 1,
           unitPrice: rule.rushFixedRate!,
@@ -250,6 +250,13 @@ class EstimatePricingEngineService {
     }
 
     return parts.join(' • ');
+  }
+
+  static String _cleanAiDescription(String value) {
+    return value
+        .replaceAll(RegExp(r'\{[^}]+\}'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   static double? _toPositiveDouble(dynamic value) {

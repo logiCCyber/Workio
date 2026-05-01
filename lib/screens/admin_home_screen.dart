@@ -18,6 +18,7 @@ import '../services/push_token_service.dart';
 import 'estimate_list_screen.dart';
 import 'estimate_templates_screen.dart';
 import 'ai_estimate_screen.dart';
+import 'quick_quote_screen.dart';
 import 'company_settings_screen.dart';
 import 'clients_screen.dart';
 import 'properties_screen.dart';
@@ -161,6 +162,15 @@ class AdminHomeScreen extends StatelessWidget {
                     onTap: () => _openEstimateSystemScreen(
                       context,
                       const GlobalSearchScreen(),
+                    ),
+                  ),
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(CupertinoIcons.bolt_fill, color: Colors.white70),
+                    title: const Text('Quick Quote'),
+                    onTap: () => _openEstimateSystemScreen(
+                      context,
+                      const QuickQuoteScreen(),
                     ),
                   ),
                 ListTile(

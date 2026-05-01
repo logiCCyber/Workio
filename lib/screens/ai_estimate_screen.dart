@@ -919,16 +919,18 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
     final unit = rule.unit.trim().toLowerCase();
 
-    // Для sqft/hour/room уже достаточно числа + unit слова
     if (unit == 'sqft' || unit == 'hour' || unit == 'room') {
       final hasNumber = RegExp(r'\b\d+(?:[.,]\d+)?\b').hasMatch(text);
       return hasNumber;
     }
 
-    final words = _ruleQuantityWords(rule);
+    final words = <String>{
+      ..._ruleQuantityWords(rule),
+      ..._quantityWordsFromUnit(unit),
+    };
+
     if (words.isEmpty) return false;
 
-    // Убираем цены, чтобы "$150 door" не путало логику
     final noMoney = text.replaceAll(
       RegExp(r'\$+\s*\d+(?:[.,]\d+)?'),
       ' ',
@@ -945,6 +947,103 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
 
     return false;
+  }
+
+  Set<String> _quantityWordsFromUnit(String unit) {
+    final normalized = _normalizeMissingFieldText(unit);
+    if (normalized.isEmpty) return {};
+
+    final words = <String>{};
+
+    for (final part in normalized.split(' ')) {
+      final clean = part.trim();
+      if (clean.isEmpty) continue;
+
+      words.add(clean);
+
+      if (clean.endsWith('s') && clean.length > 3) {
+        words.add(clean.substring(0, clean.length - 1));
+      } else {
+        words.add('${clean}s');
+      }
+    }
+
+    return words;
+  }
+
+  Set<String> _serviceLabelWordsForPrompt() {
+    final rule = _activePromptRule;
+    if (rule == null) return {};
+
+    final raw = <String>[
+      rule.serviceType,
+      rule.displayName ?? '',
+    ];
+
+    final words = <String>{};
+
+    for (final value in raw) {
+      final normalized = _normalizeMissingFieldText(value);
+      for (final part in normalized.split(' ')) {
+        final clean = part.trim();
+        if (clean.isNotEmpty) words.add(clean);
+      }
+    }
+
+    return words;
+  }
+
+  bool _promptHasMeaningfulWorkDetails(String text) {
+    final tokens = _normalizeMissingFieldText(text)
+        .split(' ')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (tokens.isEmpty) return false;
+
+    final serviceWords = _serviceLabelWordsForPrompt();
+
+    final generic = <String>{
+      'a',
+      'an',
+      'the',
+      'and',
+      'or',
+      'for',
+      'with',
+      'from',
+      'to',
+      'in',
+      'at',
+      'on',
+      'of',
+      'need',
+      'needs',
+      'service',
+      'work',
+      'job',
+      'materials',
+      'material',
+      'included',
+      'include',
+      'labor',
+      'labour',
+      'only',
+      'urgent',
+      'rush',
+      'asap',
+      'priority',
+    };
+
+    final meaningful = tokens.where((token) {
+      if (RegExp(r'^\d+(?:[.,]\d+)?$').hasMatch(token)) return false;
+      if (generic.contains(token)) return false;
+      if (serviceWords.contains(token)) return false;
+      return true;
+    }).toList();
+
+    return meaningful.isNotEmpty;
   }
 
   bool _promptHasWorkAction(String text) {
@@ -998,6 +1097,21 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       return _activePromptRule != null;
     }
 
+    final keyText = _normalizeMissingFieldText(key);
+
+    if (_isIssueLikeQuestionKey(keyText)) {
+      return _promptHasMeaningfulWorkDetails(text);
+    }
+
+    if (_isAffectedLikeQuestionKey(keyText)) {
+      return _promptHasMeaningfulWorkDetails(text) ||
+          _promptHasQuantityForActiveRule(text);
+    }
+
+    if (_isQuantityLikeQuestionKey(keyText)) {
+      return _promptHasQuantityForActiveRule(text);
+    }
+
     if (key == 'service_needed' ||
         key == 'work_type' ||
         key == 'job_type' ||
@@ -1029,9 +1143,13 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       ).hasMatch(text);
     }
 
-    if (key == 'rush') {
+    if (key == 'rush' ||
+        key == 'urgency' ||
+        key == 'priority' ||
+        key == 'schedule_priority' ||
+        key == 'expedited_service') {
       return RegExp(
-        r'\b(rush|urgent|asap|expedited|priority|no rush|not urgent|standard timing|normal schedule)\b',
+        r'\b(rush|urgent|asap|expedited|priority|emergency|same day|next day|no rush|not urgent|standard timing|normal schedule)\b',
       ).hasMatch(text);
     }
 
@@ -1055,6 +1173,67 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
           return true;
         }
       }
+    }
+
+    return false;
+  }
+
+  bool _isIssueLikeQuestionKey(String key) {
+    return _keyHasAnyWord(key, {
+      'issue',
+      'problem',
+      'request',
+      'requested',
+      'description',
+      'symptom',
+      'symptoms',
+      'work',
+      'job',
+    });
+  }
+
+  bool _isAffectedLikeQuestionKey(String key) {
+    return _keyHasAnyWord(key, {
+      'affected',
+      'device',
+      'devices',
+      'fixture',
+      'fixtures',
+      'location',
+      'locations',
+      'area',
+      'areas',
+      'room',
+      'rooms',
+    });
+  }
+
+  bool _isQuantityLikeQuestionKey(String key) {
+    return _keyHasAnyWord(key, {
+      'quantity',
+      'qty',
+      'count',
+      'amount',
+      'number',
+      'estimate',
+      'size',
+      'unit',
+      'units',
+    });
+  }
+
+  bool _keyHasAnyWord(String key, Set<String> words) {
+    final normalized = _normalizeMissingFieldText(key);
+    if (normalized.isEmpty) return false;
+
+    final tokens = normalized
+        .split(' ')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+
+    for (final word in words) {
+      if (tokens.contains(word)) return true;
     }
 
     return false;
