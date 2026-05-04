@@ -281,7 +281,7 @@ class SmartEstimateService {
     if (selectedRule == null) return polishedResult;
     if (!_hasRushSignal(prompt)) return polishedResult;
 
-    final rushFixed = selectedRule.rushFixed ?? 0;
+    final double rushFixed = selectedRule.rushFixedRate ?? 0;
     if (rushFixed <= 0) return polishedResult;
 
     final alreadyHasRush = polishedResult.items.any((item) {
