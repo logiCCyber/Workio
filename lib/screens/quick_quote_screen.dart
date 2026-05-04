@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'dart:io';
 import 'dart:convert';
 
@@ -15,13 +16,18 @@ import '../utils/estimate_formatters.dart';
 import '../models/client_model.dart';
 import '../models/property_model.dart';
 import '../models/estimate_model.dart';
+import '../models/estimate_price_rule_model.dart';
 
 import '../services/client_service.dart';
 import '../services/property_service.dart';
 import '../services/estimate_service.dart';
+import '../services/parse_estimate_mini_service.dart';
 import '../services/estimate_price_rules_service.dart';
+import '../services/estimate_rule_resolution_service.dart';
 
 import 'estimate_details_screen.dart';
+import '../dialogs/add_client_dialog.dart';
+import '../dialogs/add_property_dialog.dart';
 
 class QuickQuoteScreen extends StatefulWidget {
   const QuickQuoteScreen({super.key});
@@ -34,8 +40,15 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
   final TextEditingController _promptController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
 
+  final stt.SpeechToText _speech = stt.SpeechToText();
+
+  bool _speechReady = false;
+  bool _isListening = false;
+  bool _voiceAppendMode = false;
+
   bool _photoMode = false;
-  XFile? _selectedPhoto;
+  final List<XFile> _selectedPhotos = [];
+  static const int _maxPhotos = 5;
 
   bool _isLoading = true;
   bool _isGenerating = false;
@@ -45,6 +58,10 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
   String? _photoWarning;
   String? _photoMatchedService;
   double? _photoConfidence;
+
+  String? _forcedServiceType;
+  String? _matchedServiceLabel;
+  EstimatePriceRuleModel? _selectedPriceRule;
 
   List<ClientModel> _clients = [];
   List<PropertyModel> _properties = [];
@@ -62,10 +79,12 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
   void initState() {
     super.initState();
     _loadDefaults();
+    _initSpeech();
   }
 
   @override
   void dispose() {
+    _speech.stop();
     _promptController.dispose();
     super.dispose();
   }
@@ -98,6 +117,139 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     }
   }
 
+  Future<void> _initSpeech() async {
+    final ready = await _speech.initialize(
+      onStatus: (status) {
+        if (!mounted) return;
+
+        if (status == 'done' || status == 'notListening') {
+          setState(() {
+            _isListening = false;
+          });
+        }
+      },
+      onError: (_) {
+        if (!mounted) return;
+
+        setState(() {
+          _isListening = false;
+        });
+
+        _showSnack('Voice input failed');
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _speechReady = ready;
+    });
+  }
+
+  void _insertVoiceText(
+      String spokenText, {
+        required bool append,
+      }) {
+    final clean = spokenText.trim();
+    if (clean.isEmpty) return;
+
+    final current = _promptController.text.trim();
+
+    final next = append
+        ? (current.isEmpty ? clean : '$current $clean').trim()
+        : clean;
+
+    _promptController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+  }
+
+  Future<void> _startVoiceInput({
+    required bool append,
+  }) async {
+    if (!_speechReady) {
+      _showSnack('Voice input is not available on this device');
+      return;
+    }
+
+    if (_isListening) return;
+
+    setState(() {
+      _voiceAppendMode = append;
+      _isListening = true;
+    });
+
+    await _speech.listen(
+      onResult: (result) {
+        if (!mounted) return;
+
+        if (result.finalResult) {
+          _insertVoiceText(
+            result.recognizedWords,
+            append: _voiceAppendMode,
+          );
+
+          setState(() {
+            _isListening = false;
+          });
+        }
+      },
+      listenMode: stt.ListenMode.dictation,
+      partialResults: true,
+      cancelOnError: true,
+      listenFor: const Duration(seconds: 45),
+      pauseFor: const Duration(seconds: 5),
+    );
+  }
+
+  Future<void> _stopVoiceInput() async {
+    await _speech.stop();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isListening = false;
+    });
+  }
+
+  Future<void> _openVoicePromptSheet() async {
+    if (_isListening) {
+      await _stopVoiceInput();
+      return;
+    }
+
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const Text('Voice Prompt'),
+          message: const Text('Choose how Workio should insert your voice text'),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'replace'),
+              child: const Text('Replace prompt'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'append'),
+              child: const Text('Append to prompt'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        );
+      },
+    );
+
+    if (action == 'replace') {
+      await _startVoiceInput(append: false);
+    } else if (action == 'append') {
+      await _startVoiceInput(append: true);
+    }
+  }
+
   EstimateTotals get _totals {
     return EstimateCalculator.calculateTotals(
       items: _result?.items ?? const <EstimateItemModel>[],
@@ -115,10 +267,842 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     );
   }
 
-  Future<void> _generateQuote() async {
-    final prompt = _promptController.text.trim();
+  String _cleanEstimateText(String value) {
+    var text = value.trim();
 
-    if (prompt.isEmpty) {
+    if (text.isEmpty) return '';
+
+    text = text
+    // empty brackets
+        .replaceAll(RegExp(r'\(\s*\)'), '')
+        .replaceAll(RegExp(r'\[\s*\]'), '')
+        .replaceAll(RegExp(r'\{\s*\}'), '')
+
+    // empty placeholders / ugly punctuation
+        .replaceAll(RegExp(r'\s+,\s*'), ', ')
+        .replaceAll(RegExp(r'\s+;\s*'), '; ')
+        .replaceAll(RegExp(r'\s+:\s*'), ': ')
+        .replaceAll(RegExp(r'\.{2,}'), '.')
+        .replaceAll(RegExp(r'\s+\.'), '.')
+        .replaceAll(RegExp(r'\s+,'), ',')
+
+    // remove repeated generic AI opening
+        .replaceAll(
+      RegExp(
+        r'^Complete the requested work for\s+[^:]+:\s*',
+        caseSensitive: false,
+      ),
+      '',
+    )
+        .replaceAll(
+      RegExp(
+        r'^Complete the requested\s+',
+        caseSensitive: false,
+      ),
+      '',
+    )
+        .replaceAll(
+      RegExp(r'\bMaterials not included\.\s*Not\.', caseSensitive: false),
+      'Materials not included.',
+    )
+        .replaceAll(
+      RegExp(r'\bNot\.\s*On-site labor', caseSensitive: false),
+      'On-site labor',
+    )
+        .replaceAll(
+      RegExp(r'\bNot\.\s*Labor', caseSensitive: false),
+      'Labor',
+    )
+        .replaceAll(
+      RegExp(r'\bNot\.\s*Verify', caseSensitive: false),
+      'Verify',
+    )
+
+    // cleanup wording
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .trim();
+
+    text = text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .join('\n');
+
+    return text;
+  }
+
+  String _resultServiceTitle(AiEstimateResultModel result, int index) {
+    String cleanTitle(String value) {
+      var text = value.trim();
+
+      text = text
+          .replaceAll(
+        RegExp(r'\s+estimate$', caseSensitive: false),
+        '',
+      )
+          .replaceAll(
+        RegExp(r'\s+quick quote$', caseSensitive: false),
+        '',
+      )
+          .replaceAll(RegExp(r'\s{2,}'), ' ')
+          .trim();
+
+      return text;
+    }
+
+    final title = cleanTitle(result.title ?? '');
+
+    if (title.isNotEmpty &&
+        title.toLowerCase() != 'quick quote' &&
+        title.toLowerCase() != 'ai estimate') {
+      return title;
+    }
+
+    final firstItemTitle = result.items.isNotEmpty
+        ? cleanTitle(result.items.first.title)
+        : '';
+
+    if (firstItemTitle.isNotEmpty) {
+      return firstItemTitle;
+    }
+
+    return 'Service ${index + 1}';
+  }
+
+  String _buildRichMultiScope(List<AiEstimateResultModel> results) {
+    final sections = <String>[];
+
+    for (var i = 0; i < results.length; i++) {
+      final result = results[i];
+
+      final title = _cleanEstimateText(_resultServiceTitle(result, i));
+      final scope = _cleanEstimateText(result.scope ?? '');
+
+      if (scope.isEmpty) continue;
+
+      sections.add('$title\n$scope');
+    }
+
+    return sections.join('\n\n');
+  }
+
+  String _buildRichMultiNotes(List<AiEstimateResultModel> results) {
+    final sections = <String>[];
+
+    for (var i = 0; i < results.length; i++) {
+      final result = results[i];
+
+      final title = _cleanEstimateText(_resultServiceTitle(result, i));
+      final notes = _cleanEstimateText(result.notes ?? '');
+
+      if (notes.isEmpty) continue;
+
+      sections.add('$title\n$notes');
+    }
+
+    return sections.join('\n\n');
+  }
+
+  Future<String?> _normalizeQuickQuotePrompt(String rawPrompt) async {
+    final original = rawPrompt.trim();
+    if (original.isEmpty) return null;
+
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'normalize-quick-quote-prompt',
+        body: {
+          'prompt': original,
+        },
+      );
+
+      final data = Map<String, dynamic>.from(response.data as Map);
+
+      final cleanPrompt = (data['cleanPrompt'] ?? original).toString().trim();
+
+      // ВАЖНО:
+      // Никаких popup. Admin не должен отвечать вручную.
+      // Если AI сомневается по материалам — мы всё равно продолжаем.
+      // Явные материалы потом отдельно парсит ParseEstimateMiniService.
+      return cleanPrompt.isEmpty ? original : cleanPrompt;
+    } catch (_) {
+      return original;
+    }
+  }
+
+  Map<String, dynamic> _ruleToCandidate(EstimatePriceRuleModel rule) {
+    return {
+      'ruleId': rule.id,
+      'serviceType': rule.serviceType,
+      'displayName': rule.displayName,
+      'unit': rule.unit,
+      'category': rule.category,
+      'aliases': rule.aliases,
+      'aiKeywords': rule.aiKeywords,
+      'negativeKeywords': rule.negativeKeywords,
+      'followupQuestions': rule.aiFollowupQuestions,
+    };
+  }
+
+  String _intentClean(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String _detectPromptIntent(String prompt) {
+    final text = _intentClean(prompt);
+
+    if (RegExp(r'\b(install|installation|mount|setup|put in|connect)\b').hasMatch(text)) {
+      return 'installation';
+    }
+
+    if (RegExp(r'\b(replace|replacement|swap|change)\b').hasMatch(text)) {
+      return 'replacement';
+    }
+
+    if (RegExp(r'\b(repair|fix|troubleshoot|service|leak|broken|not working)\b').hasMatch(text)) {
+      return 'repair';
+    }
+
+    if (RegExp(r'\b(inspect|inspection|diagnose|check)\b').hasMatch(text)) {
+      return 'inspection';
+    }
+
+    return 'broad';
+  }
+
+  String _detectRuleIntent(EstimatePriceRuleModel rule) {
+    final text = _intentClean(
+      '${rule.serviceType} ${rule.displayName ?? ''}',
+    );
+
+    if (RegExp(r'\b(install|installation|mount|setup)\b').hasMatch(text)) {
+      return 'installation';
+    }
+
+    if (RegExp(r'\b(replace|replacement|swap)\b').hasMatch(text)) {
+      return 'replacement';
+    }
+
+    if (RegExp(r'\b(repair|fix|troubleshoot|leak|broken)\b').hasMatch(text)) {
+      return 'repair';
+    }
+
+    if (RegExp(r'\b(inspect|inspection|diagnose|diagnostic)\b').hasMatch(text)) {
+      return 'inspection';
+    }
+
+    return 'broad';
+  }
+
+  bool _ruleIntentConflictsWithPrompt(
+      String prompt,
+      EstimatePriceRuleModel rule,
+      ) {
+    final promptIntent = _detectPromptIntent(prompt);
+    final ruleIntent = _detectRuleIntent(rule);
+
+    if (promptIntent == 'broad') return false;
+    if (ruleIntent == 'broad') return false;
+
+    return promptIntent != ruleIntent;
+  }
+
+  EstimatePriceRuleModel? _resolveRuleByLocalAliasFallback(
+      String prompt,
+      List<EstimatePriceRuleModel> rules,
+      ) {
+    String clean(String value) {
+      return value
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+
+    String stem(String value) {
+      var text = clean(value);
+
+      if (text.endsWith('ies') && text.length > 4) {
+        return '${text.substring(0, text.length - 3)}y';
+      }
+
+      if (text.endsWith('ches') && text.length > 5) {
+        return text.substring(0, text.length - 2); // switches -> switch
+      }
+
+      if (text.endsWith('shes') && text.length > 5) {
+        return text.substring(0, text.length - 2);
+      }
+
+      if (text.endsWith('es') && text.length > 4) {
+        return text.substring(0, text.length - 2);
+      }
+
+      if (text.endsWith('s') && text.length > 3) {
+        return text.substring(0, text.length - 1);
+      }
+
+      return text;
+    }
+
+    const genericWords = {
+      'repair',
+      'fix',
+      'replace',
+      'replacement',
+      'install',
+      'installation',
+      'inspect',
+      'inspection',
+      'diagnose',
+      'diagnostic',
+      'service',
+      'services',
+      'work',
+      'job',
+      'labor',
+      'labour',
+      'urgent',
+      'rush',
+      'asap',
+      'material',
+      'materials',
+      'included',
+      'customer',
+      'provided',
+      'problem',
+      'issue',
+      'broken',
+      'damaged',
+      'burned',
+      'check',
+      'checking',
+      'as',
+      'needed',
+    };
+
+    List<String> tokens(String value) {
+      return clean(value)
+          .split(' ')
+          .map((e) => stem(e))
+          .where((e) => e.length >= 3)
+          .where((e) => !genericWords.contains(e))
+          .toList();
+    }
+
+    bool containsPhrase(String text, String phrase) {
+      final cleanPhrase = clean(phrase);
+      if (cleanPhrase.isEmpty) return false;
+
+      return text.contains(RegExp(
+        r'(^|\s)' + RegExp.escape(cleanPhrase) + r'(\s|$)',
+      ));
+    }
+
+    final normalizedPrompt = clean(prompt);
+    if (normalizedPrompt.isEmpty) return null;
+
+    final promptTokens = tokens(normalizedPrompt).toSet();
+
+    double bestScore = 0;
+    EstimatePriceRuleModel? bestRule;
+
+    for (final rule in rules) {
+      double score = 0;
+
+      final candidates = <({String text, double weight})>[
+        (text: rule.serviceType, weight: 1.00),
+        (text: rule.displayName ?? '', weight: 1.05),
+        ...rule.aliases.map((e) => (text: e, weight: 1.35)),
+        ...rule.aiKeywords.map((e) => (text: e, weight: 1.25)),
+      ];
+
+      int bestMatchedSpecificTokens = 0;
+
+      for (final candidate in candidates) {
+        final candidateText = clean(candidate.text);
+        if (candidateText.isEmpty) continue;
+
+        final candidateTokens = tokens(candidateText);
+        if (candidateTokens.isEmpty) continue;
+
+        int matchedTokens = 0;
+
+        for (final token in candidateTokens) {
+          if (promptTokens.contains(token)) {
+            matchedTokens++;
+          }
+        }
+
+        if (matchedTokens == 0) continue;
+
+        bestMatchedSpecificTokens =
+        matchedTokens > bestMatchedSpecificTokens
+            ? matchedTokens
+            : bestMatchedSpecificTokens;
+
+        score += matchedTokens * 2.0 * candidate.weight;
+
+        final allTokensMatched = candidateTokens.every(promptTokens.contains);
+        if (allTokensMatched) {
+          score += 3.0 * candidate.weight;
+        }
+
+        if (containsPhrase(normalizedPrompt, candidateText)) {
+          score += 5.0 * candidate.weight;
+        }
+
+        // More specific object aliases should beat broad labor/category rules.
+        if (candidateTokens.length <= 3 && allTokensMatched) {
+          score += 2.0 * candidate.weight;
+        }
+      }
+
+      for (final negative in rule.negativeKeywords) {
+        final negativeText = clean(negative);
+        if (negativeText.isEmpty) continue;
+
+        final negativeTokens = tokens(negativeText);
+        final negativeMatched =
+            containsPhrase(normalizedPrompt, negativeText) ||
+                negativeTokens.any(promptTokens.contains);
+
+        if (negativeMatched) {
+          score -= 8;
+        }
+      }
+
+      if (bestMatchedSpecificTokens == 0) {
+        score = 0;
+      }
+
+      if (_ruleIntentConflictsWithPrompt(prompt, rule)) {
+        score -= 12;
+      }
+
+      if (score <= 0) {
+        continue;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestRule = rule;
+      }
+    }
+
+    return bestScore >= 2 ? bestRule : null;
+  }
+
+  Future<EstimatePriceRuleModel?> _resolveRuleForPrompt(String prompt) async {
+    final rules = await EstimatePriceRulesService.getRules();
+    final activeRules = rules.where((rule) => rule.isActive).toList();
+
+    if (activeRules.isEmpty) return null;
+
+    // Strong local fallback FIRST.
+    // If prompt clearly contains a rule alias/keyword like "outlet",
+    // do not let AI resolver reject inspection wording.
+    final localFirst = _resolveRuleByLocalAliasFallback(prompt, activeRules);
+    if (localFirst != null) {
+      return localFirst;
+    }
+
+    final resolverResult = await EstimateRuleResolutionService.resolve(
+      prompt: prompt,
+      guidedAnswers: {
+        'requested_work': prompt,
+      },
+      candidates: activeRules.map(_ruleToCandidate).toList(),
+    );
+
+    final selectedRuleId = resolverResult.selectedRuleId;
+
+    if ((selectedRuleId ?? '').trim().isEmpty) {
+      return _resolveRuleByLocalAliasFallback(prompt, activeRules);
+    }
+
+    final resolved = await EstimatePriceRulesService.getRuleById(
+      selectedRuleId!.trim(),
+    );
+
+    if (resolved != null && _ruleIntentConflictsWithPrompt(prompt, resolved)) {
+      return _resolveRuleByLocalAliasFallback(
+        prompt,
+        activeRules.where((rule) => rule.id != resolved.id).toList(),
+      );
+    }
+
+    return resolved ?? _resolveRuleByLocalAliasFallback(prompt, activeRules);
+  }
+
+  Future<List<String>?> _splitQuickQuoteJobs(String prompt) async {
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'split-quick-quote-jobs',
+        body: {
+          'prompt': prompt,
+        },
+      );
+
+      final data = Map<String, dynamic>.from(response.data as Map);
+
+      final rawJobs = data['jobs'];
+      if (rawJobs is! List) return [prompt];
+
+      final jobs = rawJobs
+          .whereType<Map>()
+          .map((job) => (job['description'] ?? '').toString().trim())
+          .where((text) => text.isNotEmpty)
+          .toList();
+
+      if (jobs.isEmpty) return [prompt];
+
+      return jobs.length > 8 ? jobs.take(8).toList() : jobs;
+    } catch (_) {
+      return [prompt];
+    }
+  }
+
+  Future<AiEstimateResultModel?> _generateSingleJobQuote(String jobPrompt) async {
+    final selectedRule = await _resolveRuleForPrompt(jobPrompt);
+
+    if (selectedRule == null) {
+      return null;
+    }
+
+    final serviceLabel = selectedRule.displayName?.trim().isNotEmpty == true
+        ? selectedRule.displayName!.trim()
+        : selectedRule.serviceType.trim();
+
+    final systemPrompt =
+        'service_type: ${selectedRule.serviceType}. '
+        'service_label: $serviceLabel. '
+        'request: $jobPrompt';
+
+    return SmartEstimateService.generate(
+      prompt: systemPrompt,
+      propertyCity: null,
+      clientId: null,
+      propertyId: null,
+      ruleUnit: selectedRule.unit,
+      selectedRule: selectedRule,
+      allowDraftWithExplicitService: true,
+    );
+  }
+
+  AiEstimateResultModel _mergeQuickQuoteResults({
+    required String prompt,
+    required List<AiEstimateResultModel> results,
+  }) {
+    final items = <EstimateItemModel>[];
+
+    for (final result in results) {
+      items.addAll(result.items);
+    }
+
+    final richScope = _buildRichMultiScope(results);
+    final richNotes = _buildRichMultiNotes(results);
+
+    final confidence = results.isEmpty
+        ? 0.0
+        : results
+        .map((result) => result.confidence)
+        .fold<double>(0, (sum, value) => sum + value) /
+        results.length;
+
+    return AiEstimateResultModel(
+      title: results.length > 1 ? 'Multi-Service Quick Quote' : results.first.title,
+      scope: richScope.trim().isEmpty ? null : richScope.trim(),
+      notes: richNotes.trim().isEmpty ? null : richNotes.trim(),
+      items: items,
+      parsedRequest: results.first.parsedRequest,
+      assumptions: results.expand((result) => result.assumptions).toList(),
+      missingFields: results.expand((result) => result.missingFields).toList(),
+      confidence: confidence,
+    );
+  }
+
+  double? _promptNumber(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+
+    final clean = value.toString().replaceAll(',', '.').trim();
+    return double.tryParse(clean);
+  }
+
+  String _promptTitleCase(String value) {
+    return value
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .map((word) => word[0].toUpperCase() + word.substring(1).toLowerCase())
+        .join(' ');
+  }
+
+  Future<List<EstimateItemModel>> _buildPromptMaterialItems(
+      String prompt, {
+        required int startSortOrder,
+      }) async {
+    try {
+      final parsed = await ParseEstimateMiniService.parse(
+        prompt: prompt,
+        localParsed: const <String, dynamic>{},
+      );
+
+      final items = <EstimateItemModel>[];
+
+      for (final material in parsed.parsedMaterials) {
+        final rawName = (material['name'] ?? '').toString().trim();
+        final rawText = (material['raw_text'] ?? '').toString().trim();
+
+        final quantity = _promptNumber(material['quantity']) ?? 1;
+        final unitPrice = _promptNumber(material['unit_price']);
+        final lineTotal = _promptNumber(material['line_total']);
+
+        double resolvedUnitPrice = unitPrice ?? 0;
+
+        if (resolvedUnitPrice <= 0 && lineTotal != null && lineTotal > 0) {
+          resolvedUnitPrice = quantity > 0 ? lineTotal / quantity : lineTotal;
+        }
+
+        if (resolvedUnitPrice <= 0) continue;
+
+        final safeQty = quantity <= 0 ? 1.0 : quantity;
+        final titleName = rawName.isEmpty ? 'Materials' : _promptTitleCase(rawName);
+        final total = EstimateCalculator.calculateLineTotal(
+          quantity: safeQty,
+          unitPrice: resolvedUnitPrice,
+        );
+
+        items.add(
+          EstimateItemModel(
+            id: '',
+            estimateId: '',
+            title: '$titleName Materials',
+            description: rawText.isEmpty
+                ? 'Parsed from prompt material details.'
+                : 'Parsed from prompt: $rawText',
+            unit: 'item',
+            quantity: safeQty,
+            unitPrice: double.parse(resolvedUnitPrice.toStringAsFixed(2)),
+            lineTotal: total,
+            sortOrder: startSortOrder + items.length,
+            createdAt: null,
+          ),
+        );
+      }
+
+      return items;
+    } catch (_) {
+      return const <EstimateItemModel>[];
+    }
+  }
+
+  AiEstimateResultModel _appendPromptMaterialItems(
+      AiEstimateResultModel result,
+      List<EstimateItemModel> materialItems,
+      ) {
+    if (materialItems.isEmpty) return result;
+
+    String clean(String value) {
+      return value
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+
+    String stem(String value) {
+      var text = clean(value);
+
+      if (text.endsWith('ies') && text.length > 4) {
+        return '${text.substring(0, text.length - 3)}y';
+      }
+
+      if (text.endsWith('ches') && text.length > 5) {
+        return text.substring(0, text.length - 2);
+      }
+
+      if (text.endsWith('shes') && text.length > 5) {
+        return text.substring(0, text.length - 2);
+      }
+
+      if (text.endsWith('es') && text.length > 4) {
+        return text.substring(0, text.length - 2);
+      }
+
+      if (text.endsWith('s') && text.length > 3) {
+        return text.substring(0, text.length - 1);
+      }
+
+      return text;
+    }
+
+    Set<String> objectTokens(String value) {
+      const ignored = {
+        'material',
+        'materials',
+        'item',
+        'items',
+        'part',
+        'parts',
+        'supply',
+        'supplies',
+        'each',
+        'per',
+        'total',
+        'cost',
+        'price',
+        'parsed',
+        'from',
+        'prompt',
+        'detail',
+        'details',
+        'included',
+        'include',
+        'with',
+        'for',
+        'and',
+        'the',
+      };
+
+      return clean(value)
+          .split(' ')
+          .map(stem)
+          .where((e) => e.length >= 3)
+          .where((e) => !ignored.contains(e))
+          .toSet();
+    }
+
+    bool closeMoney(double a, double b) {
+      return (a - b).abs() < 0.01;
+    }
+
+    bool isDuplicatePromptMaterial(
+        EstimateItemModel existing,
+        EstimateItemModel material,
+        ) {
+      final sameQty = closeMoney(existing.quantity, material.quantity);
+      final sameUnitPrice = closeMoney(existing.unitPrice, material.unitPrice);
+      final sameLineTotal = closeMoney(existing.lineTotal, material.lineTotal);
+
+      if (!sameQty || !sameUnitPrice || !sameLineTotal) {
+        return false;
+      }
+
+      final existingTokens = objectTokens(
+        '${existing.title} ${existing.description}',
+      );
+
+      final materialTokens = objectTokens(
+        '${material.title} ${material.description}',
+      );
+
+      if (existingTokens.isEmpty || materialTokens.isEmpty) return false;
+
+      final hasSameObject =
+          existingTokens.intersection(materialTokens).isNotEmpty;
+
+      if (!hasSameObject) return false;
+
+      final existingTitle = clean(existing.title);
+
+      final looksLikeRealWork = RegExp(
+        r'\b(installation|install|repair|replace|replacement|service|removal|remove|inspection|inspect|diagnose|troubleshoot|mount|assembly|assemble)\b',
+      ).hasMatch(existingTitle);
+
+      // Example:
+      // Keep: "Outlet Service" / "Dishwasher Installation"
+      // Remove: "Outlets" when exact same qty + price + total exists as material.
+      return !looksLikeRealWork;
+    }
+
+    final filteredExistingItems = result.items.where((existing) {
+      for (final material in materialItems) {
+        if (isDuplicatePromptMaterial(existing, material)) {
+          return false;
+        }
+      }
+
+      return true;
+    }).toList();
+
+    final normalizedMaterials = materialItems.asMap().entries.map((entry) {
+      final index = filteredExistingItems.length + entry.key;
+      final item = entry.value;
+
+      return item.copyWith(
+        sortOrder: index,
+        lineTotal: EstimateCalculator.calculateLineTotal(
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        ),
+      );
+    }).toList();
+
+    return result.copyWith(
+      items: [
+        ...filteredExistingItems,
+        ...normalizedMaterials,
+      ],
+      notes: (result.notes ?? '').trim(),
+    );
+  }
+
+  bool _isMaterialOnlyJobPrompt(String value) {
+    final text = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s\$\.,]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (text.isEmpty) return false;
+
+    final hasMoney = RegExp(
+      r'(\$ ?\d+|\d+ ?\$|\b\d+(\.\d+)?\s*(each|per|total)\b)',
+    ).hasMatch(text);
+
+    final hasMaterialSignal = RegExp(
+      r'\b(material|materials|part|parts|supply|supplies|included|cost|price|each|per|total)\b',
+    ).hasMatch(text);
+
+    final hasWorkAction = RegExp(
+      r'\b(replace|repair|fix|install|mount|remove|clean|paint|inspect|diagnose|check|service|troubleshoot|change|swap|assemble|connect|disconnect|move|build|cut|seal|patch|caulk)\b',
+    ).hasMatch(text);
+
+    return hasMaterialSignal && hasMoney && !hasWorkAction;
+  }
+
+  bool _hasRushSignalInPrompt(String value) {
+    final text = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (RegExp(
+      r'\b(no rush|not urgent|not rush|standard timing|normal schedule|not srochnaya|ne srochnaya|rabota ne srochnaya)\b',
+    ).hasMatch(text)) {
+      return false;
+    }
+
+    return RegExp(
+      r'\b(urgent|rush|asap|same day|emergency|priority|expedited|srochno|srochnaya|rabota srochnaya|shoshilinch)\b',
+    ).hasMatch(text);
+  }
+
+  Future<void> _generateQuote() async {
+    final rawPrompt = _promptController.text.trim();
+
+    if (rawPrompt.isEmpty) {
       _showSnack('Describe the work first');
       return;
     }
@@ -126,27 +1110,92 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     setState(() {
       _isGenerating = true;
       _result = null;
+      _selectedPriceRule = null;
+      _forcedServiceType = null;
+      _matchedServiceLabel = null;
     });
 
     try {
-      final result = await SmartEstimateService.generate(
-        prompt: prompt,
-        propertyCity: null,
-        clientId: null,
-        propertyId: null,
+      final normalizedPrompt = await _normalizeQuickQuotePrompt(rawPrompt);
+      if (normalizedPrompt == null || normalizedPrompt.trim().isEmpty) {
+        return;
+      }
+
+      final jobs = await _splitQuickQuoteJobs(normalizedPrompt.trim());
+      if (jobs == null || jobs.isEmpty) {
+        return;
+      }
+
+      final results = <AiEstimateResultModel>[];
+      final failedJobs = <String>[];
+
+      for (final job in jobs) {
+        if (_isMaterialOnlyJobPrompt(job)) {
+          continue;
+        }
+
+        final cleanJob = await _normalizeQuickQuotePrompt(job);
+
+        if (cleanJob == null || cleanJob.trim().isEmpty) {
+          failedJobs.add(job);
+          continue;
+        }
+
+        final cleanJobText = cleanJob.trim();
+
+        if (_isMaterialOnlyJobPrompt(cleanJobText)) {
+          continue;
+        }
+
+        final finalJobPrompt = _hasRushSignalInPrompt(normalizedPrompt.trim()) &&
+            !_hasRushSignalInPrompt(cleanJobText)
+            ? '$cleanJobText. Urgent.'
+            : cleanJobText;
+
+        final result = await _generateSingleJobQuote(finalJobPrompt);
+
+        if (result == null || result.items.isEmpty) {
+          failedJobs.add(cleanJobText);
+          continue;
+        }
+
+        results.add(result);
+      }
+
+      if (!mounted) return;
+
+      if (results.isEmpty) {
+        _showSnack('No matching Price Rules found. Add them in Price Rules first.');
+        return;
+      }
+
+      final merged = _mergeQuickQuoteResults(
+        prompt: normalizedPrompt.trim(),
+        results: results,
       );
 
-      if (!mounted) return;
+      final promptMaterialItems = await _buildPromptMaterialItems(
+        normalizedPrompt.trim(),
+        startSortOrder: merged.items.length,
+      );
+
+      final finalResult = _appendPromptMaterialItems(
+        merged,
+        promptMaterialItems,
+      );
 
       setState(() {
-        _result = result;
+        _result = finalResult;
       });
 
-      if (result.items.isEmpty) {
-        _showSnack('No matching Price Rule found. Add one in Price Rules first.');
+      if (failedJobs.isNotEmpty) {
+        _showSnack(
+          'Some jobs were not priced: ${failedJobs.take(2).join(', ')}',
+        );
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      debugPrint('Failed to generate multi quick quote: $e');
       _showSnack('Failed to generate quick quote');
     } finally {
       if (!mounted) return;
@@ -161,11 +1210,19 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     setState(() {
       _promptController.clear();
       _result = null;
+      _forcedServiceType = null;
+      _matchedServiceLabel = null;
+      _selectedPriceRule = null;
     });
   }
 
   Future<void> _pickPhoto(ImageSource source) async {
     try {
+      if (_selectedPhotos.length >= _maxPhotos) {
+        _showSnack('Maximum $_maxPhotos photos allowed');
+        return;
+      }
+
       final picked = await _imagePicker.pickImage(
         source: source,
         imageQuality: 82,
@@ -175,8 +1232,11 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
       if (picked == null) return;
 
       setState(() {
-        _selectedPhoto = picked;
+        _selectedPhotos.add(picked);
         _result = null;
+        _forcedServiceType = null;
+        _matchedServiceLabel = null;
+        _selectedPriceRule = null;
       });
     } catch (_) {
       _showSnack('Failed to pick photo');
@@ -185,16 +1245,29 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
 
   void _clearPhoto() {
     setState(() {
-      _selectedPhoto = null;
+      _selectedPhotos.clear();
       _result = null;
+      _forcedServiceType = null;
+      _matchedServiceLabel = null;
+      _selectedPriceRule = null;
+    });
+  }
+
+  void _removePhotoAt(int index) {
+    if (index < 0 || index >= _selectedPhotos.length) return;
+
+    setState(() {
+      _selectedPhotos.removeAt(index);
+      _result = null;
+      _forcedServiceType = null;
+      _matchedServiceLabel = null;
+      _selectedPriceRule = null;
     });
   }
 
   Future<void> _analyzePhotoQuote() async {
-    final photo = _selectedPhoto;
-
-    if (photo == null) {
-      _showSnack('Choose a photo first');
+    if (_selectedPhotos.isEmpty) {
+      _showSnack('Choose at least one photo first');
       return;
     }
 
@@ -208,8 +1281,16 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     });
 
     try {
-      final bytes = await photo.readAsBytes();
-      final imageBase64 = base64Encode(bytes);
+      final images = <Map<String, dynamic>>[];
+
+      for (final photo in _selectedPhotos) {
+        final bytes = await photo.readAsBytes();
+
+        images.add({
+          'imageBase64': base64Encode(bytes),
+          'mimeType': photo.mimeType ?? 'image/jpeg',
+        });
+      }
 
       final rules = await EstimatePriceRulesService.getRules();
 
@@ -217,18 +1298,21 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
           .where((rule) => rule.isActive == true)
           .map((rule) {
         return {
+          'rule_id': rule.id,
           'service_type': rule.serviceType,
           'display_name': rule.displayName,
+          'category': rule.category,
+          'unit': rule.unit,
           'aliases': rule.aliases,
           'ai_keywords': rule.aiKeywords,
+          'negative_keywords': rule.negativeKeywords,
         };
       }).toList();
 
       final response = await Supabase.instance.client.functions.invoke(
         'analyze-quick-quote-photo',
         body: {
-          'imageBase64': imageBase64,
-          'mimeType': photo.mimeType ?? 'image/jpeg',
+          'images': images,
           'priceRules': activeRules,
         },
       );
@@ -246,7 +1330,8 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
         setState(() {
           _photoConfidence = confidence;
           _photoDetectedIssue = (data['detected_issue'] ?? '').toString();
-          _photoWarning = (data['warning'] ?? 'No matching Price Rule found.').toString();
+          _photoWarning =
+              (data['warning'] ?? 'No matching Price Rule found.').toString();
         });
 
         _showSnack('No matching Price Rule found');
@@ -254,22 +1339,68 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
       }
 
       final suggestedPrompt = (data['suggested_prompt'] ?? '').toString().trim();
+      final ruleId = (data['rule_id'] ?? '').toString().trim();
+      final serviceType = (data['service_type'] ?? '').toString().trim();
+      final serviceLabel = (data['service_label'] ?? '').toString().trim();
+
+      EstimatePriceRuleModel? matchedRule;
+
+      if (ruleId.isNotEmpty) {
+        matchedRule = await EstimatePriceRulesService.getRuleById(ruleId);
+      }
+
+      matchedRule ??= rules.where((rule) {
+        return rule.serviceType.trim().toLowerCase() ==
+            serviceType.trim().toLowerCase();
+      }).cast<EstimatePriceRuleModel?>().firstWhere(
+            (rule) => rule != null,
+        orElse: () => null,
+      );
+
+      if (matchedRule == null) {
+        if (!mounted) return;
+
+        setState(() {
+          _photoConfidence = confidence;
+          _photoDetectedIssue = (data['detected_issue'] ?? '').toString();
+          _photoWarning = 'Matched service was not found in Price Rules.';
+        });
+
+        _showSnack('Matched Price Rule not found');
+        return;
+      }
+
+      final resolvedRule = matchedRule;
+      final resolvedServiceLabel = serviceLabel.isEmpty
+          ? ((resolvedRule.displayName ?? '').trim().isNotEmpty
+          ? resolvedRule.displayName!.trim()
+          : resolvedRule.serviceType.trim())
+          : serviceLabel;
 
       setState(() {
         _photoMode = false;
+
+        // Admin sees clean text only.
         _promptController.text = suggestedPrompt;
+
+        // System keeps matched Price Rule internally.
+        _selectedPriceRule = resolvedRule;
+        _forcedServiceType = resolvedRule.serviceType;
+        _matchedServiceLabel = resolvedServiceLabel;
+
         _photoConfidence = confidence;
         _photoDetectedIssue = (data['detected_issue'] ?? '').toString();
-        _photoMatchedService = (data['service_label'] ?? '').toString();
+        _photoMatchedService = resolvedServiceLabel;
         _photoWarning = (data['warning'] ?? '').toString();
       });
 
-      _showSnack('Photo analyzed. Review the suggested prompt.');
-    } catch (e) {
+      _showSnack('Photos analyzed. Review the suggested prompt.');
+    } catch (_) {
       if (!mounted) return;
-      _showSnack('Failed to analyze photo');
+      _showSnack('Failed to analyze photos');
     } finally {
       if (!mounted) return;
+
       setState(() {
         _isAnalyzingPhoto = false;
       });
@@ -291,13 +1422,53 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     }
   }
 
-  Future<ClientModel?> _pickClient() async {
-    if (_clients.isEmpty) {
-      _showSnack('Add at least one client first');
-      return null;
-    }
+  Future<ClientModel?> _createClientFromQuickQuote() async {
+    final created = await showAddClientDialog(context);
 
-    return showModalBottomSheet<ClientModel>(
+    if (created == null) return null;
+
+    final clients = await ClientService.getClients();
+
+    if (!mounted) return created;
+
+    setState(() {
+      _clients = clients;
+      _selectedClient = created;
+      _selectedProperty = null;
+      _properties = [];
+    });
+
+    _showSnack('Client created');
+
+    return created;
+  }
+
+  Future<PropertyModel?> _createPropertyFromQuickQuote(ClientModel client) async {
+    final created = await showAddPropertyDialog(
+      context,
+      clientId: client.id,
+    );
+
+    if (created == null) return null;
+
+    await _loadPropertiesForClient(client);
+
+    if (!mounted) return created;
+
+    setState(() {
+      _selectedClient = client;
+      _selectedProperty = created;
+    });
+
+    _showSnack('Property created');
+
+    return created;
+  }
+
+  Future<ClientModel?> _pickClient() async {
+    final clients = _clients;
+
+    final selected = await showModalBottomSheet<ClientModel>(
       context: context,
       backgroundColor: const Color(0xFF15161C),
       shape: const RoundedRectangleBorder(
@@ -306,7 +1477,7 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
       builder: (_) {
         return _SelectionSheet<ClientModel>(
           title: 'Choose Client',
-          items: _clients,
+          items: clients,
           itemLabel: (client) {
             final company = (client.companyName ?? '').trim();
             if (company.isNotEmpty) {
@@ -314,9 +1485,28 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
             }
             return client.fullName;
           },
+          actionLabel: '+ Add New Client',
+          onActionTap: () async {
+            Navigator.pop(context);
+            final created = await _createClientFromQuickQuote();
+            if (!mounted || created == null) return;
+
+            // reopen flow by returning selected client through state
+            setState(() {
+              _selectedClient = created;
+            });
+          },
         );
       },
     );
+
+    if (selected != null) return selected;
+
+    if (_selectedClient != null) {
+      return _selectedClient;
+    }
+
+    return null;
   }
 
   Future<PropertyModel?> _pickProperty(ClientModel client) async {
@@ -324,12 +1514,7 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
 
     if (!mounted) return null;
 
-    if (_properties.isEmpty) {
-      _showSnack('This client has no properties yet');
-      return null;
-    }
-
-    return showModalBottomSheet<PropertyModel>(
+    final selected = await showModalBottomSheet<PropertyModel>(
       context: context,
       backgroundColor: const Color(0xFF15161C),
       shape: const RoundedRectangleBorder(
@@ -340,9 +1525,28 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
           title: 'Choose Property',
           items: _properties,
           itemLabel: (property) => property.fullAddress,
+          emptyText: 'No properties yet. Add one to continue.',
+          actionLabel: '+ Add New Property',
+          onActionTap: () async {
+            Navigator.pop(context);
+            final created = await _createPropertyFromQuickQuote(client);
+            if (!mounted || created == null) return;
+
+            setState(() {
+              _selectedProperty = created;
+            });
+          },
         );
       },
     );
+
+    if (selected != null) return selected;
+
+    if (_selectedProperty != null && _selectedProperty!.clientId == client.id) {
+      return _selectedProperty;
+    }
+
+    return null;
   }
 
   Future<void> _openEstimateDetails(String estimateId) async {
@@ -488,8 +1692,49 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
                 _PremiumTextField(
                   controller: _promptController,
                   label: 'Prompt',
-                  hintText: 'Repair roof shingles, 120 sqft, urgent, materials included',
+                  hintText: 'Replace 2 outlets, materials included, urgent',
                   maxLines: 6,
+                ),
+                const SizedBox(height: 10),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _isListening
+                            ? (_voiceAppendMode
+                            ? 'Workio says: listening... I’ll append your words.'
+                            : 'Workio says: listening... I’ll replace the prompt.')
+                            : 'Workio says: tap the mic to dictate your prompt.',
+                        style: const TextStyle(
+                          color: Color(0xFF8E93A6),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      color: _isListening
+                          ? const Color(0xFF7A1F1F)
+                          : const Color(0xFF101117),
+                      borderRadius: BorderRadius.circular(16),
+                      onPressed: !_speechReady
+                          ? null
+                          : (_isListening ? _stopVoiceInput : _openVoicePromptSheet),
+                      child: Icon(
+                        _isListening
+                            ? CupertinoIcons.stop_fill
+                            : CupertinoIcons.mic_fill,
+                        color: _isListening
+                            ? Colors.white
+                            : const Color(0xFFB6BCD0),
+                        size: 20,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -528,22 +1773,16 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
                   ],
                 ),
               ] else ...[
-                const Text(
-                  'Workio says: add a clear photo of the issue. AI photo analysis will be connected next.',
-                  style: TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    height: 1.35,
-                  ),
-                ),
+                const _PhotoAiWarningBlock(),
                 const SizedBox(height: 12),
 
                 _PhotoPickerBlock(
-                  photo: _selectedPhoto,
+                  photos: _selectedPhotos,
+                  maxPhotos: _maxPhotos,
                   onCamera: () => _pickPhoto(ImageSource.camera),
                   onGallery: () => _pickPhoto(ImageSource.gallery),
-                  onClear: _clearPhoto,
+                  onClearAll: _clearPhoto,
+                  onRemoveAt: _removePhotoAt,
                 ),
 
                 const SizedBox(height: 16),
@@ -553,13 +1792,13 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
                   child: CupertinoButton(
                     color: const Color(0xFF5B8CFF),
                     borderRadius: BorderRadius.circular(16),
-                    onPressed: _selectedPhoto == null || _isAnalyzingPhoto
+                    onPressed: _selectedPhotos.isEmpty || _isAnalyzingPhoto
                         ? null
                         : _analyzePhotoQuote,
                     child: _isAnalyzingPhoto
                         ? const CupertinoActivityIndicator(color: Colors.white)
                         : const Text(
-                      'Analyze Photo',
+                      'Analyze Photos',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -1423,11 +2662,17 @@ class _SelectionSheet<T> extends StatelessWidget {
   final String title;
   final List<T> items;
   final String Function(T item) itemLabel;
+  final String? emptyText;
+  final String? actionLabel;
+  final VoidCallback? onActionTap;
 
   const _SelectionSheet({
     required this.title,
     required this.items,
     required this.itemLabel,
+    this.emptyText,
+    this.actionLabel,
+    this.onActionTap,
   });
 
   @override
@@ -1435,15 +2680,15 @@ class _SelectionSheet<T> extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 42,
-              height: 5,
+              height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFF3A3D49),
+                color: Colors.white.withOpacity(0.16),
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
@@ -1460,37 +2705,77 @@ class _SelectionSheet<T> extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final item = items[index];
 
-                  return GestureDetector(
-                    onTap: () => Navigator.pop(context, item),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF101117),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF23252E)),
-                      ),
-                      child: Text(
-                        itemLabel(item),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
+            if (actionLabel != null && onActionTap != null) ...[
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  color: const Color(0xFF5B8CFF),
+                  borderRadius: BorderRadius.circular(16),
+                  onPressed: onActionTap,
+                  child: Text(
+                    actionLabel!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            if (items.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101117),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF23252E)),
+                ),
+                child: Text(
+                  emptyText ?? 'No items found',
+                  style: const TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+
+                    return GestureDetector(
+                      onTap: () => Navigator.pop(context, item),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF101117),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF23252E)),
+                        ),
+                        child: Text(
+                          itemLabel(item),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -1586,77 +2871,30 @@ class _ModeSwitchButton extends StatelessWidget {
 }
 
 class _PhotoPickerBlock extends StatelessWidget {
-  final XFile? photo;
+  final List<XFile> photos;
+  final int maxPhotos;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
-  final VoidCallback onClear;
+  final VoidCallback onClearAll;
+  final void Function(int index) onRemoveAt;
 
   const _PhotoPickerBlock({
-    required this.photo,
+    required this.photos,
+    required this.maxPhotos,
     required this.onCamera,
     required this.onGallery,
-    required this.onClear,
+    required this.onClearAll,
+    required this.onRemoveAt,
   });
 
   @override
   Widget build(BuildContext context) {
-    final selected = photo;
-
-    if (selected != null) {
-      return Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: const Color(0xFF101117),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFF23252E)),
-        ),
-        child: Column(
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              child: Image.file(
-                File(selected.path),
-                width: double.infinity,
-                height: 220,
-                fit: BoxFit.cover,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Photo ready for analysis',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  CupertinoButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    color: const Color(0xFF1C1D24),
-                    borderRadius: BorderRadius.circular(12),
-                    onPressed: onClear,
-                    child: const Icon(
-                      CupertinoIcons.trash,
-                      color: Color(0xFFFF6B6B),
-                      size: 18,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final hasPhotos = photos.isNotEmpty;
+    final canAddMore = photos.length < maxPhotos;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: const Color(0xFF101117),
         borderRadius: BorderRadius.circular(20),
@@ -1664,50 +2902,160 @@ class _PhotoPickerBlock extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: const Color(0xFF5B8CFF).withOpacity(0.14),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: const Color(0xFF5B8CFF).withOpacity(0.22),
+          if (!hasPhotos) ...[
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: const Color(0xFF5B8CFF).withOpacity(0.14),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: const Color(0xFF5B8CFF).withOpacity(0.22),
+                ),
+              ),
+              child: const Icon(
+                CupertinoIcons.camera_fill,
+                color: Color(0xFF8FB0FF),
+                size: 26,
               ),
             ),
-            child: const Icon(
-              CupertinoIcons.camera_fill,
-              color: Color(0xFF8FB0FF),
-              size: 26,
+            const SizedBox(height: 12),
+            const Text(
+              'Add job photos',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Add job photo',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
+            const SizedBox(height: 6),
+            Text(
+              'Add 1–$maxPhotos clear photos showing the problem, damaged area, or items to be serviced.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF8E93A6),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Use a clear photo of the damaged area, fixture, leak, roof, wall, or electrical issue.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${photos.length}/$maxPhotos photos ready',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  color: const Color(0xFF1C1D24),
+                  borderRadius: BorderRadius.circular(12),
+                  onPressed: onClearAll,
+                  child: const Icon(
+                    CupertinoIcons.trash,
+                    color: Color(0xFFFF6B6B),
+                    size: 18,
+                  ),
+                ),
+              ],
             ),
-          ),
+            const SizedBox(height: 12),
+            if (photos.length == 1)
+              SizedBox(
+                width: double.infinity,
+                height: 260,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.file(
+                        File(photos.first.path),
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 34,
+                        color: Colors.black.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(999),
+                        onPressed: () => onRemoveAt(0),
+                        child: const Icon(
+                          CupertinoIcons.xmark,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: photos.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 1.2,
+                ),
+                itemBuilder: (context, index) {
+                  final photo = photos[index];
+
+                  return Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.file(
+                          File(photo.path),
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 30,
+                          color: Colors.black.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(999),
+                          onPressed: () => onRemoveAt(index),
+                          child: const Icon(
+                            CupertinoIcons.xmark,
+                            color: Colors.white,
+                            size: 15,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+          ],
+
           const SizedBox(height: 16),
+
           Row(
             children: [
               Expanded(
                 child: CupertinoButton(
                   color: const Color(0xFF1C1D24),
                   borderRadius: BorderRadius.circular(16),
-                  onPressed: onCamera,
+                  onPressed: canAddMore ? onCamera : null,
                   child: const Text(
                     'Camera',
                     style: TextStyle(
@@ -1722,7 +3070,7 @@ class _PhotoPickerBlock extends StatelessWidget {
                 child: CupertinoButton(
                   color: const Color(0xFF1C1D24),
                   borderRadius: BorderRadius.circular(16),
-                  onPressed: onGallery,
+                  onPressed: canAddMore ? onGallery : null,
                   child: const Text(
                     'Gallery',
                     style: TextStyle(
@@ -1733,6 +3081,55 @@ class _PhotoPickerBlock extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhotoAiWarningBlock extends StatelessWidget {
+  const _PhotoAiWarningBlock();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFFFC857).withOpacity(0.24),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFC857).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              CupertinoIcons.exclamationmark_triangle_fill,
+              color: Color(0xFFFFC857),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 11),
+          const Expanded(
+            child: Text(
+              'Photo AI works best for visible problems like damage, leaks, broken items, junk, stains, or burned parts. For new installation, upgrades, moving items, or hidden issues, add a short instruction. Always review the suggested prompt before generating a quote.',
+              style: TextStyle(
+                color: Color(0xFFB6BCD0),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.38,
+              ),
+            ),
           ),
         ],
       ),

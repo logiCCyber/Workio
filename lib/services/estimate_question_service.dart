@@ -2,11 +2,15 @@ import '../models/ai_assumption_model.dart';
 import '../models/ai_missing_field_model.dart';
 import '../models/ai_parsed_request_model.dart';
 import 'estimate_price_rules_service.dart';
+import '../models/estimate_price_rule_model.dart';
 
 class EstimateQuestionService {
   EstimateQuestionService._();
 
-  static Future<AiParsedRequestModel> enrich(AiParsedRequestModel parsed) async {
+  static Future<AiParsedRequestModel> enrich(
+      AiParsedRequestModel parsed, {
+        EstimatePriceRuleModel? selectedRule,
+      }) async {
     final assumptions = <AiAssumptionModel>[
       ...parsed.assumptions,
     ];
@@ -32,7 +36,7 @@ class EstimateQuestionService {
     }
 
     final serviceTypeOptions = await _loadServiceTypeOptions();
-    final currentRule = await _loadMainRule(serviceType);
+    final currentRule = selectedRule ?? await _loadMainRule(serviceType);
 
     final ruleHasMaterialPricing = _ruleHasMaterialPricing(currentRule);
     final hasParsedMaterials = parsedMaterials.isNotEmpty;
@@ -94,8 +98,9 @@ class EstimateQuestionService {
 
   static Future<AiParsedRequestModel> applyAnswers(
       AiParsedRequestModel parsed,
-      Map<String, dynamic> answers,
-      ) async {
+      Map<String, dynamic> answers, {
+        EstimatePriceRuleModel? selectedRule,
+      }) async {
     String? serviceType = parsed.serviceType;
     double? sqft = parsed.sqft;
     int? rooms = parsed.rooms;
@@ -174,7 +179,10 @@ class EstimateQuestionService {
       prep: prep,
     );
 
-    return await enrich(updated);
+    return await enrich(
+      updated,
+      selectedRule: selectedRule,
+    );
   }
 
   static Future<List<String>> _loadServiceTypeOptions() async {

@@ -25,6 +25,7 @@ class EstimatePriceRuleModel {
   final String? aiPrepDescription;
   final String? aiRushTitle;
   final String? aiRushDescription;
+  final List<String> negativeKeywords;
   final List<Map<String, dynamic>> aiFollowupQuestions;
 
   const EstimatePriceRuleModel({
@@ -54,6 +55,7 @@ class EstimatePriceRuleModel {
     this.aiPrepDescription,
     this.aiRushTitle,
     this.aiRushDescription,
+    this.negativeKeywords = const [],
     this.aiFollowupQuestions = const [],
   });
 
@@ -84,6 +86,7 @@ class EstimatePriceRuleModel {
       aiRushTitle: map['ai_rush_title']?.toString(),
       aiRushDescription: map['ai_rush_description']?.toString(),
       isActive: _toBool(map['is_active'], fallback: true),
+      negativeKeywords: _toStringList(map['negative_keywords']),
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'].toString())
           : null,
@@ -167,6 +170,7 @@ class EstimatePriceRuleModel {
       'ai_rush_title': aiRushTitle,
       'ai_rush_description': aiRushDescription,
       'ai_followup_questions': aiFollowupQuestions,
+      'negative_keywords': negativeKeywords,
     };
   }
 
@@ -197,6 +201,7 @@ class EstimatePriceRuleModel {
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
+    List<String>? negativeKeywords,
     List<Map<String, dynamic>>? aiFollowupQuestions,
   }) {
     return EstimatePriceRuleModel(
@@ -227,6 +232,7 @@ class EstimatePriceRuleModel {
       aiRushTitle: aiRushTitle ?? this.aiRushTitle,
       aiRushDescription: aiRushDescription ?? this.aiRushDescription,
       aiFollowupQuestions: aiFollowupQuestions ?? this.aiFollowupQuestions,
+      negativeKeywords: negativeKeywords ?? this.negativeKeywords,
     );
   }
 }

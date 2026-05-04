@@ -13,7 +13,6 @@ import '../services/message_service.dart';
 import 'worker_chat_screen.dart';
 import '../services/task_service.dart';
 import 'worker_tasks_screen.dart';
-import '../utils/company_logo_helper.dart';
 import '../services/push_token_service.dart';
 
 class WorkerScreen extends StatefulWidget {
@@ -1183,9 +1182,10 @@ class _WorkerAboutSheet extends StatelessWidget {
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(8),
-                              child: Image.network(
-                                CompanyLogoHelper.defaultLogoUrl,
+                              child: Image.asset(
+                                'assets/images/workio_2.png',
                                 fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
                                 errorBuilder: (_, __, ___) => const Icon(
                                   Icons.broken_image_outlined,
                                   color: Colors.white54,
@@ -2960,10 +2960,17 @@ class _SummaryCard extends StatelessWidget {
   String _money(double v) => '\$${v.toStringAsFixed(2)}';
 
   String _hoursText(double v) {
-    if (v == v.truncateToDouble()) {
-      return '${v.toStringAsFixed(0)} h';
-    }
-    return '${v.toStringAsFixed(1)} h';
+    final totalMinutes = (v * 60).round();
+
+    final h = totalMinutes ~/ 60;
+    final m = totalMinutes % 60;
+
+    if (totalMinutes < 1) return '0 m';
+
+    if (h > 0 && m > 0) return '$h h $m m';
+    if (h > 0) return '$h h';
+
+    return '$m m';
   }
 
   String _fmtClock(DateTime dt) => DateFormat.Hm().format(dt);
@@ -3367,8 +3374,10 @@ class _SummaryCard extends StatelessWidget {
                       detailRow(
                         icon: Icons.timelapse_rounded,
                         color: const Color(0xFF63F5C2),
-                        label: 'Shift hours',
-                        value: '${(((last['total_hours'] as num?) ?? 0).toDouble()).toStringAsFixed(1)} h',
+                        label: 'Shift time',
+                        value: lastEnd == null
+                            ? '—'
+                            : _workerDurationText(lastEnd.difference(lastStart)),
                       ),
                     ] else ...[
                       detailRow(
@@ -3389,6 +3398,20 @@ class _SummaryCard extends StatelessWidget {
         );
       },
     );
+  }
+
+  String _workerDurationText(Duration d) {
+    final safe = d.isNegative ? Duration.zero : d;
+
+    final h = safe.inHours;
+    final m = safe.inMinutes.remainder(60);
+
+    if (safe.inMinutes < 1) return 'less than 1 min';
+
+    if (h > 0 && m > 0) return '$h hr $m min';
+    if (h > 0) return '$h hr';
+
+    return '$m min';
   }
 
   @override
@@ -3744,14 +3767,24 @@ class _ShiftCardState extends State<_ShiftCard> {
         ? DateTime.parse(shift['end_time']).toLocal()
         : null;
 
-    final hours = (shift['total_hours'] as num?)?.toDouble() ?? 0.0;
+    final workedDuration = end == null
+        ? Duration.zero
+        : end.difference(start);
+
     final payment = (shift['total_payment'] as num?)?.toDouble() ?? 0.0;
 
     String workedText() {
-      if (hours == hours.truncateToDouble()) {
-        return '${hours.toStringAsFixed(0)}h';
-      }
-      return '${hours.toStringAsFixed(1)}h';
+      final d = workedDuration.isNegative ? Duration.zero : workedDuration;
+
+      final h = d.inHours;
+      final m = d.inMinutes.remainder(60);
+
+      if (d.inMinutes < 1) return 'less than 1 min';
+
+      if (h > 0 && m > 0) return '$h hr $m min';
+      if (h > 0) return '$h hr';
+
+      return '$m min';
     }
 
     String rateText() {

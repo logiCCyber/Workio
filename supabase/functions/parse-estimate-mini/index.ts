@@ -205,7 +205,7 @@ ${JSON.stringify(localParsed, null, 2)}
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "gpt-5.4-nano",
+                model: "gpt-5.4-mini",
                 input: [
                     {
                         role: "developer",

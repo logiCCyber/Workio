@@ -3923,9 +3923,9 @@ class _TaskCard extends StatelessWidget {
         .trim();
 
     if (clean.isEmpty) return '';
-    if (clean.length <= limit) return '$clean ...more';
+    if (clean.length <= limit) return clean;
 
-    return '${clean.substring(0, limit).trimRight()} ...more';
+    return clean.substring(0, limit).trimRight();
   }
 
   Color _taskTitleColor() => _TaskPalette.textMain;

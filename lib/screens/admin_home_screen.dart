@@ -25,7 +25,6 @@ import 'properties_screen.dart';
 import 'invoice_list_screen.dart';
 import 'global_search_screen.dart';
 import 'price_rules_screen.dart';
-import '../utils/company_logo_helper.dart';
 
 class AdminHomeScreen extends StatelessWidget {
   final String adminEmail;
@@ -9921,9 +9920,10 @@ class _AboutWorkioSheet extends StatelessWidget {
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(8),
-                              child: Image.network(
-                                CompanyLogoHelper.defaultLogoUrl,
+                              child: Image.asset(
+                                'assets/images/workio_2.png',
                                 fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
                                 errorBuilder: (_, __, ___) => const Icon(
                                   Icons.broken_image_outlined,
                                   color: Colors.white54,

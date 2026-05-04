@@ -8982,6 +8982,42 @@ class _PaymentTile extends StatelessWidget {
     required this.accentColor,
   });
 
+  Widget _metaItem({
+    required IconData icon,
+    required String text,
+    required Color color,
+    double iconSize = 14,
+    double fontSize = 11.8,
+    FontWeight fontWeight = FontWeight.w800,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: iconSize, color: color),
+        const SizedBox(width: 5),
+        Text(
+          text,
+          style: TextStyle(
+            color: color,
+            fontWeight: fontWeight,
+            fontSize: fontSize,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metaDot() {
+    return Text(
+      '·',
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.white.withOpacity(0.35),
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const accent = Colors.lightBlueAccent;
@@ -9005,7 +9041,7 @@ class _PaymentTile extends StatelessWidget {
 
     final totalAmount = ((payment['total_amount'] ?? 0) as num).toDouble();
     final shiftCount = items.length;
-    final paidText = 'Paid ${_fmtMonthDayNoYear(paidAt)}'; // -> "Paid Feb 26"
+    final paidText = _fmtMonthDayNoYear(paidAt); // -> "Paid Feb 26"
 
     final paymentMethodText = _paymentMethodText(payment['payment_method']);
     final paymentMethodIcon = _paymentMethodIconData(payment['payment_method']);
@@ -9071,162 +9107,158 @@ class _PaymentTile extends StatelessWidget {
                     onTap: onToggle,
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                      child: Stack(
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.date_range,
-                                      size: 14,
-                                      color: Colors.white,
-                                    ),
-                                    SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        periodText,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(right: 28),
+                                child: SizedBox(
+                                  height: 22,
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.date_range,
+                                        size: 14,
+                                        color: Colors.white,
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 6,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    Text(
-                                      paidText,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white60,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-
-                                    Text(
-                                      '·',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white.withOpacity(0.35),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-
-                                    Text(
-                                      '$shiftCount shifts',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white60,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-
-                                    Text(
-                                      '·',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white.withOpacity(0.35),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-
-                                    Text(
-                                      '\$${totalAmount.toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white60,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-
-                                    Text(
-                                      '·',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white.withOpacity(0.35),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          paymentMethodIcon,
-                                          size: 14,
-                                          color: paymentMethodColor,
-                                        ),
-                                        const SizedBox(width: 5),
-                                        Text(
-                                          paymentMethodText,
-                                          style: TextStyle(
-                                            color: paymentMethodColor,
-                                            fontWeight: FontWeight.w900,
-                                            fontSize: 11.8,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-
-                                if (paymentNote.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.16),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: Colors.white.withOpacity(0.07),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Icon(
-                                          Icons.edit_note_rounded,
-                                          size: 15,
-                                          color: Colors.white.withOpacity(0.45),
-                                        ),
-                                        const SizedBox(width: 7),
-                                        Expanded(
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Align(
+                                          alignment: Alignment.centerLeft,
                                           child: Text(
-                                            paymentNote,
-                                            maxLines: 2,
+                                            periodText,
+                                            maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(0.58),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.white,
                                               fontWeight: FontWeight.w700,
-                                              fontSize: 11.4,
-                                              height: 1.25,
+                                              height: 1.0,
                                             ),
                                           ),
                                         ),
-                                      ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              if (expanded) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.18),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.07),
                                     ),
                                   ),
-                                ],
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      return SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: ConstrainedBox(
+                                          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.event_outlined,
+                                                size: 14,
+                                                color: Colors.white60,
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                paidText,
+                                                style: const TextStyle(
+                                                  fontSize: 11.8,
+                                                  color: Colors.white60,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Text(
+                                                '  ·  ',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.white.withOpacity(0.35),
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Icon(
+                                                Icons.work_history_outlined,
+                                                size: 14,
+                                                color: Colors.white60,
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                '$shiftCount shifts',
+                                                style: const TextStyle(
+                                                  fontSize: 11.8,
+                                                  color: Colors.white60,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Text(
+                                                '  ·  ',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.white.withOpacity(0.35),
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Text(
+                                                '\$${totalAmount.toStringAsFixed(2)}',
+                                                style: const TextStyle(
+                                                  fontSize: 11.8,
+                                                  color: Colors.white60,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                              Text(
+                                                '  ·  ',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.white.withOpacity(0.35),
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              Icon(
+                                                paymentMethodIcon,
+                                                size: 14,
+                                                color: paymentMethodColor,
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                paymentMethodText,
+                                                style: TextStyle(
+                                                  color: paymentMethodColor,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 11.8,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
                               ],
-                            ),
+                            ],
                           ),
-                          Icon(
-                            expanded ? Icons.expand_less : Icons.expand_more,
-                            color: Colors.white54,
+
+                          Positioned(
+                            top: 1,
+                            right: 0,
+                            child: Icon(
+                              expanded ? Icons.expand_less : Icons.expand_more,
+                              color: Colors.white54,
+                            ),
                           ),
                         ],
                       ),

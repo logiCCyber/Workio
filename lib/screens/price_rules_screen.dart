@@ -6,6 +6,151 @@ import '../models/estimate_price_rule_model.dart';
 import '../services/estimate_price_rules_service.dart';
 import '../services/rule_ai_metadata_service.dart';
 
+class _WorkioUnitOption {
+  final String value;
+  final String title;
+  final String subtitle;
+
+  const _WorkioUnitOption({
+    required this.value,
+    required this.title,
+    required this.subtitle,
+  });
+}
+
+const List<_WorkioUnitOption> _workioUnitOptions = [
+  _WorkioUnitOption(
+    value: 'fixed',
+    title: 'Fixed',
+    subtitle: 'Flat price / one job',
+  ),
+  _WorkioUnitOption(
+    value: 'item',
+    title: 'Item',
+    subtitle: 'Per item / each',
+  ),
+  _WorkioUnitOption(
+    value: 'hour',
+    title: 'Hour',
+    subtitle: 'Per hour',
+  ),
+  _WorkioUnitOption(
+    value: 'day',
+    title: 'Day',
+    subtitle: 'Per day',
+  ),
+  _WorkioUnitOption(
+    value: 'visit',
+    title: 'Visit',
+    subtitle: 'Per visit',
+  ),
+  _WorkioUnitOption(
+    value: 'trip',
+    title: 'Trip',
+    subtitle: 'Service call / travel trip',
+  ),
+  _WorkioUnitOption(
+    value: 'load',
+    title: 'Load',
+    subtitle: 'Truck load / junk load',
+  ),
+  _WorkioUnitOption(
+    value: 'yard',
+    title: 'Yard',
+    subtitle: 'Cubic yard / volume',
+  ),
+  _WorkioUnitOption(
+    value: 'bag',
+    title: 'Bag',
+    subtitle: 'Per bag',
+  ),
+  _WorkioUnitOption(
+    value: 'sqft',
+    title: 'Sqft',
+    subtitle: 'Per square foot',
+  ),
+  _WorkioUnitOption(
+    value: 'linear_ft',
+    title: 'Linear ft',
+    subtitle: 'Per linear foot',
+  ),
+  _WorkioUnitOption(
+    value: 'room',
+    title: 'Room',
+    subtitle: 'Per room',
+  ),
+  _WorkioUnitOption(
+    value: 'wall',
+    title: 'Wall',
+    subtitle: 'Per wall',
+  ),
+  _WorkioUnitOption(
+    value: 'floor',
+    title: 'Floor',
+    subtitle: 'Per floor',
+  ),
+  _WorkioUnitOption(
+    value: 'door',
+    title: 'Door',
+    subtitle: 'Per door',
+  ),
+  _WorkioUnitOption(
+    value: 'window',
+    title: 'Window',
+    subtitle: 'Per window',
+  ),
+  _WorkioUnitOption(
+    value: 'fixture',
+    title: 'Fixture',
+    subtitle: 'Per fixture',
+  ),
+  _WorkioUnitOption(
+    value: 'outlet',
+    title: 'Outlet',
+    subtitle: 'Per outlet',
+  ),
+  _WorkioUnitOption(
+    value: 'switch',
+    title: 'Switch',
+    subtitle: 'Per switch',
+  ),
+  _WorkioUnitOption(
+    value: 'appliance',
+    title: 'Appliance',
+    subtitle: 'Per appliance',
+  ),
+  _WorkioUnitOption(
+    value: 'ton',
+    title: 'Ton',
+    subtitle: 'Per ton',
+  ),
+  _WorkioUnitOption(
+    value: 'lb',
+    title: 'Lb',
+    subtitle: 'Per pound',
+  ),
+];
+
+_WorkioUnitOption? _unitOptionFor(String value) {
+  final clean = value.trim().toLowerCase();
+
+  for (final option in _workioUnitOptions) {
+    if (option.value == clean) return option;
+  }
+
+  return null;
+}
+
+String _fallbackUnitTitle(String value) {
+  final clean = value.trim().isEmpty ? 'fixed' : value.trim();
+
+  return clean
+      .split(RegExp(r'[_\s-]+'))
+      .where((part) => part.isNotEmpty)
+      .map((part) => part[0].toUpperCase() + part.substring(1).toLowerCase())
+      .join(' ');
+}
+
 class PriceRulesScreen extends StatefulWidget {
   const PriceRulesScreen({super.key});
 
@@ -17,11 +162,32 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
   bool _isLoading = true;
   bool _isDeletingAll = false;
   List<EstimatePriceRuleModel> _rules = [];
+  String? _expandedCategory;
+
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
+
+    _searchController.addListener(() {
+      final value = _searchController.text.trim().toLowerCase();
+
+      if (_searchQuery == value) return;
+
+      setState(() {
+        _searchQuery = value;
+      });
+    });
+
     _loadRules();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRules() async {
@@ -34,8 +200,23 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
 
       if (!mounted) return;
 
+      final availableCategories = rules
+          .map((rule) => rule.category.trim().isEmpty
+          ? 'main'
+          : rule.category.trim().toLowerCase())
+          .toSet()
+          .toList();
+
       setState(() {
         _rules = rules;
+
+        if (availableCategories.isEmpty) {
+          _expandedCategory = null;
+        } else if (_expandedCategory != null &&
+            !availableCategories.contains(_expandedCategory)) {
+          _expandedCategory = null;
+        }
+
         _isLoading = false;
       });
     } catch (e) {
@@ -55,6 +236,34 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  Future<void> _pickRuleUnit({
+    required TextEditingController controller,
+    required StateSetter setModalState,
+  }) async {
+    final currentUnit = controller.text.trim().isEmpty
+        ? 'fixed'
+        : controller.text.trim().toLowerCase();
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) {
+        return _RuleUnitPickerSheet(
+          currentUnit: currentUnit,
+        );
+      },
+    );
+
+    if (selected == null) return;
+
+    setModalState(() {
+      controller.text = selected;
+    });
   }
 
   Future<void> _deleteRule(EstimatePriceRuleModel rule) async {
@@ -96,6 +305,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     final baseRateController = TextEditingController(
       text: rule.baseRate.toStringAsFixed(2),
     );
+    final unitController = TextEditingController(text: rule.unit);
     final displayNameController = TextEditingController(
       text: rule.displayName ?? '',
     );
@@ -104,6 +314,9 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     );
     final aiKeywordsController = TextEditingController(
       text: rule.aiKeywords.join(', '),
+    );
+    final negativeKeywordsController = TextEditingController(
+      text: rule.negativeKeywords.join(', '),
     );
     final aiScopeTemplateController = TextEditingController(
       text: rule.aiScopeTemplate ?? '',
@@ -179,7 +392,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '${rule.serviceType} • ${rule.category}',
+                        'Edit ${_formatCategoryTitle(rule.category)} Service',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 22,
@@ -199,7 +412,35 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    rule.displayName?.trim().isNotEmpty == true
+                        ? rule.displayName!.trim()
+                        : rule.serviceType,
+                    style: const TextStyle(
+                      color: Color(0xFF8E93A6),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 18),
+                _LockedCategoryInfo(
+                  title: 'Category',
+                  value: _formatCategoryTitle(rule.category),
+                ),
+                const SizedBox(height: 12),
+                _RuleUnitPickerField(
+                  controller: unitController,
+                  label: 'Unit',
+                  onTap: () => _pickRuleUnit(
+                    controller: unitController,
+                    setModalState: setModalState,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 _RuleTextField(
                   controller: displayNameController,
                   label: 'Display Name',
@@ -225,6 +466,16 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                       isAiMetadataExpanded = !isAiMetadataExpanded;
                     });
                   },
+                ),
+                const SizedBox(height: 12),
+                _RuleTextField(
+                  controller: negativeKeywordsController,
+                  label: 'Negative Keywords (comma separated)',
+                  hintText: 'words that should NOT match this service',
+                  maxLines: 2,
+                  inputFormatters: [
+                    AliasesAutoCommaFormatter(),
+                  ],
                 ),
                 if (isAiMetadataExpanded)
                   Padding(
@@ -330,7 +581,9 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                           serviceType: serviceType,
                           displayName: displayNameController.text.trim(),
                           category: rule.category,
-                          unit: rule.unit,
+                          unit: unitController.text.trim().isEmpty
+                              ? rule.unit
+                              : unitController.text.trim().toLowerCase(),
                           aliases: _parseAliases(aliasesController.text),
                         );
 
@@ -340,6 +593,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                             : result.suggestedDisplayName.trim();
 
                         aiKeywordsController.text = result.aiKeywords.join(', ');
+                        negativeKeywordsController.text = result.negativeKeywords.join(', ');
                         aiScopeTemplateController.text = result.aiScopeTemplate;
                         aiNotesTemplateController.text = result.aiNotesTemplate;
                         aiLaborTitleController.text = result.aiLaborTitle;
@@ -424,6 +678,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                               : displayNameController.text.trim(),
                           aliases: _parseAliases(aliasesController.text),
                           aiKeywords: _parseAliases(aiKeywordsController.text),
+                          negativeKeywords: _parseAliases(negativeKeywordsController.text),
                           aiScopeTemplate: aiScopeTemplateController.text.trim().isEmpty
                               ? null
                               : aiScopeTemplateController.text.trim(),
@@ -454,6 +709,9 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                           aiRushDescription: aiRushDescriptionController.text.trim().isEmpty
                               ? null
                               : aiRushDescriptionController.text.trim(),
+                          unit: unitController.text.trim().isEmpty
+                              ? rule.unit
+                              : unitController.text.trim().toLowerCase(),
                           baseRate: _parseDouble(baseRateController.text) ?? 0,
                           materialRatePerSqft:
                           _parseNullableDouble(materialRatePerSqftController.text),
@@ -493,15 +751,23 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     }
   }
 
-  Future<void> _addRule() async {
+  Future<void> _addRule({String? initialCategory}) async {
     final serviceTypeController = TextEditingController();
-    final categoryController = TextEditingController(text: 'main');
+
+    final lockedCategory = initialCategory?.trim().isNotEmpty == true
+        ? initialCategory!.trim().toLowerCase()
+        : null;
+
+    final categoryController = TextEditingController(
+      text: lockedCategory ?? '',
+    );
     final unitController = TextEditingController(text: 'fixed');
 
     final displayNameController = TextEditingController();
     final aliasesController = TextEditingController();
 
     final aiKeywordsController = TextEditingController();
+    final negativeKeywordsController = TextEditingController();
     final aiScopeTemplateController = TextEditingController();
     final aiNotesTemplateController = TextEditingController();
     final aiLaborTitleController = TextEditingController();
@@ -545,9 +811,11 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Add Service Type',
+                        lockedCategory == null
+                            ? 'Add Service Type'
+                            : 'Add ${_formatCategoryTitle(lockedCategory)} Service',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 22,
@@ -599,6 +867,16 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                       isAiMetadataExpanded = !isAiMetadataExpanded;
                     });
                   },
+                ),
+                const SizedBox(height: 12),
+                _RuleTextField(
+                  controller: negativeKeywordsController,
+                  label: 'Negative Keywords (comma separated)',
+                  hintText: 'do not match: demolition, wall removal, furniture pickup',
+                  maxLines: 2,
+                  inputFormatters: [
+                    AliasesAutoCommaFormatter(),
+                  ],
                 ),
                 if (isAiMetadataExpanded)
                   Padding(
@@ -766,16 +1044,27 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _RuleTextField(
-                  controller: categoryController,
-                  label: 'Category',
-                  hintText: 'main',
-                ),
-                const SizedBox(height: 12),
-                _RuleTextField(
+                if (lockedCategory == null) ...[
+                  _RuleTextField(
+                    controller: categoryController,
+                    label: 'Category',
+                    hintText: 'plumbing, electrical, roofing',
+                  ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  _LockedCategoryInfo(
+                    title: 'Category',
+                    value: _formatCategoryTitle(lockedCategory),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                _RuleUnitPickerField(
                   controller: unitController,
                   label: 'Unit',
-                  hintText: 'fixed',
+                  onTap: () => _pickRuleUnit(
+                    controller: unitController,
+                    setModalState: setModalState,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _RuleField(
@@ -829,6 +1118,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                             category: category,
                           ),
                           aiFollowupQuestions: generatedFollowupQuestions,
+                          negativeKeywords: _parseAliases(negativeKeywordsController.text),
                           serviceType: serviceType.toLowerCase(),
                           category: category.toLowerCase(),
                           unit: unit.toLowerCase(),
@@ -995,6 +1285,85 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     return '${normalizedServiceType}_$normalizedCategory';
   }
 
+  Map<String, List<EstimatePriceRuleModel>> get _rulesByCategory {
+    final map = <String, List<EstimatePriceRuleModel>>{};
+
+    for (final rule in _rules) {
+      final category = rule.category.trim().isEmpty
+          ? 'main'
+          : rule.category.trim().toLowerCase();
+
+      map.putIfAbsent(category, () => []);
+      map[category]!.add(rule);
+    }
+
+    for (final entry in map.entries) {
+      entry.value.sort((a, b) {
+        final aName = (a.displayName?.trim().isNotEmpty == true)
+            ? a.displayName!.trim()
+            : a.serviceType.trim();
+        final bName = (b.displayName?.trim().isNotEmpty == true)
+            ? b.displayName!.trim()
+            : b.serviceType.trim();
+
+        return aName.toLowerCase().compareTo(bName.toLowerCase());
+      });
+    }
+
+    return map;
+  }
+
+  bool get _isSearching => _searchQuery.trim().isNotEmpty;
+
+  bool _matchesSearch(EstimatePriceRuleModel rule) {
+    final query = _searchQuery.trim().toLowerCase().replaceAll('_', ' ');
+    if (query.isEmpty) return true;
+
+    final searchableText = [
+      rule.displayName ?? '',
+      rule.serviceType,
+      rule.category,
+      rule.unit,
+      ...rule.aliases,
+      ...rule.aiKeywords,
+      ...rule.negativeKeywords,
+    ].join(' ').toLowerCase().replaceAll('_', ' ');
+
+    return searchableText.contains(query);
+  }
+
+  Map<String, List<EstimatePriceRuleModel>> get _visibleRulesByCategory {
+    final source = _rulesByCategory;
+
+    if (!_isSearching) return source;
+
+    final filtered = <String, List<EstimatePriceRuleModel>>{};
+
+    for (final entry in source.entries) {
+      final matches = entry.value.where(_matchesSearch).toList();
+
+      if (matches.isNotEmpty) {
+        filtered[entry.key] = matches;
+      }
+    }
+
+    return filtered;
+  }
+
+  String _formatCategoryTitle(String value) {
+    final clean = value.trim().isEmpty ? 'all_services' : value.trim();
+
+    if (clean.toLowerCase() == 'main') {
+      return 'All Services';
+    }
+
+    return clean
+        .split(RegExp(r'[_\s-]+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + part.substring(1).toLowerCase())
+        .join(' ');
+  }
+
   @override
   Widget build(BuildContext context) {
     const background = Color(0xFF0B0B0F);
@@ -1023,7 +1392,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               color: const Color(0xFF1E212B),
               borderRadius: BorderRadius.circular(14),
-              onPressed: _addRule,
+              onPressed: () => _addRule(),
               child: const Text(
                 'Add',
                 style: TextStyle(
@@ -1057,20 +1426,61 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
           ? const Center(
         child: CupertinoActivityIndicator(radius: 16),
       )
-          : ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        itemCount: _rules.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final rule = _rules[index];
+          : _rules.isEmpty
+          ? _EmptyPriceRulesState(onAdd: () => _addRule())
+          : Builder(
+        builder: (context) {
+      final visibleRulesByCategory = _visibleRulesByCategory;
 
-          return _PriceRuleTile(
-            rule: rule,
-            onTap: () => _editRule(rule),
-            onDelete: () => _deleteRule(rule),
-          );
-        },
-      ),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
+        children: [
+          _PriceRulesSearchField(
+            controller: _searchController,
+            onClear: () => _searchController.clear(),
+          ),
+          const SizedBox(height: 14),
+
+          if (visibleRulesByCategory.isEmpty)
+            const _NoSearchResultsState()
+          else
+            ...visibleRulesByCategory.entries.map((entry) {
+              final category = entry.key;
+              final rules = entry.value;
+              final isExpanded = _isSearching || _expandedCategory == category;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _PriceRuleCategoryCard(
+                  title: _formatCategoryTitle(category),
+                  subtitle:
+                  '${rules.length} service${rules.length == 1 ? '' : 's'}',
+                  onAdd: () => _addRule(initialCategory: category),
+                  isExpanded: isExpanded,
+                  onToggle: () {
+                    if (_isSearching) return;
+
+                    setState(() {
+                      _expandedCategory = isExpanded ? null : category;
+                    });
+                  },
+                  children: rules.map((rule) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: _PriceRuleTile(
+                        rule: rule,
+                        onTap: () => _editRule(rule),
+                        onDelete: () => _deleteRule(rule),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              );
+            }).toList(),
+        ],
+      );
+    },
+    )
     );
   }
 }
@@ -1117,8 +1527,12 @@ class _PriceRuleTile extends StatelessWidget {
                       children: [
                         Text(
                           rule.displayName?.trim().isNotEmpty == true
-                              ? '${rule.displayName} • ${rule.category}'
-                              : '${rule.serviceType} • ${rule.category}',
+                              ? rule.displayName!
+                              : rule.serviceType
+                              .split(RegExp(r'[_\s-]+'))
+                              .where((part) => part.isNotEmpty)
+                              .map((part) => part[0].toUpperCase() + part.substring(1).toLowerCase())
+                              .join(' '),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1592,6 +2006,594 @@ class _CollapsibleSectionHeader extends StatelessWidget {
                     : CupertinoIcons.chevron_down,
                 color: const Color(0xFF8E93A6),
                 size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PriceRuleCategoryCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback onAdd;
+  final VoidCallback onToggle;
+  final bool isExpanded;
+  final List<Widget> children;
+
+  const _PriceRuleCategoryCard({
+    required this.title,
+    required this.subtitle,
+    required this.onAdd,
+    required this.onToggle,
+    required this.isExpanded,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15161C),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF262832)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: onToggle,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF5B8CFF).withOpacity(0.14),
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(
+                                color: const Color(0xFF5B8CFF).withOpacity(0.22),
+                              ),
+                            ),
+                            child: const Icon(
+                              CupertinoIcons.square_grid_2x2_fill,
+                              color: Color(0xFF8FB0FF),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  subtitle,
+                                  style: const TextStyle(
+                                    color: Color(0xFF8E93A6),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            isExpanded
+                                ? CupertinoIcons.chevron_up
+                                : CupertinoIcons.chevron_down,
+                            color: const Color(0xFF8E93A6),
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                color: const Color(0xFF1E212B),
+                borderRadius: BorderRadius.circular(14),
+                onPressed: onAdd,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.add,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    SizedBox(width: 5),
+                    Text(
+                      'Add',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (isExpanded) ...[
+            const SizedBox(height: 14),
+            ...children,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyPriceRulesState extends StatelessWidget {
+  final VoidCallback onAdd;
+
+  const _EmptyPriceRulesState({
+    required this.onAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: const Color(0xFF15161C),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFF262832)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF5B8CFF).withOpacity(0.14),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFF5B8CFF).withOpacity(0.22),
+                  ),
+                ),
+                child: const Icon(
+                  CupertinoIcons.money_dollar_circle_fill,
+                  color: Color(0xFF8FB0FF),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'No Price Rules Yet',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Create service-specific rules so Workio can price estimates accurately.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF8E93A6),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  color: const Color(0xFF5B8CFF),
+                  borderRadius: BorderRadius.circular(16),
+                  onPressed: onAdd,
+                  child: const Text(
+                    'Add First Rule',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LockedCategoryInfo extends StatelessWidget {
+  final String title;
+  final String value;
+
+  const _LockedCategoryInfo({
+    required this.title,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFF8E93A6),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceRulesSearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final VoidCallback onClear;
+
+  const _PriceRulesSearchField({
+    required this.controller,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF15161C),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF262832)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Row(
+          children: [
+            const Icon(
+              CupertinoIcons.search,
+              color: Color(0xFF8E93A6),
+              size: 19,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                cursorColor: const Color(0xFF5B8CFF),
+                decoration: const InputDecoration(
+                  hintText: 'Search services, aliases, keywords...',
+                  hintStyle: TextStyle(
+                    color: Color(0xFF697086),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, child) {
+                if (value.text.trim().isEmpty) {
+                  return const SizedBox.shrink();
+                }
+
+                return GestureDetector(
+                  onTap: onClear,
+                  child: const Icon(
+                    CupertinoIcons.xmark_circle_fill,
+                    color: Color(0xFF8E93A6),
+                    size: 20,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NoSearchResultsState extends StatelessWidget {
+  const _NoSearchResultsState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15161C),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFF262832)),
+      ),
+      child: const Column(
+        children: [
+          Icon(
+            CupertinoIcons.search,
+            color: Color(0xFF8E93A6),
+            size: 28,
+          ),
+          SizedBox(height: 10),
+          Text(
+            'No services found',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: 5),
+          Text(
+            'Try another service name, alias, or keyword.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF8E93A6),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleUnitPickerField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final VoidCallback onTap;
+
+  const _RuleUnitPickerField({
+    required this.controller,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, child) {
+        final unit = value.text.trim().isEmpty
+            ? 'fixed'
+            : value.text.trim().toLowerCase();
+
+        final option = _unitOptionFor(unit);
+
+        return GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF101117),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFF23252E)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            option?.title ?? _fallbackUnitTitle(unit),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            option?.subtitle ?? 'Custom unit',
+                            style: const TextStyle(
+                              color: Color(0xFF8E93A6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      CupertinoIcons.chevron_down,
+                      color: Color(0xFF8E93A6),
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RuleUnitPickerSheet extends StatelessWidget {
+  final String currentUnit;
+
+  const _RuleUnitPickerSheet({
+    required this.currentUnit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.72,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+          child: Column(
+            children: [
+              Container(
+                width: 42,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D49),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Choose Unit',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Most popular units are listed first.',
+                  style: TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _workioUnitOptions.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final option = _workioUnitOptions[index];
+                    final selected = option.value == currentUnit;
+
+                    return GestureDetector(
+                      onTap: () => Navigator.pop(context, option.value),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? const Color(0xFF1E2A4A)
+                              : const Color(0xFF101117),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFF5B8CFF)
+                                : const Color(0xFF23252E),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    option.title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    option.subtitle,
+                                    style: const TextStyle(
+                                      color: Color(0xFF8E93A6),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (selected)
+                              const Icon(
+                                CupertinoIcons.checkmark_circle_fill,
+                                color: Color(0xFF5B8CFF),
+                                size: 22,
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
           ),

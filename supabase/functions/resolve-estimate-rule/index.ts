@@ -134,7 +134,7 @@ serve(async (req) => {
             });
         }
 
-        const compactCandidates = candidates.slice(0, 6).map((raw: any) => ({
+        const compactCandidates = candidates.slice(0, 30).map((raw: any) => ({
             ruleId: cleanString(raw?.ruleId),
             serviceType: cleanString(raw?.serviceType).toLowerCase(),
             displayName: cleanString(raw?.displayName),
@@ -218,7 +218,19 @@ IMPORTANT:
 - If the prompt describes a specific task, choose only a candidate that matches that task.
 
 RULES:
+- Inspection wording is valid work. Do not reject a request only because it says inspect, diagnose, check, verify, or repair as needed.
+- If the request contains inspection wording plus a clear object/item, match the best Price Rule for that object/item.
+- Example: "Inspect 1 burned outlet and repair or replace as needed" should match the best outlet rule if one exists.
+- Example: "Inspect faucet area and repair as needed" should match the best faucet rule if one exists.
+- Prefer the candidate whose aliases or aiKeywords match the specific object/item in the request.
+- A candidate with a specific object/item match in aliases or aiKeywords must beat a broad labor/category candidate.
+- Broad words like labor, service, work, job, repair, replace, install, inspection, electrical, plumbing, maintenance are not enough by themselves.
+- Specific object/item words matter more than trade/category words.
+- If one candidate matches the exact object/item and another candidate only matches a broad trade/category, choose the object/item candidate.
+- Do not choose a broad hourly/labor rule when a fixed/item rule clearly matches the requested object.
+- Use negativeKeywords as exclusion clues, but never let a broad candidate win only because it has fewer negative keywords.
 - normalizedRequestedWork should be short, clean, and practical.
+- Review all provided candidate rules before selecting. Do not ignore later candidates.
 - shouldAskClarifyingQuestion = true when the request is ambiguous or top candidates are too close.
 - suppressQuestionKeys should include issue_description or requested_work when normalizedRequestedWork already captures that clearly.
 - Confidence:

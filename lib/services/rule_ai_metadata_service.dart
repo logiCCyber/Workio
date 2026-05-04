@@ -15,6 +15,7 @@ class RuleAiMetadataResult {
   final String aiRushDescription;
   final String normalizedServiceType;
   final String suggestedDisplayName;
+  final List<String> negativeKeywords;
   final List<Map<String, dynamic>> aiFollowupQuestions;
 
   const RuleAiMetadataResult({
@@ -33,6 +34,7 @@ class RuleAiMetadataResult {
     required this.aiFollowupQuestions,
     required this.normalizedServiceType,
     required this.suggestedDisplayName,
+    required this.negativeKeywords,
   });
 
   factory RuleAiMetadataResult.fromMap(Map<String, dynamic> map) {
@@ -57,6 +59,7 @@ class RuleAiMetadataResult {
     return RuleAiMetadataResult(
       aliases: toList(map['aliases']),
       aiKeywords: toList(map['aiKeywords']),
+      negativeKeywords: toList(map['negativeKeywords']),
       aiScopeTemplate: toText(map['aiScopeTemplate']),
       aiNotesTemplate: toText(map['aiNotesTemplate']),
       aiLaborTitle: toText(map['aiLaborTitle']),

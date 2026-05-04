@@ -11,12 +11,13 @@ class EstimateDraftBuilderService {
   static Future<AiEstimateResultModel> build({
     required AiParsedRequestModel parsed,
     String? propertyCity,
+    EstimatePriceRuleModel? selectedRule,
   }) async {
     final missingFields = parsed.missingFields;
     final assumptions = parsed.assumptions;
     final canAutoGenerate = parsed.canBuildDraft;
 
-    final rule = await _loadMainRule(parsed.serviceType);
+    final rule = selectedRule ?? await _loadMainRule(parsed.serviceType);
 
     final title = _buildTitle(
       serviceType: parsed.serviceType,
@@ -37,7 +38,10 @@ class EstimateDraftBuilderService {
     );
 
     final items = canAutoGenerate
-        ? await EstimatePricingEngineService.buildItems(parsed)
+        ? await EstimatePricingEngineService.buildItems(
+      parsed,
+      selectedRule: rule,
+    )
         : <EstimateItemModel>[];
 
     return AiEstimateResultModel(

@@ -331,28 +331,23 @@ class _LoginScreenState extends State<LoginScreen> {
                               // LOGO (big centered) + TITLE
                               Column(
                                 children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 2),
-                                    child: Image.asset(
-                                      'assets/images/workio.png',
-                                      height: 160,
-                                      fit: BoxFit.contain,
-                                      filterQuality: FilterQuality.high,
-                                    ),
+                                  Image.asset(
+                                    'assets/images/workio_2.png',
+                                    height: 120,
+                                    fit: BoxFit.contain,
+                                    filterQuality: FilterQuality.high,
                                   ),
-                                  // const SizedBox(height: 8),
-
+                                  const SizedBox(height: 2),
                                   Text(
                                     isRegister ? 'Create admin' : 'Sign in',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       color: _textMain.withOpacity(0.92),
                                       fontWeight: FontWeight.w900,
-                                      fontSize: 20,
+                                      fontSize: 22,
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
-
+                                  const SizedBox(height: 4),
                                   Text(
                                     isRegister
                                         ? 'Admin account (workers are created by admin)'
@@ -367,7 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
 
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 10),
 
                               Container(
                                 height: 2,
@@ -915,11 +910,7 @@ class _PrimaryButton extends StatelessWidget {
           width: double.infinity,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF6CFF8D), Color(0xFF2E7D32)],
-            ),
+            color: const Color(0xFF43A047),
             border: Border.all(color: Colors.white10),
             boxShadow: const [],
           ),

@@ -71,6 +71,12 @@
     <key>NSCameraUsageDescription</key>
     <string>This app needs access to the camera to take worker profile photos and capture images in chat.</string>
 
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Workio uses the microphone so you can dictate your prompt.</string>
+
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Workio uses speech recognition to convert your voice into prompt text.</string>
+
     <key>CFBundleURLTypes</key>
     <array>
       <dict>

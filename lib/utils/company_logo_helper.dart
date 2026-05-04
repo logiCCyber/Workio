@@ -2,7 +2,7 @@ import '../models/company_settings_model.dart';
 
 class CompanyLogoHelper {
   static const String defaultLogoUrl =
-      'https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png';
+      'https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo_v2.png?v=2';
 
   static String? customLogoUrl(CompanySettingsModel? settings) {
     final value = settings?.logoUrl?.trim() ?? '';

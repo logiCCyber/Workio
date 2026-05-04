@@ -8,18 +8,28 @@ class EstimatePricingEngineService {
   EstimatePricingEngineService._();
 
   static Future<List<EstimateItemModel>> buildItems(
-      AiParsedRequestModel parsed,
-      ) async {
-    return await _buildDynamicItems(parsed);
+      AiParsedRequestModel parsed, {
+        EstimatePriceRuleModel? selectedRule,
+      }) async {
+    return await _buildDynamicItems(
+      parsed,
+      selectedRule: selectedRule,
+    );
   }
 
   static Future<List<EstimateItemModel>> _buildDynamicItems(
-      AiParsedRequestModel parsed,
-      ) async {
-    final serviceType = (parsed.serviceType ?? '').trim().toLowerCase();
+      AiParsedRequestModel parsed, {
+        EstimatePriceRuleModel? selectedRule,
+      }) async {
+    final serviceType = (selectedRule?.serviceType ?? parsed.serviceType ?? '')
+        .trim()
+        .toLowerCase();
+
     if (serviceType.isEmpty) return const [];
 
-    final rule = await EstimatePriceRulesService.findBestRuleByServiceType(serviceType);
+    final rule = selectedRule ??
+        await EstimatePriceRulesService.findBestRuleByServiceType(serviceType);
+
     if (rule == null) {
       return const [];
     }
@@ -35,7 +45,7 @@ class EstimatePricingEngineService {
     final rush = parsed.rush;
     final prep = parsed.prep;
 
-    final serviceLabel = _serviceLabel(serviceType);
+    final serviceLabel = _pricingRuleLabel(rule);
 
     final laborTitle = _pickText(
       rule.aiLaborTitle,
@@ -167,6 +177,16 @@ class EstimatePricingEngineService {
     final cleaned = value?.trim() ?? '';
     if (cleaned.isEmpty) return fallback;
     return cleaned;
+  }
+
+  static String _pricingRuleLabel(EstimatePriceRuleModel rule) {
+    final displayName = rule.displayName?.trim() ?? '';
+
+    if (displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    return _serviceLabel(rule.serviceType);
   }
 
   static List<EstimateItemModel> _buildParsedMaterialItems({
@@ -430,10 +450,47 @@ class EstimatePricingEngineService {
 
     final words = <String>{};
 
-    for (final part in normalized.split(' ')) {
-      final clean = part.trim();
-      if (clean.isEmpty) continue;
-      words.addAll(_wordForms(clean));
+    void addWord(String value) {
+      final clean = _normalizeForQuantity(value);
+      if (clean.isEmpty) return;
+
+      for (final part in clean.split(' ')) {
+        if (part.trim().isEmpty) continue;
+        words.addAll(_wordForms(part.trim()));
+      }
+
+      words.add(clean);
+    }
+
+    final aliases = <String, List<String>>{
+      'item': ['item', 'items', 'each', 'ea', 'piece', 'pieces', 'pc', 'pcs'],
+      'hour': ['hour', 'hours', 'hr', 'hrs'],
+      'day': ['day', 'days'],
+      'visit': ['visit', 'visits'],
+      'trip': ['trip', 'trips', 'service call', 'service calls'],
+      'load': ['load', 'loads', 'truck load', 'truck loads'],
+      'yard': ['yard', 'yards', 'cubic yard', 'cubic yards', 'yd', 'yds'],
+      'bag': ['bag', 'bags'],
+      'sqft': ['sqft', 'sq ft', 'square foot', 'square feet', 'sf'],
+      'linear ft': ['linear ft', 'linear foot', 'linear feet', 'lf'],
+      'linear_ft': ['linear ft', 'linear foot', 'linear feet', 'lf'],
+      'room': ['room', 'rooms'],
+      'wall': ['wall', 'walls'],
+      'floor': ['floor', 'floors'],
+      'door': ['door', 'doors'],
+      'window': ['window', 'windows'],
+      'fixture': ['fixture', 'fixtures'],
+      'outlet': ['outlet', 'outlets', 'receptacle', 'receptacles'],
+      'switch': ['switch', 'switches'],
+      'appliance': ['appliance', 'appliances'],
+      'ton': ['ton', 'tons'],
+      'lb': ['lb', 'lbs', 'pound', 'pounds'],
+    };
+
+    final list = aliases[normalized] ?? [normalized];
+
+    for (final item in list) {
+      addWord(item);
     }
 
     return words;
@@ -508,10 +565,12 @@ class EstimatePricingEngineService {
       ) {
     final normalizedUnit = rule.unit.trim().toLowerCase();
 
+    // Fixed means one job / one flat price.
     if (normalizedUnit == 'fixed') {
       return 1;
     }
 
+    // Strong parsed units first.
     if (normalizedUnit == 'sqft') {
       if ((parsed.sqft ?? 0) > 0) return parsed.sqft!;
     }
@@ -524,6 +583,7 @@ class EstimatePricingEngineService {
       if ((parsed.hours ?? 0) > 0) return parsed.hours!;
     }
 
+    // Count quantity near unit words: 2 loads, 3 bags, 4 doors, 2 outlets.
     final unitQuantity = _countQuantityNearWords(
       rawPrompt: parsed.rawPrompt,
       words: _unitQuantityWords(normalizedUnit),
@@ -533,18 +593,50 @@ class EstimatePricingEngineService {
       return unitQuantity;
     }
 
-    if (normalizedUnit == 'item') {
-      final itemQuantity = _countQuantityNearWords(
+    // For item-like rules, also count quantity near service words:
+    // 2 outlets, 3 windows, 4 appliances.
+    if (_isQuantityBasedUnit(normalizedUnit)) {
+      final ruleQuantity = _countQuantityNearWords(
         rawPrompt: parsed.rawPrompt,
         words: _ruleQuantityWords(rule),
       );
 
-      if (itemQuantity > 0) {
-        return itemQuantity;
+      if (ruleQuantity > 0) {
+        return ruleQuantity;
       }
     }
 
     return 0;
+  }
+
+  static bool _isQuantityBasedUnit(String unit) {
+    final normalized = unit.trim().toLowerCase();
+
+    const quantityUnits = {
+      'item',
+      'hour',
+      'day',
+      'visit',
+      'trip',
+      'load',
+      'yard',
+      'bag',
+      'sqft',
+      'linear_ft',
+      'room',
+      'wall',
+      'floor',
+      'door',
+      'window',
+      'fixture',
+      'outlet',
+      'switch',
+      'appliance',
+      'ton',
+      'lb',
+    };
+
+    return quantityUnits.contains(normalized);
   }
 
   static String _serviceLabel(String serviceType) {

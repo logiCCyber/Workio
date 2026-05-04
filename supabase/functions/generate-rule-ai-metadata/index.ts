@@ -359,7 +359,7 @@ function sanitizeSuggestedDisplayName(
     const raw = normalizeText(value || fallback);
 
     const cleaned = raw
-        .replace(/\b(service|work|job|help|general|standard|minor|onsite|requested)\b/gi, "")
+        .replace(/\b(work|job|help|general|standard|minor|onsite|requested)\b/gi, "")
         .replace(/\s+/g, " ")
         .trim();
 
@@ -439,6 +439,11 @@ SERVICE MEANING RULES:
 - category helps understand subtype.
 - unit strongly affects template style.
 
+INTENT MIXING RULE:
+- If aliases or existingAliases include multiple intents such as install, installation, repair, replacement, replace, inspect, diagnostic, or service, treat the rule as a broad service rule unless serviceType/displayName clearly says one exact intent.
+- Broad service rules should use neutral names and titles.
+- Do not choose one intent randomly just because it appears in aliases.
+
 UNIT RULES:
 - If unit = "fixed", "item", or "hour":
   - do NOT mention {sqft} or {rooms} in aiScopeTemplate unless absolutely necessary.
@@ -474,12 +479,17 @@ ALIASES RULES:
 
 DISPLAY NAME RULES:
 - suggestedDisplayName must be short, clean, and admin-friendly.
-- Prefer 1 to 2 words.
+- Prefer 1 to 3 words.
 - It should look good in UI.
 - Prefer title case.
-- Remove filler words like service, work, job, help.
-- Do not make it too broad.
+- Remove filler words like work, job, help.
 - Do not make it too long.
+- Do NOT over-specialize the display name.
+- If serviceType/displayName is broad and aliases or keywords include mixed intents such as install, repair, replace, inspect, troubleshoot, or service, use a neutral name like "{main item} Service".
+- Only use Installation, Repair, Replacement, Inspection, or Demolition in the display name when the input serviceType/displayName clearly means only that intent.
+- Example: if the rule can cover install + repair + replacement, use "Outlet Service", "Sink Service", "Door Service", or "Window Service".
+- Example: if the rule clearly says "outlet installation", use "Outlet Installation".
+- Example: if the rule clearly says "sink repair", use "Sink Repair".
 
 SERVICE TYPE RULES:
 - normalizedServiceType should be lowercase.
@@ -499,6 +509,22 @@ AI KEYWORDS RULES:
 - Relevant.
 - No junk repetition.
 - No broad unrelated construction words.
+
+NEGATIVE KEYWORDS RULES:
+- Generate 4 to 8 negativeKeywords.
+- negativeKeywords must NEVER include valid actions, symptoms, or variants for this same service.
+- Do NOT put repair, replace, replacement, inspect, diagnostic, troubleshooting, dead, damaged, burned, leaking, clogged, broken into negativeKeywords if those words can describe this same service.
+- negativeKeywords are only for excluding DIFFERENT services that could be confused with this rule.
+- If there are no clear exclusion words, return an empty negativeKeywords array.
+- For broad service rules like "Outlet Service", "Sink Service", "Faucet Service", or "Toilet Service", keep repair/replacement/inspection words as aliases or aiKeywords, not negativeKeywords.
+- negativeKeywords are words or phrases that should prevent this rule from matching incorrectly.
+- Use them to separate similar services with overlapping aliases.
+- They must be practical search phrases.
+- Do NOT include words that are actually valid for this service.
+- If this rule is simple junk removal, negativeKeywords may include demolition, tear down, wall removal, drywall removal.
+- If this rule is demolition, negativeKeywords may include furniture pickup, simple trash pickup, move out junk, bags only.
+- If this rule is repair, negativeKeywords may include new installation, full remodel, new build unless those are valid for this rule.
+- If this rule is installation, negativeKeywords may include repair only, diagnostic only, inspection only unless those are valid for this rule.
 
 SCOPE TEMPLATE RULES:
 - Must be reusable.
@@ -522,8 +548,11 @@ NOTES TEMPLATE RULES:
 
 ITEM LABEL RULES:
 - aiLaborTitle should match the service meaning exactly.
-- If the service is repair, use repair wording.
-- If the service is installation, use installation wording.
+- Do NOT over-specialize aiLaborTitle.
+- If the rule is broad or contains mixed intents such as install + repair + replacement + inspection, use a neutral title like "{main item} Service".
+- Only use repair wording when the rule clearly means repair only.
+- Only use installation wording when the rule clearly means installation only.
+- Only use replacement wording when the rule clearly means replacement only.
 - aiLaborDescription should be one short estimate sentence.
 - aiMaterialsTitle / Description should be short and practical.
 - aiPrepTitle / Description should be short and practical.
@@ -546,6 +575,13 @@ FOLLOW-UP QUESTION RULES:
 - answerType must be text or single_select.
 
 STYLE EXAMPLES:
+
+Bad for Outlet Service:
+negativeKeywords: ["replacement", "dead outlet", "diagnostic", "replace"]
+
+Good for Outlet Service:
+aliases/aiKeywords: ["outlet replacement", "dead outlet", "inspect outlet", "repair outlet"]
+negativeKeywords: ["light fixture", "switch", "breaker", "panel", "faucet", "sink", "toilet"]
 
 If unit = "fixed":
 - keep scope general and do not ask for sqft/rooms by default.
@@ -582,6 +618,10 @@ existingAliases: ${aliases.join(", ")}
                         items: { type: "string" },
                     },
                     aiKeywords: {
+                        type: "array",
+                        items: { type: "string" },
+                    },
+                    negativeKeywords: {
                         type: "array",
                         items: { type: "string" },
                     },
@@ -625,6 +665,7 @@ existingAliases: ${aliases.join(", ")}
                 required: [
                     "aliases",
                     "aiKeywords",
+                    "negativeKeywords",
                     "aiScopeTemplate",
                     "aiNotesTemplate",
                     "aiLaborTitle",
@@ -696,6 +737,9 @@ existingAliases: ${aliases.join(", ")}
                 intent,
             }),
             aiKeywords: sanitizeKeywords(parsed.aiKeywords, {
+                intent,
+            }),
+            negativeKeywords: sanitizeKeywords(parsed.negativeKeywords, {
                 intent,
             }),
             aiScopeTemplate: sanitizeScopeTemplate(parsed.aiScopeTemplate, {

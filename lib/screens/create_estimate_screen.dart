@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../models/client_model.dart';
 import '../models/estimate_item_model.dart';
@@ -33,6 +34,12 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
   final TextEditingController _scopeController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
 
+  final stt.SpeechToText _speech = stt.SpeechToText();
+
+  bool _speechReady = false;
+  bool _isListening = false;
+  bool _voiceAppendMode = false;
+
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -57,10 +64,12 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
   void initState() {
     super.initState();
     _loadClients();
+    _initSpeech();
   }
 
   @override
   void dispose() {
+    _speech.stop();
     _titleController.dispose();
     _scopeController.dispose();
     _notesController.dispose();
@@ -212,6 +221,139 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  Future<void> _initSpeech() async {
+    final ready = await _speech.initialize(
+      onStatus: (status) {
+        if (!mounted) return;
+
+        if (status == 'done' || status == 'notListening') {
+          setState(() {
+            _isListening = false;
+          });
+        }
+      },
+      onError: (error) {
+        if (!mounted) return;
+
+        setState(() {
+          _isListening = false;
+        });
+
+        _showSnack('Voice input failed: ${error.errorMsg}');
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _speechReady = ready;
+    });
+  }
+
+  void _insertVoiceTextToScope(
+      String spokenText, {
+        required bool append,
+      }) {
+    final clean = spokenText.trim();
+    if (clean.isEmpty) return;
+
+    final current = _scopeController.text.trim();
+
+    final next = append
+        ? (current.isEmpty ? clean : '$current $clean').trim()
+        : clean;
+
+    _scopeController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+  }
+
+  Future<void> _startScopeVoiceInput({
+    required bool append,
+  }) async {
+    if (!_speechReady) {
+      _showSnack('Voice input is not available on this device');
+      return;
+    }
+
+    if (_isListening) return;
+
+    setState(() {
+      _voiceAppendMode = append;
+      _isListening = true;
+    });
+
+    await _speech.listen(
+      onResult: (result) {
+        if (!mounted) return;
+
+        if (result.finalResult) {
+          _insertVoiceTextToScope(
+            result.recognizedWords,
+            append: _voiceAppendMode,
+          );
+
+          setState(() {
+            _isListening = false;
+          });
+        }
+      },
+      listenMode: stt.ListenMode.dictation,
+      partialResults: true,
+      cancelOnError: true,
+      listenFor: const Duration(seconds: 45),
+      pauseFor: const Duration(seconds: 5),
+    );
+  }
+
+  Future<void> _stopScopeVoiceInput() async {
+    await _speech.stop();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isListening = false;
+    });
+  }
+
+  Future<void> _openScopeVoiceSheet() async {
+    if (_isListening) {
+      await _stopScopeVoiceInput();
+      return;
+    }
+
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const Text('Voice Scope'),
+          message: const Text('Choose how Workio should insert your voice text'),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'replace'),
+              child: const Text('Replace scope'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'append'),
+              child: const Text('Append to scope'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        );
+      },
+    );
+
+    if (action == 'replace') {
+      await _startScopeVoiceInput(append: false);
+    } else if (action == 'append') {
+      await _startScopeVoiceInput(append: true);
+    }
   }
 
   EstimateTotals get _totals {
@@ -827,11 +969,56 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
             _buildSectionCard(
               title: 'Scope of Work',
               subtitle: 'Scope of work description',
-              child: _PremiumTextField(
-                controller: _scopeController,
-                label: 'Scope',
-                hintText: 'Describe the work scope, included tasks, exclusions, and cleanup...',
-                maxLines: 6,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _PremiumTextField(
+                    controller: _scopeController,
+                    label: 'Scope',
+                    hintText: 'Describe the work scope, included tasks, exclusions, and cleanup...',
+                    maxLines: 6,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _isListening
+                              ? (_voiceAppendMode
+                              ? 'Workio says: listening... I’ll append your words.'
+                              : 'Workio says: listening... I’ll replace the scope.')
+                              : 'Workio says: tap the mic to dictate the scope.',
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        color: _isListening
+                            ? const Color(0xFF7A1F1F)
+                            : const Color(0xFF101117),
+                        borderRadius: BorderRadius.circular(16),
+                        onPressed: !_speechReady
+                            ? null
+                            : (_isListening ? _stopScopeVoiceInput : _openScopeVoiceSheet),
+                        child: Icon(
+                          _isListening
+                              ? CupertinoIcons.stop_fill
+                              : CupertinoIcons.mic_fill,
+                          color: _isListening
+                              ? Colors.white
+                              : const Color(0xFFB6BCD0),
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 14),
