@@ -360,9 +360,22 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     final rushFixedRateController = TextEditingController(
       text: rule.rushFixedRate?.toStringAsFixed(2) ?? '',
     );
+    final installFixedRateController = TextEditingController(
+      text: rule.installFixedRate?.toStringAsFixed(2) ?? '',
+    );
+    final replaceFixedRateController = TextEditingController(
+      text: rule.replaceFixedRate?.toStringAsFixed(2) ?? '',
+    );
+    final repairFixedRateController = TextEditingController(
+      text: rule.repairFixedRate?.toStringAsFixed(2) ?? '',
+    );
+    final diagnosticFixedRateController = TextEditingController(
+      text: rule.diagnosticFixedRate?.toStringAsFixed(2) ?? '',
+    );
 
     bool isAiMetadataExpanded = false;
     bool isGeneratingAi = false;
+    bool isAdvancedPricingExpanded = false;
 
     List<Map<String, dynamic>> generatedFollowupQuestions =
     List<Map<String, dynamic>>.from(rule.aiFollowupQuestions);
@@ -643,25 +656,63 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                   label: 'Base Rate',
                 ),
                 const SizedBox(height: 12),
-                _RuleField(
-                  controller: materialRatePerSqftController,
-                  label: 'Material Rate / Sqft',
+                _CollapsibleSectionHeader(
+                  title: 'Advanced Pricing',
+                  subtitle: 'Optional • install / replace / repair / diagnostic',
+                  isExpanded: isAdvancedPricingExpanded,
+                  onTap: () {
+                    setModalState(() {
+                      isAdvancedPricingExpanded = !isAdvancedPricingExpanded;
+                    });
+                  },
                 ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: materialFixedRateController,
-                  label: 'Material Fixed Rate',
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: prepFixedRateController,
-                  label: 'Prep Fixed Rate',
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: rushFixedRateController,
-                  label: 'Rush Fixed Rate',
-                ),
+                if (isAdvancedPricingExpanded)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
+                    child: Column(
+                      children: [
+                        _RuleField(
+                          controller: installFixedRateController,
+                          label: 'Install Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: replaceFixedRateController,
+                          label: 'Replace Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: repairFixedRateController,
+                          label: 'Repair Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: diagnosticFixedRateController,
+                          label: 'Diagnostic / Inspection Fee',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: materialRatePerSqftController,
+                          label: 'Material Rate / Sqft',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: materialFixedRateController,
+                          label: 'Material Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: prepFixedRateController,
+                          label: 'Prep Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: rushFixedRateController,
+                          label: 'Rush Fixed Rate',
+                        ),
+                      ],
+                    ),
+                  ),
 
                 const SizedBox(height: 18),
                 SizedBox(
@@ -713,6 +764,14 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                               ? rule.unit
                               : unitController.text.trim().toLowerCase(),
                           baseRate: _parseDouble(baseRateController.text) ?? 0,
+                          installFixedRate:
+                          _parseNullableDouble(installFixedRateController.text),
+                          replaceFixedRate:
+                          _parseNullableDouble(replaceFixedRateController.text),
+                          repairFixedRate:
+                          _parseNullableDouble(repairFixedRateController.text),
+                          diagnosticFixedRate:
+                          _parseNullableDouble(diagnosticFixedRateController.text),
                           materialRatePerSqft:
                           _parseNullableDouble(materialRatePerSqftController.text),
                           materialFixedRate:
@@ -744,6 +803,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
 
     try {
       await EstimatePriceRulesService.updateRule(updatedRule);
+      await EstimatePriceRulesService.suggestAndSaveIcon(updatedRule);
       await _loadRules();
       _showSnack('Rule updated');
     } catch (e) {
@@ -784,8 +844,15 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     final materialFixedRateController = TextEditingController();
     final prepFixedRateController = TextEditingController();
     final rushFixedRateController = TextEditingController();
+    final installFixedRateController = TextEditingController();
+    final replaceFixedRateController = TextEditingController();
+    final repairFixedRateController = TextEditingController();
+    final diagnosticFixedRateController = TextEditingController();
+
     bool isAiMetadataExpanded = false;
     bool isGeneratingAi = false;
+    bool isAdvancedPricingExpanded = false;
+
     List<Map<String, dynamic>> generatedFollowupQuestions = [];
 
     final newRule = await showModalBottomSheet<EstimatePriceRuleModel>(
@@ -1072,25 +1139,63 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                   label: 'Base Rate',
                 ),
                 const SizedBox(height: 12),
-                _RuleField(
-                  controller: materialRatePerSqftController,
-                  label: 'Material Rate / Sqft',
+                _CollapsibleSectionHeader(
+                  title: 'Advanced Pricing',
+                  subtitle: 'Optional • install / replace / repair / diagnostic',
+                  isExpanded: isAdvancedPricingExpanded,
+                  onTap: () {
+                    setModalState(() {
+                      isAdvancedPricingExpanded = !isAdvancedPricingExpanded;
+                    });
+                  },
                 ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: materialFixedRateController,
-                  label: 'Material Fixed Rate',
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: prepFixedRateController,
-                  label: 'Prep Fixed Rate',
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: rushFixedRateController,
-                  label: 'Rush Fixed Rate',
-                ),
+                if (isAdvancedPricingExpanded)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
+                    child: Column(
+                      children: [
+                        _RuleField(
+                          controller: installFixedRateController,
+                          label: 'Install Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: replaceFixedRateController,
+                          label: 'Replace Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: repairFixedRateController,
+                          label: 'Repair Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: diagnosticFixedRateController,
+                          label: 'Diagnostic / Inspection Fee',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: materialRatePerSqftController,
+                          label: 'Material Rate / Sqft',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: materialFixedRateController,
+                          label: 'Material Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: prepFixedRateController,
+                          label: 'Prep Fixed Rate',
+                        ),
+                        const SizedBox(height: 12),
+                        _RuleField(
+                          controller: rushFixedRateController,
+                          label: 'Rush Fixed Rate',
+                        ),
+                      ],
+                    ),
+                  ),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
@@ -1158,6 +1263,18 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
                               ? null
                               : aiRushDescriptionController.text.trim(),
                           baseRate: baseRate,
+                          installFixedRate: _parseNullableDouble(
+                            installFixedRateController.text,
+                          ),
+                          replaceFixedRate: _parseNullableDouble(
+                            replaceFixedRateController.text,
+                          ),
+                          repairFixedRate: _parseNullableDouble(
+                            repairFixedRateController.text,
+                          ),
+                          diagnosticFixedRate: _parseNullableDouble(
+                            diagnosticFixedRateController.text,
+                          ),
                           materialRatePerSqft: _parseNullableDouble(
                             materialRatePerSqftController.text,
                           ),
@@ -1193,6 +1310,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
 
     try {
       await EstimatePriceRulesService.createRule(newRule);
+      await EstimatePriceRulesService.suggestAndSaveIcon(newRule);
       await _loadRules();
       _showSnack('Rule created');
     } catch (e) {

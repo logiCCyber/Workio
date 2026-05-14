@@ -406,7 +406,20 @@ class AdminHomeScreen extends StatelessWidget {
 
                       const SizedBox(width: 4),
 
-                      // ✅ твои три точки (то же меню что было)
+                      _AdminQuickQuoteButton(
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const QuickQuoteScreen(),
+                            ),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(width: 4),
+
+// ✅ твои три точки
                       PopupMenuButton<String>(
                         icon: const Icon(Icons.more_vert_rounded, color: Colors.white70),
                         color: const Color(0xFF1F2025),
@@ -1025,7 +1038,7 @@ class AdminTopPanel extends StatelessWidget {
                         : Text(
                       'Total online',
                       style: TextStyle(
-                        color: AppPalette.textSoft.withOpacity(0.80),
+                        color: AppPalette.textSoft.withOpacity(0.95),
                         fontWeight: FontWeight.w800,
                         fontSize: 12,
                       ),
@@ -10275,6 +10288,35 @@ class _AdminTasksButton extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _AdminQuickQuoteButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AdminQuickQuoteButton({
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Quick Quote',
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(
+          minWidth: 36,
+          minHeight: 36,
+        ),
+        onPressed: onTap,
+        icon: const Icon(
+          CupertinoIcons.bolt_fill,
+          size: 21,
+          color: Colors.white70,
+        ),
+      ),
     );
   }
 }

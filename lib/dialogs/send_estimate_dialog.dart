@@ -316,6 +316,211 @@ $_companyName
     );
   }
 
+  Widget _sendPanel({
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _sendInputRow({
+    required IconData icon,
+    required String label,
+    required TextEditingController controller,
+    required String hintText,
+    TextInputType keyboardType = TextInputType.text,
+    int maxLines = 1,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      child: Row(
+        crossAxisAlignment:
+        maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(top: maxLines > 1 ? 4 : 0),
+            child: Icon(
+              icon,
+              color: const Color(0xFF8E93A6),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                TextField(
+                  controller: controller,
+                  keyboardType: keyboardType,
+                  maxLines: maxLines,
+                  minLines: maxLines > 1 ? 5 : 1,
+                  cursorColor: const Color(0xFF5B8CFF),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: hintText,
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF697086),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sendPickerRow({
+    required IconData icon,
+    required String label,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: const Color(0xFF8E93A6),
+                size: 18,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Color(0xFF8E93A6),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFF8E93A6),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                CupertinoIcons.chevron_right,
+                color: Color(0xFF8E93A6),
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sendSwitchRow({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool>? onChanged,
+  }) {
+    final disabled = onChanged == null;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: disabled ? const Color(0xFF4F5668) : const Color(0xFF8E93A6),
+            size: 18,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: disabled ? const Color(0xFF5E6475) : Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: disabled
+                        ? const Color(0xFF4F5668)
+                        : const Color(0xFF8E93A6),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          CupertinoSwitch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: const Color(0xFF5B8CFF),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final latestDocument = widget.latestDocument;
@@ -323,7 +528,7 @@ $_companyName
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
-        20,
+        14,
         20,
         MediaQuery.of(context).viewInsets.bottom + 24,
       ),
@@ -331,83 +536,184 @@ $_companyName
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Send Estimate',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
+            Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                color: const Color(0xFF3A3D49),
+                borderRadius: BorderRadius.circular(999),
               ),
             ),
+
             const SizedBox(height: 18),
-            _PremiumTextField(
-              controller: _toController,
-              label: 'To',
-              hintText: 'client@email.com',
-              keyboardType: TextInputType.emailAddress,
+
+            const Row(
+              children: [
+                Icon(
+                  CupertinoIcons.paperplane_fill,
+                  color: Color(0xFFB8C1D9),
+                  size: 22,
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Send Estimate',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _SelectionCard(
-              label: 'Email Template',
-              title: _templateTitle,
-              subtitle: _templateSubtitle,
-              onTap: _pickTemplate,
+
+            const SizedBox(height: 18),
+
+            _sendPanel(
+              children: [
+                _sendInputRow(
+                  icon: CupertinoIcons.mail,
+                  label: 'To',
+                  controller: _toController,
+                  hintText: 'client@email.com',
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const Divider(color: Color(0xFF23252E), height: 1),
+                _sendPickerRow(
+                  icon: CupertinoIcons.square_stack_3d_up,
+                  label: 'Email Template',
+                  title: _templateTitle,
+                  subtitle: _templateSubtitle,
+                  onTap: _pickTemplate,
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _subjectController,
-              label: 'Subject',
-              hintText: 'Estimate EST-...',
-            ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _messageController,
-              label: 'Message',
-              hintText: 'Write your message...',
-              maxLines: 8,
-            ),
+
             const SizedBox(height: 14),
-            _ChoiceCard(
-              title: 'Attachment Source',
-              subtitle: latestDocument != null
-                  ? 'Latest PDF: ${latestDocument.fileName}'
-                  : 'No saved PDF found yet',
-              child: Column(
-                children: [
-                  _SwitchRow(
-                    label: 'Use latest saved PDF',
-                    value: _useLatestSavedPdf,
-                    onChanged: latestDocument == null
-                        ? null
-                        : (value) {
-                      setState(() {
-                        _useLatestSavedPdf = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  _SwitchRow(
-                    label: 'Generate new PDF if needed',
-                    value: _generateNewPdfIfMissing,
-                    onChanged: (value) {
-                      setState(() {
-                        _generateNewPdfIfMissing = value;
-                      });
-                    },
-                  ),
-                ],
-              ),
+
+            _sendPanel(
+              children: [
+                _sendInputRow(
+                  icon: CupertinoIcons.textformat,
+                  label: 'Subject',
+                  controller: _subjectController,
+                  hintText: 'Estimate EST-...',
+                ),
+                const Divider(color: Color(0xFF23252E), height: 1),
+                _sendInputRow(
+                  icon: CupertinoIcons.text_alignleft,
+                  label: 'Message',
+                  controller: _messageController,
+                  hintText: 'Write your message...',
+                  maxLines: 8,
+                ),
+              ],
             ),
+
+            const SizedBox(height: 14),
+
+            _sendPanel(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 13, 14, 11),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        CupertinoIcons.paperclip,
+                        color: Color(0xFF8E93A6),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Attachment Source',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              latestDocument != null
+                                  ? 'Latest PDF: ${latestDocument.fileName}'
+                                  : 'No saved PDF found yet',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF8E93A6),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Color(0xFF23252E), height: 1),
+                _sendSwitchRow(
+                  icon: CupertinoIcons.doc_text,
+                  label: 'Use latest saved PDF',
+                  subtitle: latestDocument == null
+                      ? 'Save a PDF first to use this option'
+                      : 'Attach the latest saved estimate PDF',
+                  value: _useLatestSavedPdf,
+                  onChanged: latestDocument == null
+                      ? null
+                      : (value) {
+                    setState(() {
+                      _useLatestSavedPdf = value;
+                    });
+                  },
+                ),
+                const Divider(color: Color(0xFF23252E), height: 1),
+                _sendSwitchRow(
+                  icon: CupertinoIcons.arrow_clockwise,
+                  label: 'Generate new PDF if needed',
+                  subtitle: 'Create a fresh PDF if no saved file is available',
+                  value: _generateNewPdfIfMissing,
+                  onChanged: (value) {
+                    setState(() {
+                      _generateNewPdfIfMissing = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+
             const SizedBox(height: 18),
+
             SizedBox(
               width: double.infinity,
               child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(vertical: 15),
                 color: const Color(0xFF5B8CFF),
                 borderRadius: BorderRadius.circular(16),
                 onPressed: _submit,
-                child: const Text(
-                  'Continue',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.paperplane_fill,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Continue',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

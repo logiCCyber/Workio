@@ -88,6 +88,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
   AiEstimateDraft? _draft;
   AiEstimateResultModel? _smartResult;
+  final Set<String> _answeredMissingKeys = {};
 
   double _taxRate = 0.13;
   double _discountValue = 0;
@@ -687,6 +688,127 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return chips.take(8).toList();
   }
 
+  String _conditionalClean(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  bool _hasConditionalInspectionSignal(String value) {
+    final text = _conditionalClean(value);
+
+    return RegExp(
+      r'\b(if needed|as needed|if necessary|when needed|po neobhodimosti|po nado|as required)\b',
+    ).hasMatch(text) &&
+        RegExp(
+          r'\b(inspect|inspection|diagnose|diagnostic|check|verify|proverit|diagnostika)\b',
+        ).hasMatch(text);
+  }
+
+  bool _isInspectionLikeJob(String value) {
+    final text = _conditionalClean(value);
+
+    return RegExp(
+      r'\b(inspect|inspection|diagnose|diagnostic|check|verify|troubleshoot|proverit|diagnostika)\b',
+    ).hasMatch(text);
+  }
+
+  bool _hasDefiniteWorkAction(String value) {
+    final text = _conditionalClean(value);
+
+    return RegExp(
+      r'\b(replace|replacement|repair|fix|install|installation|swap|change|zamenit|pochinit|ustanovit)\b',
+    ).hasMatch(text);
+  }
+
+  Set<String> _conditionalObjectTokens(String value) {
+    const ignore = {
+      'if',
+      'needed',
+      'as',
+      'necessary',
+      'when',
+      'po',
+      'neobhodimosti',
+      'nado',
+      'inspect',
+      'inspection',
+      'diagnose',
+      'diagnostic',
+      'check',
+      'verify',
+      'repair',
+      'replace',
+      'install',
+      'installation',
+      'fix',
+      'work',
+      'job',
+      'service',
+      'the',
+      'and',
+      'or',
+      'to',
+      'for',
+      'in',
+      'on',
+      'with',
+    };
+
+    return _conditionalClean(value)
+        .split(' ')
+        .where((e) => e.length >= 4)
+        .where((e) => !ignore.contains(e))
+        .toSet();
+  }
+
+  bool _isConditionalFollowupActionJob({
+    required String job,
+    required String fullPrompt,
+  }) {
+    if (!_hasConditionalInspectionSignal(fullPrompt)) return false;
+    if (!_hasDefiniteWorkAction(job)) return false;
+    if (_isInspectionLikeJob(job)) return false;
+
+    final jobTokens = _conditionalObjectTokens(job);
+    final fullTokens = _conditionalObjectTokens(fullPrompt);
+
+    if (jobTokens.isEmpty || fullTokens.isEmpty) return false;
+
+    return jobTokens.intersection(fullTokens).isNotEmpty;
+  }
+
+  bool _isInspectionDiagnosticRule(EstimatePriceRuleModel rule) {
+    final text = _conditionalClean(
+      '${rule.serviceType} ${rule.displayName ?? ''} '
+          '${rule.aliases.join(' ')} ${rule.aiKeywords.join(' ')}',
+    );
+
+    return RegExp(
+      r'\b(inspection|inspect|diagnostic|diagnose|troubleshoot|assessment|service call|check)\b',
+    ).hasMatch(text);
+  }
+
+  bool _resultHasPositiveTotal(AiEstimateResultModel? result) {
+    if (result == null || result.items.isEmpty) return false;
+
+    for (final item in result.items) {
+      final total = item.lineTotal > 0
+          ? item.lineTotal
+          : EstimateCalculator.calculateLineTotal(
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      );
+
+      if (total > 0) return true;
+    }
+
+    return false;
+  }
+
   List<String> _buildManualExampleChips() {
     return const [];
   }
@@ -1222,11 +1344,13 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
-    if (RegExp(
-      r'\b(no rush|not urgent|not rush|standard timing|normal schedule|not srochnaya|ne srochnaya|rabota ne srochnaya)\b',
-    ).hasMatch(text)) {
-      return false;
-    }
+    if (text.isEmpty) return false;
+
+    final noRush = RegExp(
+      r'\b(no rush|not urgent|not rush|not priority|standard timing|normal schedule|normal service|not expedited|no expedited|ne srochnaya|nesrochnaya|rabota ne srochnaya|ne srochno|bez srochnosti|obychnaya rabota|regular schedule)\b',
+    ).hasMatch(text);
+
+    if (noRush) return false;
 
     return RegExp(
       r'\b(urgent|rush|asap|same day|emergency|priority|expedited|srochno|srochnaya|rabota srochnaya|shoshilinch)\b',
@@ -1300,6 +1424,12 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     final prompt = _promptController.text.trim();
 
     return result.missingFields.where((field) {
+      final key = field.key.trim().toLowerCase();
+
+      if (_answeredMissingKeys.contains(key)) {
+        return false;
+      }
+
       return !_isMissingFieldAnsweredInPrompt(
         field: field,
         prompt: prompt,
@@ -1754,6 +1884,75 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     );
   }
 
+  Future<EstimatePriceRuleModel?> _resolveAiInspectionRuleForPrompt(
+      String prompt,
+      ) async {
+    final activeInspectionRules = _rules
+        .where((rule) => rule.isActive)
+        .where(_isInspectionDiagnosticRule)
+        .toList();
+
+    if (activeInspectionRules.isEmpty) return null;
+
+    final localFirst = _resolveAiRuleByLocalAliasFallback(
+      prompt,
+      activeInspectionRules,
+    );
+
+    if (localFirst != null) return localFirst;
+
+    final resolverResult = await EstimateRuleResolutionService.resolve(
+      prompt: prompt,
+      guidedAnswers: {
+        'requested_work': prompt,
+      },
+      candidates: activeInspectionRules.map(_ruleToAiCandidate).toList(),
+    );
+
+    final selectedRuleId = resolverResult.selectedRuleId;
+
+    if ((selectedRuleId ?? '').trim().isEmpty) {
+      return _resolveAiRuleByLocalAliasFallback(prompt, activeInspectionRules);
+    }
+
+    final resolved = _findRuleById(selectedRuleId);
+
+    if (resolved != null && _isInspectionDiagnosticRule(resolved)) {
+      return resolved;
+    }
+
+    return _resolveAiRuleByLocalAliasFallback(prompt, activeInspectionRules);
+  }
+
+  Future<AiEstimateResultModel?> _generateSingleAiInspectionJob(
+      String jobPrompt,
+      ) async {
+    final selectedRule = await _resolveAiInspectionRuleForPrompt(jobPrompt);
+
+    if (selectedRule == null) return null;
+
+    final serviceLabel = selectedRule.displayName?.trim().isNotEmpty == true
+        ? selectedRule.displayName!.trim()
+        : selectedRule.serviceType.trim();
+
+    final systemPrompt =
+        'service_type: ${selectedRule.serviceType}. '
+        'service_label: $serviceLabel. '
+        'request: $jobPrompt';
+
+    final result = await SmartEstimateService.generate(
+      prompt: systemPrompt,
+      propertyCity: _selectedProperty?.city,
+      clientId: _selectedClient?.id,
+      propertyId: _selectedProperty?.id,
+      ruleUnit: selectedRule.unit,
+      selectedRule: selectedRule,
+      allowDraftWithExplicitService: true,
+    );
+
+    return _resultHasPositiveTotal(result) ? result : null;
+  }
+
   String _resultServiceTitle(AiEstimateResultModel result, int index) {
     String cleanTitle(String value) {
       var text = value.trim();
@@ -1824,11 +2023,13 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     required String prompt,
     required List<AiEstimateResultModel> results,
   }) {
-    final items = <EstimateItemModel>[];
+    final rawItems = <EstimateItemModel>[];
 
     for (final result in results) {
-      items.addAll(result.items);
+      rawItems.addAll(result.items);
     }
+
+    final items = _dedupeRushItems(rawItems);
 
     final richScope = _buildRichAiScope(results);
     final richNotes = _buildRichAiNotes(results);
@@ -1881,6 +2082,47 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     setState(() {
       _speechReady = ready;
     });
+  }
+
+  List<EstimateItemModel> _dedupeRushItems(List<EstimateItemModel> items) {
+    final result = <EstimateItemModel>[];
+    final seenRushKeys = <String>{};
+
+    String clean(String value) {
+      return value
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+
+    bool isRushItem(EstimateItemModel item) {
+      final text = clean('${item.title} ${item.description} ${item.unit}');
+      return RegExp(
+        r'\b(rush|urgent|priority|expedited)\b',
+      ).hasMatch(text);
+    }
+
+    for (final item in items) {
+      if (!isRushItem(item)) {
+        result.add(item);
+        continue;
+      }
+
+      final key = '${clean(item.title)}_${item.unitPrice.toStringAsFixed(2)}';
+
+      if (seenRushKeys.contains(key)) {
+        continue;
+      }
+
+      seenRushKeys.add(key);
+      result.add(item);
+    }
+
+    return result.asMap().entries.map((entry) {
+      return entry.value.copyWith(sortOrder: entry.key);
+    }).toList();
   }
 
   void _insertVoiceText(
@@ -1998,6 +2240,46 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     );
   }
 
+  AiEstimateResultModel _boostConfidenceAfterAnswers({
+    required AiEstimateResultModel result,
+    required Map<String, dynamic> answers,
+    required int originalQuestionCount,
+  }) {
+    final answeredCount = answers.entries.where((entry) {
+      final value = entry.value;
+
+      if (value == null) return false;
+
+      if (value is String) {
+        return value.trim().isNotEmpty;
+      }
+
+      if (value is Iterable) {
+        return value.isNotEmpty;
+      }
+
+      return true;
+    }).length;
+
+    if (answeredCount <= 0) return result;
+
+    final answerRatio = originalQuestionCount <= 0
+        ? 1.0
+        : (answeredCount / originalQuestionCount).clamp(0.0, 1.0);
+
+    final current = result.confidence;
+
+    // Small professional boost:
+    // answered some details => +8%
+    // answered all/most details => up to +20%
+    final boost = 0.08 + (0.12 * answerRatio);
+
+    final boosted = (current + boost).clamp(0.0, 0.95);
+
+    return result.copyWith(
+      confidence: boosted,
+    );
+  }
 
   void _applySmartResult(AiEstimateResultModel result) {
     setState(() {
@@ -2042,37 +2324,162 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     );
 
     if (answers == null || answers.isEmpty) return;
+    final answeredKeys = answers.entries
+        .where((entry) {
+      final value = entry.value;
+
+      if (value == null) return false;
+
+      if (value is String) {
+        return value.trim().isNotEmpty;
+      }
+
+      if (value is Iterable) {
+        return value.isNotEmpty;
+      }
+
+      return true;
+    })
+        .map((entry) => entry.key.trim().toLowerCase())
+        .where((key) => key.isNotEmpty)
+        .toSet();
 
     setState(() {
       _isGenerating = true;
     });
 
     try {
-      final prompt = _promptController.text.trim();
-      final selectedRule = _activePromptRule;
+      final rawPrompt = _promptController.text.trim();
 
-      final promptForAi = selectedRule == null
-          ? prompt
-          : 'service_type: ${selectedRule.serviceType}. '
-          'service_label: ${selectedRule.displayName ?? selectedRule.serviceType}. '
-          'request: $prompt';
+      final normalizedPrompt = await _normalizeAiEstimatePrompt(rawPrompt);
+      if (normalizedPrompt == null || normalizedPrompt.trim().isEmpty) {
+        return;
+      }
 
-      final updated = await SmartEstimateService.regenerateWithAnswers(
-        prompt: promptForAi,
-        answers: answers,
-        propertyCity: _selectedProperty?.city,
-        clientId: _selectedClient?.id,
-        propertyId: _selectedProperty?.id,
-        ruleUnit: selectedRule?.unit,
-        selectedRule: selectedRule,
+      final jobs = await _splitAiEstimateJobs(normalizedPrompt.trim());
+      if (jobs == null || jobs.isEmpty) {
+        return;
+      }
+
+      final results = <AiEstimateResultModel>[];
+      final failedJobs = <String>[];
+
+      for (final job in jobs) {
+        if (_isMaterialOnlyJobPrompt(job)) {
+          continue;
+        }
+
+        final cleanJob = await _normalizeAiEstimatePrompt(job);
+
+        if (cleanJob == null || cleanJob.trim().isEmpty) {
+          failedJobs.add(job);
+          continue;
+        }
+
+        final cleanJobText = cleanJob.trim();
+
+        if (_isMaterialOnlyJobPrompt(cleanJobText)) {
+          continue;
+        }
+
+        final fullPromptText = normalizedPrompt.trim();
+
+        if (_isConditionalFollowupActionJob(
+          job: cleanJobText,
+          fullPrompt: fullPromptText,
+        )) {
+          continue;
+        }
+
+        final inspectionOnly = _hasConditionalInspectionSignal(fullPromptText) &&
+            _isInspectionLikeJob(cleanJobText);
+
+        final baseJobPrompt = inspectionOnly
+            ? '$cleanJobText. Inspection / diagnostic only.'
+            : cleanJobText;
+
+        final finalJobPrompt = _hasRushSignalInPrompt(fullPromptText) &&
+            !_hasRushSignalInPrompt(baseJobPrompt)
+            ? '$baseJobPrompt. Urgent.'
+            : baseJobPrompt;
+
+        final selectedRule = inspectionOnly
+            ? await _resolveAiInspectionRuleForPrompt(finalJobPrompt)
+            : await _resolveAiRuleForPrompt(finalJobPrompt);
+
+        if (selectedRule == null) {
+          failedJobs.add(cleanJobText);
+          continue;
+        }
+
+        final serviceLabel = selectedRule.displayName?.trim().isNotEmpty == true
+            ? selectedRule.displayName!.trim()
+            : selectedRule.serviceType.trim();
+
+        final promptForAi =
+            'service_type: ${selectedRule.serviceType}. '
+            'service_label: $serviceLabel. '
+            'request: $finalJobPrompt';
+
+        final updated = await SmartEstimateService.regenerateWithAnswers(
+          prompt: promptForAi,
+          answers: answers,
+          propertyCity: _selectedProperty?.city,
+          clientId: _selectedClient?.id,
+          propertyId: _selectedProperty?.id,
+          ruleUnit: selectedRule.unit,
+          selectedRule: selectedRule,
+        );
+
+        if (updated.items.isEmpty) {
+          failedJobs.add(cleanJobText);
+          continue;
+        }
+
+        results.add(updated);
+      }
+
+      if (!mounted) return;
+
+      if (results.isEmpty) {
+        _showSnack('No matching Price Rules found after adding details.');
+        return;
+      }
+
+      final merged = _mergeAiEstimateResults(
+        prompt: normalizedPrompt.trim(),
+        results: results,
       );
 
-      if (!mounted) return;
+      final promptMaterialItems = await _buildPromptMaterialItems(
+        normalizedPrompt.trim(),
+        startSortOrder: merged.items.length,
+      );
 
-      _applySmartResult(updated);
-      _showSmartResultMessage(updated);
+      final finalResult = _appendPromptMaterialItems(
+        merged,
+        promptMaterialItems,
+      );
+
+      final boostedResult = _boostConfidenceAfterAnswers(
+        result: finalResult,
+        answers: answers,
+        originalQuestionCount: visibleMissing.length,
+      );
+
+      _answeredMissingKeys.addAll(answeredKeys);
+
+      _applySmartResult(boostedResult);
+      _showSmartResultMessage(boostedResult);
+
+      if (failedJobs.isNotEmpty) {
+        _showSnack(
+          'Some jobs were not updated: ${failedJobs.take(2).join(', ')}',
+        );
+      }
     } catch (e) {
       if (!mounted) return;
+      debugPrint('Failed to update multi AI estimate: $e');
       _showSnack('Failed to update the draft');
     } finally {
       if (!mounted) return;
@@ -2419,6 +2826,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
     setState(() {
       _isGenerating = true;
+      _answeredMissingKeys.clear();
     });
 
     try {
@@ -2453,12 +2861,30 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
           continue;
         }
 
-        final finalJobPrompt = _hasRushSignalInPrompt(normalizedPrompt.trim()) &&
-            !_hasRushSignalInPrompt(cleanJobText)
-            ? '$cleanJobText. Urgent.'
+        final fullPromptText = normalizedPrompt.trim();
+
+        if (_isConditionalFollowupActionJob(
+          job: cleanJobText,
+          fullPrompt: fullPromptText,
+        )) {
+          continue;
+        }
+
+        final inspectionOnly = _hasConditionalInspectionSignal(fullPromptText) &&
+            _isInspectionLikeJob(cleanJobText);
+
+        final baseJobPrompt = inspectionOnly
+            ? '$cleanJobText. Inspection / diagnostic only.'
             : cleanJobText;
 
-        final result = await _generateSingleAiEstimateJob(finalJobPrompt);
+        final finalJobPrompt = _hasRushSignalInPrompt(fullPromptText) &&
+            !_hasRushSignalInPrompt(baseJobPrompt)
+            ? '$baseJobPrompt. Urgent.'
+            : baseJobPrompt;
+
+        final result = inspectionOnly
+            ? await _generateSingleAiInspectionJob(finalJobPrompt)
+            : await _generateSingleAiEstimateJob(finalJobPrompt);
 
         if (result == null || result.items.isEmpty) {
           failedJobs.add(cleanJobText);
@@ -3008,6 +3434,34 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     );
   }
 
+  String _cleanDedupeKey(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s|]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  List<T> _dedupeListByKey<T>(
+      List<T> items,
+      String Function(T item) keyBuilder,
+      ) {
+    final seen = <String>{};
+    final result = <T>[];
+
+    for (final item in items) {
+      final key = keyBuilder(item);
+      if (key.isEmpty) continue;
+      if (seen.contains(key)) continue;
+
+      seen.add(key);
+      result.add(item);
+    }
+
+    return result;
+  }
+
   Widget _buildSmartInsightsCard() {
     final result = _smartResult;
 
@@ -3018,6 +3472,13 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     final confidencePercent = (result.confidence * 100).round();
     final bestSuggestion = result.historyContext?.bestSuggestion;
     final visibleMissing = _visibleMissingFields(result);
+
+    final uniqueAssumptions = _dedupeListByKey(
+      result.assumptions,
+          (assumption) => _cleanDedupeKey(
+        '${assumption.label}|${assumption.value}|${assumption.reason ?? ''}',
+      ),
+    );
 
     final hasGeneratedItems = result.items.isNotEmpty;
     final hasOptionalDetails = hasGeneratedItems && visibleMissing.isNotEmpty;
@@ -3081,7 +3542,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
               ],
             ),
           ],
-          if (result.assumptions.isNotEmpty) ...[
+          if (uniqueAssumptions.isNotEmpty) ...[
             const SizedBox(height: 14),
             const Align(
               alignment: Alignment.centerLeft,
@@ -3096,8 +3557,8 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
             ),
             const SizedBox(height: 10),
             Column(
-              children: List.generate(result.assumptions.length, (index) {
-                final assumption = result.assumptions[index];
+              children: List.generate(uniqueAssumptions.length, (index) {
+                final assumption = uniqueAssumptions[index];
 
                 final reason = (assumption.reason ?? '').trim();
                 final value = reason.isEmpty
@@ -3106,7 +3567,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
                 return Padding(
                   padding: EdgeInsets.only(
-                    bottom: index == result.assumptions.length - 1 ? 0 : 10,
+                    bottom: index == uniqueAssumptions.length - 1 ? 0 : 10,
                   ),
                   child: _PreviewInfoBlock(
                     label: assumption.label,
@@ -3118,50 +3579,24 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
             ),
           ],
           if (visibleMissing.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Optional Details',
-                style: TextStyle(
-                  color: Color(0xFFB6BCD0),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
+            const SizedBox(height: 18),
+            Text(
+              '${visibleMissing.length} optional details can improve this draft.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF8E93A6),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 10),
-            Column(
-              children: List.generate(visibleMissing.length, (index) {
-                final field = visibleMissing[index];
-
-                final hint = (field.hint ?? '').trim();
-                final value = hint.isEmpty
-                    ? field.question
-                    : '${field.question}\n$hint';
-
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: index == visibleMissing.length - 1 ? 0 : 10,
-                  ),
-                  child: _PreviewInfoBlock(
-                    label: field.key,
-                    value: value,
-                    multiline: true,
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: CupertinoButton(
                 color: const Color(0xFF5B8CFF),
                 borderRadius: BorderRadius.circular(16),
-                onPressed: _isGenerating ? null : _answerMissingQuestions,
-                child: _isGenerating
-                    ? const CupertinoActivityIndicator(color: Colors.white)
-                    : const Text(
+                onPressed: _answerMissingQuestions,
+                child: const Text(
                   'Add Details',
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -3227,6 +3662,111 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         ],
       ),
     );
+  }
+
+  void _openFullTextPreview({
+    required String title,
+    required String text,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.92,
+          minChildSize: 0.55,
+          maxChildSize: 0.96,
+          builder: (context, scrollController) {
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3A3D49),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () => Navigator.pop(context),
+                          child: const Icon(
+                            CupertinoIcons.xmark_circle_fill,
+                            color: Color(0xFF8E93A6),
+                            size: 28,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF101117),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFF23252E)),
+                        ),
+                        child: SingleChildScrollView(
+                          controller: scrollController,
+                          child: SelectableText(
+                            text.trim().isEmpty ? 'No content' : text.trim(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w500,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _shortPreviewText(String value, {int maxLines = 4}) {
+    final clean = value.trim();
+    if (clean.isEmpty) return '';
+
+    final lines = clean
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    if (lines.length <= maxLines) return clean;
+
+    return '${lines.take(maxLines).join('\n')}\n...';
   }
 
   @override
@@ -3647,14 +4187,48 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                     const SizedBox(height: 12),
                     _PreviewInfoBlock(
                       label: 'Scope',
-                      value: _draft!.scope,
+                      value: _shortPreviewText(_draft!.scope, maxLines: 5),
                       multiline: true,
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        color: const Color(0xFF20232D),
+                        borderRadius: BorderRadius.circular(14),
+                        onPressed: () => _openFullTextPreview(
+                          title: 'Full Scope',
+                          text: _draft!.scope,
+                        ),
+                        child: const Text(
+                          'View full scope',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     _PreviewInfoBlock(
                       label: 'Notes',
-                      value: _draft!.notes,
+                      value: _shortPreviewText(_draft!.notes, maxLines: 5),
                       multiline: true,
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        color: const Color(0xFF20232D),
+                        borderRadius: BorderRadius.circular(14),
+                        onPressed: () => _openFullTextPreview(
+                          title: 'Full Notes',
+                          text: _draft!.notes,
+                        ),
+                        child: const Text(
+                          'View full notes',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -3751,6 +4325,11 @@ class _SmartQuestionsSheet extends StatefulWidget {
 class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, String> _selectedValues = {};
+  final Set<String> _answeredKeys = {};
+
+  bool _showAll = false;
+
+  static const int _initialVisibleCount = 3;
 
   @override
   void initState() {
@@ -3771,6 +4350,38 @@ class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
     super.dispose();
   }
 
+  bool _hasAnswer(AiMissingFieldModel field) {
+    final key = field.key.trim();
+
+    if (field.answerType == 'single_select' && field.options.isNotEmpty) {
+      return (_selectedValues[key] ?? '').trim().isNotEmpty;
+    }
+
+    return (_controllers[key]?.text ?? '').trim().isNotEmpty;
+  }
+
+  List<AiMissingFieldModel> get _unansweredFields {
+    return widget.fields.where((field) {
+      final key = field.key.trim();
+      if (key.isEmpty) return false;
+      if (_answeredKeys.contains(key)) return false;
+      return !_hasAnswer(field);
+    }).toList();
+  }
+
+  List<AiMissingFieldModel> get _visibleFields {
+    final unanswered = _unansweredFields;
+
+    if (_showAll) return unanswered;
+
+    return unanswered.take(_initialVisibleCount).toList();
+  }
+
+  int get _hiddenCount {
+    final count = _unansweredFields.length - _visibleFields.length;
+    return count < 0 ? 0 : count;
+  }
+
   Future<void> _pickOption(AiMissingFieldModel field) async {
     final selected = await showModalBottomSheet<String>(
       context: context,
@@ -3782,7 +4393,7 @@ class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
         return _SelectionSheet<String>(
           title: field.question,
           items: field.options,
-          itemLabel: (option) => option,
+          itemLabel: (item) => item,
         );
       },
     );
@@ -3791,6 +4402,18 @@ class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
 
     setState(() {
       _selectedValues[field.key] = selected;
+      _answeredKeys.add(field.key.trim());
+    });
+  }
+
+  void _markTextAnsweredIfNeeded(AiMissingFieldModel field) {
+    final key = field.key.trim();
+    final value = (_controllers[key]?.text ?? '').trim();
+
+    if (value.isEmpty) return;
+
+    setState(() {
+      _answeredKeys.add(key);
     });
   }
 
@@ -3798,15 +4421,18 @@ class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
     final answers = <String, dynamic>{};
 
     for (final field in widget.fields) {
+      final key = field.key.trim();
+      if (key.isEmpty) continue;
+
       if (field.answerType == 'single_select' && field.options.isNotEmpty) {
-        final value = (_selectedValues[field.key] ?? '').trim();
+        final value = (_selectedValues[key] ?? '').trim();
         if (value.isNotEmpty) {
-          answers[field.key] = value;
+          answers[key] = value;
         }
       } else {
-        final value = (_controllers[field.key]?.text ?? '').trim();
+        final value = (_controllers[key]?.text ?? '').trim();
         if (value.isNotEmpty) {
-          answers[field.key] = value;
+          answers[key] = value;
         }
       }
     }
@@ -3814,8 +4440,138 @@ class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
     Navigator.pop(context, answers);
   }
 
+  Widget _buildQuestionCard(AiMissingFieldModel field, int index) {
+    final hasOptions =
+        field.answerType == 'single_select' && field.options.isNotEmpty;
+
+    final key = field.key.trim();
+    final hint = (field.hint ?? '').trim();
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: Padding(
+        key: ValueKey(key),
+        padding: EdgeInsets.only(
+          bottom: index == _visibleFields.length - 1 ? 0 : 14,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF101117),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFF23252E)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                field.question,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+              if (hint.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  hint,
+                  style: const TextStyle(
+                    color: Color(0xFF8E93A6),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (hasOptions)
+                GestureDetector(
+                  onTap: () => _pickOption(field),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D0E13),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF282B36)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            (_selectedValues[key] ?? '').trim().isEmpty
+                                ? 'Select answer'
+                                : _selectedValues[key]!.trim(),
+                            style: TextStyle(
+                              color: (_selectedValues[key] ?? '').trim().isEmpty
+                                  ? const Color(0xFF8E93A6)
+                                  : Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          CupertinoIcons.chevron_down,
+                          color: Color(0xFF8E93A6),
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                TextField(
+                  controller: _controllers[key],
+                  minLines: 1,
+                  maxLines: 3,
+                  onEditingComplete: () => _markTextAnsweredIfNeeded(field),
+                  onSubmitted: (_) => _markTextAnsweredIfNeeded(field),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  cursorColor: const Color(0xFF5B8CFF),
+                  decoration: InputDecoration(
+                    hintText: hint.isEmpty ? 'Type answer' : hint,
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF73798D),
+                      fontSize: 14,
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF0D0E13),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 14,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: Color(0xFF282B36)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: Color(0xFF5B8CFF)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final visibleFields = _visibleFields;
+    final hiddenCount = _hiddenCount;
+    final answeredCount = widget.fields.length - _unansweredFields.length;
+
     return SafeArea(
       top: false,
       child: Padding(
@@ -3847,80 +4603,70 @@ class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Add the missing details for a more accurate draft',
+              Text(
+                answeredCount > 0
+                    ? '$answeredCount answered • Add more details for a better draft'
+                    : 'Add the missing details for a more accurate draft',
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   color: Color(0xFF8E93A6),
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 18),
-              Column(
-                children: List.generate(widget.fields.length, (index) {
-                  final field = widget.fields[index];
-                  final hasOptions =
-                      field.answerType == 'single_select' &&
-                          field.options.isNotEmpty;
 
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: index == widget.fields.length - 1 ? 0 : 14,
+              if (visibleFields.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101117),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFF23252E)),
+                  ),
+                  child: const Text(
+                    'All visible details are answered. Apply answers to update the draft.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFFB6BCD0),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
                     ),
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF101117),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFF23252E)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            field.question,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              height: 1.35,
-                            ),
-                          ),
-                          if ((field.hint ?? '').trim().isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              field.hint!,
-                              style: const TextStyle(
-                                color: Color(0xFF8E93A6),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 12),
-                          if (hasOptions)
-                            _PremiumPickerField(
-                              label: field.key,
-                              value: (_selectedValues[field.key] ?? '').trim().isNotEmpty
-                                  ? _selectedValues[field.key]!
-                                  : 'Select answer',
-                              onTap: () => _pickOption(field),
-                            )
-                          else
-                            _PremiumTextField(
-                              controller: _controllers[field.key]!,
-                              label: field.key,
-                              hintText: field.hint ?? 'Enter answer',
-                              maxLines: 2,
-                            ),
-                        ],
-                      ),
+                  ),
+                )
+              else
+                Column(
+                  children: List.generate(visibleFields.length, (index) {
+                    return _buildQuestionCard(visibleFields[index], index);
+                  }),
+                ),
+
+              if (hiddenCount > 0) ...[
+                const SizedBox(height: 14),
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  color: const Color(0xFF20232D),
+                  borderRadius: BorderRadius.circular(16),
+                  onPressed: () {
+                    setState(() {
+                      _showAll = true;
+                    });
+                  },
+                  child: Text(
+                    'Show $hiddenCount more optional details',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
                     ),
-                  );
-                }),
-              ),
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,

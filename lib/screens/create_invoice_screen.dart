@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../dialogs/add_client_dialog.dart';
 import '../dialogs/add_property_dialog.dart';
@@ -153,23 +154,16 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       return;
     }
 
-    final selected = await showModalBottomSheet<ClientModel>(
-      context: context,
-      backgroundColor: const Color(0xFF15161C),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (_) {
-        return _SelectionSheet<ClientModel>(
-          title: 'Choose Client',
-          items: _clients,
-          itemLabel: (client) {
-            final company = (client.companyName ?? '').trim();
-            return company.isEmpty
-                ? client.fullName
-                : '${client.fullName} • $company';
-          },
-        );
+    final selected = await _openWorkioPickerSheet<ClientModel>(
+      title: 'Choose Client',
+      subtitle: 'Select the customer for this invoice',
+      icon: CupertinoIcons.person_2_fill,
+      items: _clients,
+      itemIconBuilder: (_) => CupertinoIcons.person_crop_circle,
+      titleBuilder: (client) => client.fullName,
+      subtitleBuilder: (client) {
+        final company = (client.companyName ?? '').trim();
+        return company.isEmpty ? 'No company' : company;
       },
     );
 
@@ -195,19 +189,13 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       return;
     }
 
-    final selected = await showModalBottomSheet<PropertyModel>(
-      context: context,
-      backgroundColor: const Color(0xFF15161C),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (_) {
-        return _SelectionSheet<PropertyModel>(
-          title: 'Choose Property',
-          items: _properties,
-          itemLabel: (property) => property.fullAddress,
-        );
-      },
+    final selected = await _openWorkioPickerSheet<PropertyModel>(
+      title: 'Choose Property',
+      subtitle: 'Select the invoice property',
+      icon: CupertinoIcons.location_solid,
+      items: _properties,
+      itemIconBuilder: (_) => CupertinoIcons.house_fill,
+      titleBuilder: (property) => property.fullAddress,
     );
 
     if (selected == null) return;
@@ -264,22 +252,17 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 
   Future<void> _pickIssueDate() async {
-    final picked = await showDatePicker(
+    final picked = await showModalBottomSheet<DateTime>(
       context: context,
-      initialDate: _issueDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 3650)),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            scaffoldBackgroundColor: const Color(0xFF0B0B0F),
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF5B8CFF),
-              surface: Color(0xFF15161C),
-            ),
-            dialogBackgroundColor: const Color(0xFF15161C),
-          ),
-          child: child!,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) {
+        return _SimpleDateSheet(
+          title: 'Select issue date',
+          initialDate: _issueDate,
         );
       },
     );
@@ -295,22 +278,17 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 
   Future<void> _pickDueDate() async {
-    final picked = await showDatePicker(
+    final picked = await showModalBottomSheet<DateTime>(
       context: context,
-      initialDate: _dueDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 3650)),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            scaffoldBackgroundColor: const Color(0xFF0B0B0F),
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF5B8CFF),
-              surface: Color(0xFF15161C),
-            ),
-            dialogBackgroundColor: const Color(0xFF15161C),
-          ),
-          child: child!,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) {
+        return _SimpleDateSheet(
+          title: 'Select due date',
+          initialDate: _dueDate,
         );
       },
     );
@@ -332,18 +310,47 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       'void',
     ];
 
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: const Color(0xFF15161C),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (_) {
-        return _SelectionSheet<String>(
-          title: 'Change Status',
-          items: statuses,
-          itemLabel: _statusLabel,
-        );
+    final selected = await _openWorkioPickerSheet<String>(
+      title: 'Change Status',
+      subtitle: 'Select invoice payment status',
+      icon: CupertinoIcons.checkmark_seal,
+      items: statuses,
+      itemIconBuilder: (status) {
+        switch (status) {
+          case 'draft':
+            return CupertinoIcons.doc_text;
+          case 'sent':
+            return CupertinoIcons.paperplane;
+          case 'partial':
+            return CupertinoIcons.circle_lefthalf_fill;
+          case 'paid':
+            return CupertinoIcons.checkmark_circle_fill;
+          case 'overdue':
+            return CupertinoIcons.exclamationmark_triangle_fill;
+          case 'void':
+            return CupertinoIcons.xmark_circle_fill;
+          default:
+            return CupertinoIcons.circle;
+        }
+      },
+      titleBuilder: _statusLabel,
+      subtitleBuilder: (status) {
+        switch (status) {
+          case 'draft':
+            return 'Invoice is still being prepared';
+          case 'sent':
+            return 'Invoice was sent to the client';
+          case 'partial':
+            return 'Client paid part of the invoice';
+          case 'paid':
+            return 'Invoice is fully paid';
+          case 'overdue':
+            return 'Payment is past due';
+          case 'void':
+            return 'Invoice is cancelled or invalid';
+          default:
+            return '';
+        }
       },
     );
 
@@ -352,6 +359,15 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     setState(() {
       _status = selected;
     });
+  }
+
+  String _shortDateLabel(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
   String _statusLabel(String status) {
@@ -384,6 +400,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       controller: controller,
     );
 
+    controller.dispose();
+
     if (value == null) return;
 
     setState(() {
@@ -402,6 +420,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       controller: controller,
     );
 
+    controller.dispose();
+
     if (value == null) return;
 
     setState(() {
@@ -414,6 +434,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     required String label,
     required TextEditingController controller,
   }) {
+    final isTax = title.toLowerCase().contains('tax');
+
     return showModalBottomSheet<double>(
       context: context,
       isScrollControlled: true,
@@ -423,47 +445,82 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       ),
       builder: (context) {
         return Padding(
-          padding: EdgeInsets.fromLTRB(
+              padding: EdgeInsets.fromLTRB(
             20,
+            14,
             20,
-            20,
-            MediaQuery.of(context).viewInsets.bottom + 20,
+            MediaQuery.of(context).viewInsets.bottom + 24,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                  ),
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D49),
+                  borderRadius: BorderRadius.circular(999),
                 ),
               ),
-              const SizedBox(height: 16),
-              _PremiumTextField(
-                controller: controller,
-                label: label,
-                hintText: '0.00',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
+
               const SizedBox(height: 18),
+
+              _sheetHeader(
+                icon: isTax ? CupertinoIcons.percent : CupertinoIcons.tag,
+                title: title,
+                subtitle: isTax
+                    ? 'Set the invoice tax amount'
+                    : 'Set the invoice discount amount',
+              ),
+
+              const SizedBox(height: 18),
+
+              _sheetInputPanel(
+                icon: isTax
+                    ? CupertinoIcons.money_dollar_circle
+                    : CupertinoIcons.tag_circle,
+                label: label,
+                controller: controller,
+                hintText: '0.00',
+              ),
+
+              const SizedBox(height: 18),
+
               SizedBox(
                 width: double.infinity,
                 child: CupertinoButton(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
                   color: const Color(0xFF5B8CFF),
                   borderRadius: BorderRadius.circular(16),
-                  onPressed: () {
-                    final parsed =
-                    EstimateCalculator.parseNumber(controller.text);
+                  onPressed: () async {
+                    final parsed = EstimateCalculator.parseNumber(
+                      controller.text,
+                    );
+
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+                    await Future.delayed(const Duration(milliseconds: 250));
+
+                    if (!context.mounted) return;
                     Navigator.pop(context, parsed);
                   },
-                  child: const Text(
-                    'Apply',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        CupertinoIcons.checkmark_circle,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Apply',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -478,14 +535,20 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     InvoiceItemModel? existingItem,
     int? index,
   }) async {
-    final titleController = TextEditingController(text: existingItem?.title ?? '');
-    final descriptionController =
-    TextEditingController(text: existingItem?.description ?? '');
+    final titleController = TextEditingController(
+      text: existingItem?.title ?? '',
+    );
+
+    final descriptionController = TextEditingController(
+      text: existingItem?.description ?? '',
+    );
+
     final quantityController = TextEditingController(
       text: existingItem != null && existingItem.quantity != 0
           ? EstimateFormatters.formatQuantity(existingItem.quantity)
           : '',
     );
+
     final unitPriceController = TextEditingController(
       text: existingItem != null && existingItem.unitPrice != 0
           ? EstimateFormatters.formatNumber(existingItem.unitPrice)
@@ -494,62 +557,359 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
     String selectedUnit = existingItem?.unit ?? 'fixed';
 
+    bool itemSheetClosing = false;
+
+    Future<void> closeItemSheet(
+        BuildContext sheetContext, [
+          InvoiceItemModel? item,
+        ]) async {
+      if (itemSheetClosing) return;
+      itemSheetClosing = true;
+
+      FocusManager.instance.primaryFocus?.unfocus();
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!sheetContext.mounted) return;
+      Navigator.pop(sheetContext, item);
+    }
+
     final result = await showModalBottomSheet<InvoiceItemModel>(
       context: context,
       isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
       backgroundColor: const Color(0xFF15161C),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
+            Widget panel({required List<Widget> children}) {
+              return Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101117),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF23252E)),
+                ),
+                child: Column(children: children),
+              );
+            }
+
+            Widget inputRow({
+              required IconData icon,
+              required String label,
+              required TextEditingController controller,
+              required String hintText,
+              TextInputType keyboardType = TextInputType.text,
+              int maxLines = 1,
+            }) {
+              final hasText = controller.text.trim().isNotEmpty;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                child: Row(
+                  crossAxisAlignment:
+                  maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Padding(
+                                padding: EdgeInsets.only(top: maxLines > 1 ? 2 : 0),
+                                child: Icon(
+                                  icon,
+                                  color: const Color(0xFF8E93A6),
+                                  size: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                label,
+                                style: const TextStyle(
+                                  color: Color(0xFF8E93A6),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 7),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 24),
+                            child: TextField(
+                              controller: controller,
+                              keyboardType: keyboardType,
+                              maxLines: maxLines,
+                              minLines: maxLines > 1 ? 3 : 1,
+                              cursorColor: const Color(0xFF5B8CFF),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                height: 1.35,
+                              ),
+                              onChanged: (_) {
+                                setModalState(() {});
+                              },
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: hintText,
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFF697086),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (hasText) ...[
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: () {
+                          controller.clear();
+                          setModalState(() {});
+                        },
+                        child: const Icon(
+                          CupertinoIcons.xmark_circle_fill,
+                          color: Color(0xFF8E93A6),
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }
+
+            Widget pickerRow({
+              required IconData icon,
+              required String label,
+              required String value,
+              required VoidCallback onTap,
+            }) {
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(18),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 13,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    icon,
+                                    color: const Color(0xFF8E93A6),
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    label,
+                                    style: const TextStyle(
+                                      color: Color(0xFF8E93A6),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 7),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 24),
+                                child: Text(
+                                  value,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Icon(
+                          CupertinoIcons.chevron_down,
+                          color: Color(0xFF8E93A6),
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            Widget centeredInput({
+              required IconData icon,
+              required String label,
+              required TextEditingController controller,
+              required String hintText,
+              required TextInputType keyboardType,
+            }) {
+              return Container(
+                constraints: const BoxConstraints(minHeight: 78),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D0E14),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF23252E)),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      color: const Color(0xFF8E93A6),
+                      size: 16,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF8E93A6),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    TextField(
+                      controller: controller,
+                      keyboardType: keyboardType,
+                      textAlign: TextAlign.center,
+                      cursorColor: const Color(0xFF5B8CFF),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: hintText,
+                        hintStyle: const TextStyle(
+                          color: Color(0xFF697086),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return PopScope(
+              canPop: false,
+              onPopInvokedWithResult: (didPop, result) async {
+                if (didPop) return;
+                await closeItemSheet(sheetContext);
+              },
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  14,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 24,
+                ),
+                child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      existingItem == null ? 'Add Item' : 'Edit Item',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3A3D49),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
                     const SizedBox(height: 18),
-                    _PremiumTextField(
-                      controller: titleController,
-                      label: 'Title',
-                      hintText: 'Labor / Materials',
-                    ),
-                    const SizedBox(height: 12),
-                    _PremiumTextField(
-                      controller: descriptionController,
-                      label: 'Description',
-                      hintText: 'Optional description',
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 12),
-                    _PremiumPickerField(
-                      label: 'Unit',
-                      value: EstimateFormatters.formatUnit(selectedUnit),
-                      onTap: () async {
-                        final unit = await showModalBottomSheet<String>(
-                          context: context,
-                          backgroundColor: const Color(0xFF15161C),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(28),
+
+                    Row(
+                      children: [
+                        Icon(
+                          existingItem == null
+                              ? CupertinoIcons.add_circled
+                              : CupertinoIcons.pencil_circle,
+                          color: const Color(0xFFB8C1D9),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            existingItem == null ? 'Add Item' : 'Edit Item',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
                             ),
                           ),
-                          builder: (_) {
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    panel(
+                      children: [
+                        inputRow(
+                          icon: CupertinoIcons.tag,
+                          label: 'Title',
+                          controller: titleController,
+                          hintText: 'Labor / Materials',
+                        ),
+                        const Divider(color: Color(0xFF23252E), height: 1),
+                        inputRow(
+                          icon: CupertinoIcons.text_alignleft,
+                          label: 'Description',
+                          controller: descriptionController,
+                          hintText: 'Optional description',
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    panel(
+                      children: [
+                        pickerRow(
+                          icon: CupertinoIcons.cube_box,
+                          label: 'Unit',
+                          value: EstimateFormatters.formatUnit(selectedUnit),
+                          onTap: () async {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                            await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+                            await Future.delayed(const Duration(milliseconds: 250));
+
+                            if (!sheetContext.mounted) return;
+
                             const units = [
                               'fixed',
                               'sqft',
@@ -560,65 +920,89 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                               'day',
                             ];
 
-                            return _SelectionSheet<String>(
-                              title: 'Choose Unit',
-                              items: units,
-                              itemLabel: (unit) =>
-                                  EstimateFormatters.formatUnit(unit),
+                            final unit = await showModalBottomSheet<String>(
+                              context: context,
+                              backgroundColor: const Color(0xFF15161C),
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(28),
+                                ),
+                              ),
+                              builder: (_) {
+                                return _UnitSelectionSheet(
+                                  units: units,
+                                  selectedUnit: selectedUnit,
+                                );
+                              },
                             );
+
+                            if (unit == null) return;
+
+                            setModalState(() {
+                              selectedUnit = unit;
+                            });
                           },
-                        );
-
-                        if (unit == null) return;
-
-                        setModalState(() {
-                          selectedUnit = unit;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _PremiumTextField(
-                            controller: quantityController,
-                            label: 'Quantity',
-                            hintText: '1',
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                          ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _PremiumTextField(
-                            controller: unitPriceController,
-                            label: 'Unit Price',
-                            hintText: '0.00',
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
+                        const Divider(color: Color(0xFF23252E), height: 1),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 13,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: centeredInput(
+                                  icon: CupertinoIcons.number,
+                                  label: 'Quantity',
+                                  controller: quantityController,
+                                  hintText: '1',
+                                  keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: centeredInput(
+                                  icon: CupertinoIcons.money_dollar_circle,
+                                  label: 'Unit Price',
+                                  controller: unitPriceController,
+                                  hintText: '0.00',
+                                  keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 18),
+
                     SizedBox(
                       width: double.infinity,
                       child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(vertical: 15),
                         color: const Color(0xFF5B8CFF),
                         borderRadius: BorderRadius.circular(16),
-                        onPressed: () {
+                        onPressed: () async {
                           final title = titleController.text.trim();
                           if (title.isEmpty) return;
 
-                          final double quantity =
-                          EstimateCalculator.parseNumber(quantityController.text).toDouble();
+                          final quantity = EstimateCalculator.parseNumber(
+                            quantityController.text,
+                          ).toDouble();
 
-                          final double unitPrice =
-                          EstimateCalculator.parseNumber(unitPriceController.text).toDouble();
+                          final unitPrice = EstimateCalculator.parseNumber(
+                            unitPriceController.text,
+                          ).toDouble();
 
-                          final double safeQuantity = quantity <= 0 ? 1.0 : quantity;
+                          final safeQuantity = quantity <= 0 ? 1.0 : quantity;
 
                           final item = InvoiceItemModel(
                             id: existingItem?.id ?? '',
@@ -638,22 +1022,43 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                             createdAt: existingItem?.createdAt,
                           );
 
-                          Navigator.pop(context, item);
+                          await closeItemSheet(sheetContext, item);
                         },
-                        child: Text(
-                          existingItem == null ? 'Add Item' : 'Save Changes',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              existingItem == null
+                                  ? CupertinoIcons.plus_circle
+                                  : CupertinoIcons.checkmark_circle,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              existingItem == null ? 'Add Item' : 'Save Changes',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
+            ),
             );
           },
         );
       },
     );
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    await Future.delayed(const Duration(milliseconds: 500));
 
     titleController.dispose();
     descriptionController.dispose();
@@ -758,6 +1163,584 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         _isSaving = false;
       });
     }
+  }
+
+  Future<void> _openLargeTextEditor({
+    required String title,
+    required TextEditingController controller,
+    required IconData icon,
+  }) async {
+    final tempController = TextEditingController(text: controller.text.trim());
+    final focusNode = FocusNode();
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.88,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3A3D49),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+                        Icon(
+                          icon,
+                          color: const Color(0xFF8FB0FF),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () async {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                            await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+                            await Future.delayed(const Duration(milliseconds: 250));
+
+                            if (sheetContext.mounted) {
+                              Navigator.pop(sheetContext);
+                            }
+                          },
+                          child: const Icon(
+                            CupertinoIcons.xmark_circle_fill,
+                            color: Color(0xFF8E93A6),
+                            size: 28,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Review and edit this text before saving.',
+                        style: TextStyle(
+                          color: Color(0xFF8E93A6),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF101117),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: const Color(0xFF23252E)),
+                        ),
+                        child: TextField(
+                          controller: tempController,
+                          focusNode: focusNode,
+                          expands: true,
+                          maxLines: null,
+                          minLines: null,
+                          keyboardType: TextInputType.multiline,
+                          textAlignVertical: TextAlignVertical.top,
+                          cursorColor: const Color(0xFF5B8CFF),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            height: 1.45,
+                          ),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Enter text...',
+                            hintStyle: TextStyle(
+                              color: Color(0xFF697086),
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: CupertinoButton(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            color: const Color(0xFF20232D),
+                            borderRadius: BorderRadius.circular(16),
+                            onPressed: () async {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+                              await Future.delayed(const Duration(milliseconds: 250));
+
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+                            },
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: CupertinoButton(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            color: const Color(0xFF5B8CFF),
+                            borderRadius: BorderRadius.circular(16),
+                            onPressed: () async {
+                              final value = tempController.text.trim();
+
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+                              await Future.delayed(const Duration(milliseconds: 250));
+
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext, value);
+                              }
+                            },
+                            child: const Text(
+                              'Save',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    tempController.dispose();
+    focusNode.dispose();
+
+    if (result == null) return;
+
+    setState(() {
+      controller.text = result.trim();
+    });
+  }
+
+  Widget _sheetHeader({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              icon,
+              color: const Color(0xFFB8C1D9),
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if ((subtitle ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 5),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: Text(
+              subtitle!,
+              style: const TextStyle(
+                color: Color(0xFF8E93A6),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _sheetInputPanel({
+    required IconData icon,
+    required String label,
+    required TextEditingController controller,
+    required String hintText,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: const Color(0xFF8E93A6),
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF8E93A6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 7),
+
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              cursorColor: const Color(0xFF5B8CFF),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: hintText,
+                hintStyle: const TextStyle(
+                  color: Color(0xFF697086),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _formPanel({
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _largeTextRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    final cleanValue = value.trim().isEmpty ? 'Tap to add text' : value.trim();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                color: const Color(0xFF8E93A6),
+                size: 18,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        const Icon(
+                          CupertinoIcons.arrow_up_left_arrow_down_right,
+                          color: Color(0xFF8E93A6),
+                          size: 15,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      cleanValue,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: value.trim().isEmpty
+                            ? const Color(0xFF697086)
+                            : Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<T?> _openWorkioPickerSheet<T>({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required List<T> items,
+    required String Function(T item) titleBuilder,
+    String Function(T item)? subtitleBuilder,
+    IconData Function(T item)? itemIconBuilder,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: FractionallySizedBox(
+            heightFactor: 0.70,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              child: Column(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3A3D49),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            icon,
+                            color: const Color(0xFFB8C1D9),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 30),
+                        child: Text(
+                          subtitle,
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final itemTitle = titleBuilder(item);
+                        final itemSubtitle = subtitleBuilder?.call(item) ?? '';
+                        final itemIcon =
+                            itemIconBuilder?.call(item) ?? CupertinoIcons.circle;
+
+                        return Material(
+                          color: const Color(0xFF101117),
+                          borderRadius: BorderRadius.circular(18),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: () => Navigator.pop(sheetContext, item),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: const Color(0xFF23252E),
+                                ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    itemIcon,
+                                    color: const Color(0xFF8E93A6),
+                                    size: 19,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          itemTitle,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
+                                            height: 1.25,
+                                          ),
+                                        ),
+                                        if (itemSubtitle.trim().isNotEmpty) ...[
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            itemSubtitle,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Color(0xFF8E93A6),
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w500,
+                                              height: 1.3,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const SizedBox(
+                                    height: 48,
+                                    child: Center(
+                                      child: Icon(
+                                        CupertinoIcons.chevron_right,
+                                        color: Color(0xFF8E93A6),
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildSectionCard({
@@ -869,10 +1852,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             _buildSectionCard(
               title: 'Client & Property',
               subtitle: 'Client and invoice property',
-              child: Column(
+              child: _formPanel(
                 children: [
                   _PremiumPickerField(
                     label: 'Client',
+                    leadingIcon: CupertinoIcons.person_crop_circle,
                     value: _selectedClient == null
                         ? 'Select client'
                         : _selectedClient!.fullName,
@@ -888,9 +1872,10 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     emptyIcon: CupertinoIcons.add,
                     onEmptyIconTap: _addNewClient,
                   ),
-                  const SizedBox(height: 12),
+                  const Divider(color: Color(0xFF23252E), height: 1),
                   _PremiumPickerField(
                     label: 'Property',
+                    leadingIcon: CupertinoIcons.house_fill,
                     value: _selectedProperty == null
                         ? 'Select property'
                         : _selectedProperty!.fullAddress,
@@ -911,10 +1896,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             _buildSectionCard(
               title: 'Invoice Header',
               subtitle: 'Status and dates',
-              child: Column(
+              child: _formPanel(
                 children: [
                   _PremiumPickerField(
                     label: 'Status',
+                    leadingIcon: CupertinoIcons.checkmark_seal,
                     value: _statusLabel(_status),
                     onTap: _pickStatus,
                     showClearButton: _status != 'draft',
@@ -924,40 +1910,41 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                       });
                     },
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _PremiumPickerField(
-                          label: 'Issue Date',
-                          value: EstimateFormatters.formatDate(_issueDate),
-                          onTap: _pickIssueDate,
-                          showClearButton: true,
-                          onClear: () {
-                            setState(() {
-                              _issueDate = DateTime.now();
-                              if (_dueDate.isBefore(_issueDate)) {
-                                _dueDate = _issueDate.add(const Duration(days: 14));
-                              }
-                            });
-                          },
+                  const Divider(color: Color(0xFF23252E), height: 1),
+
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _PremiumPickerField(
+                            label: 'Issue Date',
+                            leadingIcon: CupertinoIcons.calendar,
+                            value: _shortDateLabel(_issueDate),
+                            valueMaxLines: 1,
+                            onTap: _pickIssueDate,
+                            showClearButton: false,
+                            showChevron: false,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _PremiumPickerField(
-                          label: 'Due Date',
-                          value: EstimateFormatters.formatDate(_dueDate),
-                          onTap: _pickDueDate,
-                          showClearButton: true,
-                          onClear: () {
-                            setState(() {
-                              _dueDate = _issueDate.add(const Duration(days: 14));
-                            });
-                          },
+                        Container(
+                          width: 1,
+                          height: 58,
+                          color: const Color(0xFF23252E),
                         ),
-                      ),
-                    ],
+                        Expanded(
+                          child: _PremiumPickerField(
+                            label: 'Due Date',
+                            leadingIcon: CupertinoIcons.clock,
+                            value: _shortDateLabel(_dueDate),
+                            valueMaxLines: 1,
+                            onTap: _pickDueDate,
+                            showClearButton: false,
+                            showChevron: false,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -966,10 +1953,15 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             _buildSectionCard(
               title: 'Invoice Info',
               subtitle: 'Main information',
-              child: _PremiumTextField(
-                controller: _titleController,
-                label: 'Title',
-                hintText: 'Invoice title',
+              child: _formPanel(
+                children: [
+                  _PremiumTitleField(
+                    controller: _titleController,
+                    label: 'Title',
+                    hintText: 'Invoice title',
+                    icon: CupertinoIcons.doc_text,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 14),
@@ -1011,27 +2003,45 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             _buildSectionCard(
               title: 'Notes & Terms',
               subtitle: 'Additional information',
-              child: Column(
+              child: _formPanel(
                 children: [
-                  _PremiumTextField(
-                    controller: _notesController,
+                  _largeTextRow(
+                    icon: CupertinoIcons.text_alignleft,
                     label: 'Notes',
-                    hintText: 'Invoice notes',
-                    maxLines: 4,
+                    value: _notesController.text,
+                    onTap: () {
+                      _openLargeTextEditor(
+                        title: 'Edit Notes',
+                        controller: _notesController,
+                        icon: CupertinoIcons.text_alignleft,
+                      );
+                    },
                   ),
-                  const SizedBox(height: 12),
-                  _PremiumTextField(
-                    controller: _termsController,
+                  const Divider(color: Color(0xFF23252E), height: 1),
+                  _largeTextRow(
+                    icon: CupertinoIcons.doc_text,
                     label: 'Terms',
-                    hintText: 'Payment terms',
-                    maxLines: 4,
+                    value: _termsController.text,
+                    onTap: () {
+                      _openLargeTextEditor(
+                        title: 'Edit Terms',
+                        controller: _termsController,
+                        icon: CupertinoIcons.doc_text,
+                      );
+                    },
                   ),
-                  const SizedBox(height: 12),
-                  _PremiumTextField(
-                    controller: _paymentInstructionsController,
+                  const Divider(color: Color(0xFF23252E), height: 1),
+                  _largeTextRow(
+                    icon: CupertinoIcons.creditcard,
                     label: 'Payment Instructions',
-                    hintText: 'E-transfer / bank details / other instructions',
-                    maxLines: 4,
+                    value: _paymentInstructionsController.text,
+                    onTap: () {
+                      _openLargeTextEditor(
+                        title: 'Edit Payment Instructions',
+                        controller: _paymentInstructionsController,
+                        icon: CupertinoIcons.creditcard,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1042,43 +2052,53 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               subtitle: 'Invoice totals',
               child: Column(
                 children: [
-                  _TotalsActionRow(
-                    label: 'Tax Amount',
-                    value:
-                    '${EstimateFormatters.formatCurrency(_taxAmount)} ($_currencyCode)',
-                    onTap: _showTaxEditor,
+                  _TotalsPanel(
+                    children: [
+                      _TotalsEditRow(
+                        icon: CupertinoIcons.money_dollar_circle,
+                        label: 'Tax Amount',
+                        value: '${EstimateFormatters.formatCurrency(_taxAmount)} ($_currencyCode)',
+                        onTap: _showTaxEditor,
+                      ),
+                      const Divider(color: Color(0xFF23252E), height: 1),
+                      _TotalsEditRow(
+                        icon: CupertinoIcons.tag,
+                        label: 'Discount Amount',
+                        value: EstimateFormatters.formatCurrency(_discountAmount),
+                        onTap: _showDiscountEditor,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
-                  _TotalsActionRow(
-                    label: 'Discount Amount',
-                    value: EstimateFormatters.formatCurrency(_discountAmount),
-                    onTap: _showDiscountEditor,
+
+                  const SizedBox(height: 18),
+
+                  _TotalsPanel(
+                    children: [
+                      _TotalsValueRow(
+                        icon: CupertinoIcons.sum,
+                        label: 'Subtotal',
+                        value: EstimateFormatters.formatCurrency(_subtotal),
+                        muted: true,
+                      ),
+                      _TotalsValueRow(
+                        icon: CupertinoIcons.percent,
+                        label: 'Tax',
+                        value: EstimateFormatters.formatCurrency(_taxAmount),
+                        muted: true,
+                      ),
+                      _TotalsValueRow(
+                        icon: CupertinoIcons.tag,
+                        label: 'Discount',
+                        value: '- ${EstimateFormatters.formatCurrency(_discountAmount)}',
+                        muted: true,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  const Divider(color: Color(0xFF262832), height: 1),
-                  const SizedBox(height: 16),
-                  _SummaryLine(
-                    label: 'Subtotal',
-                    value: EstimateFormatters.formatCurrency(_subtotal),
-                  ),
-                  const SizedBox(height: 10),
-                  _SummaryLine(
-                    label: 'Tax',
-                    value: EstimateFormatters.formatCurrency(_taxAmount),
-                  ),
-                  const SizedBox(height: 10),
-                  _SummaryLine(
-                    label: 'Discount',
-                    value:
-                    '- ${EstimateFormatters.formatCurrency(_discountAmount)}',
-                  ),
-                  const SizedBox(height: 12),
-                  const Divider(color: Color(0xFF262832), height: 1),
-                  const SizedBox(height: 12),
-                  _SummaryLine(
-                    label: 'Total',
+
+                  const SizedBox(height: 14),
+
+                  _TotalsGrandRow(
                     value: EstimateFormatters.formatCurrency(_total),
-                    isEmphasized: true,
                   ),
                 ],
               ),
@@ -1107,6 +2127,115 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 }
 
+class _PremiumTitleField extends StatefulWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hintText;
+  final IconData icon;
+
+  const _PremiumTitleField({
+    required this.controller,
+    required this.label,
+    required this.hintText,
+    required this.icon,
+  });
+
+  @override
+  State<_PremiumTitleField> createState() => _PremiumTitleFieldState();
+}
+
+class _PremiumTitleFieldState extends State<_PremiumTitleField> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_refresh);
+    super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showX = widget.controller.text.trim().isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      widget.icon,
+                      color: const Color(0xFF8E93A6),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.label,
+                      style: const TextStyle(
+                        color: Color(0xFF8E93A6),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 24),
+                  child: TextField(
+                    controller: widget.controller,
+                  cursorColor: const Color(0xFF5B8CFF),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: widget.hintText,
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF697086),
+                      fontSize: 15,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                 ),
+                ),
+              ],
+            ),
+          ),
+          if (showX) ...[
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: () {
+                widget.controller.clear();
+              },
+              child: const Icon(
+                CupertinoIcons.xmark_circle_fill,
+                color: Color(0xFF8E93A6),
+                size: 18,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _PremiumTextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
@@ -1126,9 +2255,8 @@ class _PremiumTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -1183,6 +2311,9 @@ class _PremiumPickerField extends StatelessWidget {
   final bool showClearButton;
   final IconData? emptyIcon;
   final VoidCallback? onEmptyIconTap;
+  final IconData? leadingIcon;
+  final bool showChevron;
+  final int valueMaxLines;
 
   const _PremiumPickerField({
     required this.label,
@@ -1192,6 +2323,9 @@ class _PremiumPickerField extends StatelessWidget {
     this.showClearButton = false,
     this.emptyIcon,
     this.onEmptyIconTap,
+    this.leadingIcon,
+    this.showChevron = true,
+    this.valueMaxLines = 2,
   });
 
   @override
@@ -1200,7 +2334,7 @@ class _PremiumPickerField extends StatelessWidget {
         value.startsWith('Select') || value.trim().isEmpty || value == '—';
 
     return Material(
-      color: const Color(0xFF101117),
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -1209,7 +2343,6 @@ class _PremiumPickerField extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFF23252E)),
           ),
           child: Row(
             children: [
@@ -1217,26 +2350,44 @@ class _PremiumPickerField extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        color: Color(0xFF8E93A6),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (leadingIcon != null) ...[
+                          Icon(
+                            leadingIcon,
+                            color: const Color(0xFF8E93A6),
+                            size: 15,
+                          ),
+                          const SizedBox(width: 7),
+                        ],
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      value,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isPlaceholder
-                            ? const Color(0xFF697086)
-                            : Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        height: 1.25,
+                    Padding(
+                      padding: EdgeInsets.only(
+                        left: leadingIcon != null ? 22 : 0,
+                      ),
+                      child: Text(
+                        value,
+                        maxLines: valueMaxLines,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isPlaceholder
+                              ? const Color(0xFF697086)
+                              : Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          height: 1.25,
+                        ),
                       ),
                     ),
                   ],
@@ -1261,12 +2412,389 @@ class _PremiumPickerField extends StatelessWidget {
                     size: 18,
                   ),
                 )
-              else
-                const Icon(
-                  CupertinoIcons.chevron_down,
-                  color: Color(0xFF8E93A6),
-                  size: 18,
+              else if (showChevron)
+                  const Icon(
+                    CupertinoIcons.chevron_down,
+                    color: Color(0xFF8E93A6),
+                    size: 18,
+                  ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SimpleDateSheet extends StatefulWidget {
+  final String title;
+  final DateTime initialDate;
+
+  const _SimpleDateSheet({
+    required this.title,
+    required this.initialDate,
+  });
+
+  @override
+  State<_SimpleDateSheet> createState() => _SimpleDateSheetState();
+}
+
+class _SimpleDateSheetState extends State<_SimpleDateSheet> {
+  late DateTime selectedDate;
+  late DateTime visibleMonth;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedDate = DateTime(
+      widget.initialDate.year,
+      widget.initialDate.month,
+      widget.initialDate.day,
+    );
+    visibleMonth = DateTime(selectedDate.year, selectedDate.month);
+  }
+
+  String _monthLabel(DateTime date) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+
+    return '${months[date.month - 1]} ${date.year}';
+  }
+
+  bool _sameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final firstDay = DateTime(visibleMonth.year, visibleMonth.month, 1);
+    final daysInMonth = DateTime(
+      visibleMonth.year,
+      visibleMonth.month + 1,
+      0,
+    ).day;
+
+    final leadingEmptyDays = firstDay.weekday % 7;
+
+    return SafeArea(
+      top: false,
+      child: FractionallySizedBox(
+        heightFactor: 0.82,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+          child: Column(
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D49),
+                  borderRadius: BorderRadius.circular(999),
                 ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  const Icon(
+                    CupertinoIcons.calendar,
+                    color: Color(0xFFB8C1D9),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101117),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF23252E)),
+                ),
+                child: Row(
+                  children: [
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        setState(() {
+                          visibleMonth = DateTime(
+                            visibleMonth.year,
+                            visibleMonth.month - 1,
+                          );
+                        });
+                      },
+                      child: const Icon(
+                        CupertinoIcons.chevron_left,
+                        color: Color(0xFFB6BCD0),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          _monthLabel(visibleMonth),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        setState(() {
+                          visibleMonth = DateTime(
+                            visibleMonth.year,
+                            visibleMonth.month + 1,
+                          );
+                        });
+                      },
+                      child: const Icon(
+                        CupertinoIcons.chevron_right,
+                        color: Color(0xFFB6BCD0),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101117),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF23252E)),
+                  ),
+                  child: GridView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: 42,
+                    gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 7,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                    ),
+                    itemBuilder: (context, index) {
+                      final dayNumber = index - leadingEmptyDays + 1;
+                      final isCurrentMonth =
+                          dayNumber >= 1 && dayNumber <= daysInMonth;
+
+                      final date = DateTime(
+                        visibleMonth.year,
+                        visibleMonth.month,
+                        dayNumber,
+                      );
+
+                      final selected = _sameDay(date, selectedDate);
+
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            selectedDate = date;
+                          });
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? const Color(0xFF5B8CFF)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${date.day}',
+                            style: TextStyle(
+                              color: selected
+                                  ? Colors.white
+                                  : isCurrentMonth
+                                  ? Colors.white
+                                  : const Color(0xFF4F5668),
+                              fontWeight:
+                              selected ? FontWeight.w800 : FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  color: const Color(0xFF5B8CFF),
+                  borderRadius: BorderRadius.circular(16),
+                  onPressed: () {
+                    Navigator.pop(context, selectedDate);
+                  },
+                  child: const Text(
+                    'Apply Date',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnitSelectionSheet extends StatelessWidget {
+  final List<String> units;
+  final String selectedUnit;
+
+  const _UnitSelectionSheet({
+    required this.units,
+    required this.selectedUnit,
+  });
+
+  IconData _unitIcon(String unit) {
+    switch (unit.trim().toLowerCase()) {
+      case 'fixed':
+        return CupertinoIcons.checkmark_seal;
+      case 'sqft':
+        return CupertinoIcons.square_grid_2x2;
+      case 'room':
+        return CupertinoIcons.house;
+      case 'wall':
+        return CupertinoIcons.rectangle;
+      case 'hour':
+        return CupertinoIcons.clock;
+      case 'item':
+        return CupertinoIcons.cube_box;
+      case 'day':
+        return CupertinoIcons.calendar;
+      default:
+        return CupertinoIcons.circle_grid_hex;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: FractionallySizedBox(
+        heightFactor: 0.78,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+          child: Column(
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D49),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.cube_box,
+                    color: Color(0xFFB8C1D9),
+                    size: 22,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Choose Unit',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: units.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final unit = units[index];
+                    final selected = unit == selectedUnit;
+
+                    return Material(
+                      color: selected
+                          ? const Color(0xFF16233F)
+                          : const Color(0xFF101117),
+                      borderRadius: BorderRadius.circular(18),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => Navigator.pop(context, unit),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: selected
+                                  ? const Color(0xFF5B8CFF)
+                                  : const Color(0xFF23252E),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _unitIcon(unit),
+                                color: selected
+                                    ? const Color(0xFF8FB0FF)
+                                    : const Color(0xFF8E93A6),
+                                size: 19,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  EstimateFormatters.formatUnit(unit),
+                                  style: TextStyle(
+                                    color: selected
+                                        ? Colors.white
+                                        : const Color(0xFFE7EAF2),
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                selected
+                                    ? CupertinoIcons.checkmark_circle_fill
+                                    : CupertinoIcons.chevron_right,
+                                color: selected
+                                    ? const Color(0xFF5B8CFF)
+                                    : const Color(0xFF8E93A6),
+                                size: selected ? 20 : 16,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -1288,70 +2816,95 @@ class _SelectionSheet<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sheetHeight = math.min(
+      MediaQuery.of(context).size.height * 0.70,
+      520.0,
+    );
+
     return SafeArea(
       top: false,
       child: SizedBox(
-        height: 420,
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 42,
-              height: 5,
-              decoration: BoxDecoration(
-                color: const Color(0xFF3A3D49),
-                borderRadius: BorderRadius.circular(999),
+        height: sheetHeight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+          child: Column(
+            children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3D49),
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Divider(color: Color(0xFF262832), height: 1),
-            Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final item = items[index];
+              const SizedBox(height: 18),
 
-                  return Material(
-                    color: const Color(0xFF101117),
-                    borderRadius: BorderRadius.circular(18),
-                    child: InkWell(
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Expanded(
+                child: ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+
+                    return Material(
+                      color: const Color(0xFF101117),
                       borderRadius: BorderRadius.circular(18),
-                      onTap: () => Navigator.pop(context, item),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: const Color(0xFF23252E),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: () => Navigator.pop(context, item),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 15,
                           ),
-                        ),
-                        child: Text(
-                          itemLabel(item),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            height: 1.3,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFF23252E),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  itemLabel(item),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                CupertinoIcons.chevron_right,
+                                color: Color(0xFF8E93A6),
+                                size: 16,
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1578,12 +3131,34 @@ class _MiniInfo extends StatelessWidget {
   }
 }
 
-class _TotalsActionRow extends StatelessWidget {
+class _TotalsPanel extends StatelessWidget {
+  final List<Widget> children;
+
+  const _TotalsPanel({
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _TotalsEditRow extends StatelessWidget {
+  final IconData icon;
   final String label;
   final String value;
   final VoidCallback onTap;
 
-  const _TotalsActionRow({
+  const _TotalsEditRow({
+    required this.icon,
     required this.label,
     required this.value,
     required this.onTap,
@@ -1592,41 +3167,39 @@ class _TotalsActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF101117),
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF23252E)),
-          ),
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
           child: Row(
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+              Icon(icon, color: const Color(0xFF8E93A6), size: 18),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              const Spacer(),
               Text(
                 value,
                 style: const TextStyle(
-                  color: Color(0xFF8E93A6),
+                  color: Color(0xFFB8C1D9),
                   fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(width: 8),
               const Icon(
                 CupertinoIcons.chevron_right,
                 color: Color(0xFF8E93A6),
-                size: 16,
+                size: 15,
               ),
             ],
           ),
@@ -1636,40 +3209,109 @@ class _TotalsActionRow extends StatelessWidget {
   }
 }
 
-class _SummaryLine extends StatelessWidget {
+class _TotalsValueRow extends StatelessWidget {
+  final IconData icon;
   final String label;
   final String value;
-  final bool isEmphasized;
+  final bool muted;
 
-  const _SummaryLine({
+  const _TotalsValueRow({
+    required this.icon,
     required this.label,
     required this.value,
-    this.isEmphasized = false,
+    this.muted = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: isEmphasized ? Colors.white : const Color(0xFF8E93A6),
-            fontSize: isEmphasized ? 16 : 14,
-            fontWeight: isEmphasized ? FontWeight.w700 : FontWeight.w600,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF8E93A6), size: 18),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: muted ? const Color(0xFF8E93A6) : Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
-        ),
-        const Spacer(),
-        Text(
-          value,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: isEmphasized ? 18 : 15,
-            fontWeight: isEmphasized ? FontWeight.w800 : FontWeight.w700,
-            letterSpacing: -0.2,
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TotalsGrandRow extends StatelessWidget {
+  final String value;
+
+  const _TotalsGrandRow({
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF5B8CFF)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            decoration: const BoxDecoration(
+              color: Color(0xFF8E93A6),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text(
+                r'$',
+                style: TextStyle(
+                  color: Color(0xFF101117),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Total',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -5,6 +5,10 @@ class EstimatePriceRuleModel {
   final String category;
   final String unit;
   final double baseRate;
+  final double? installFixedRate;
+  final double? replaceFixedRate;
+  final double? repairFixedRate;
+  final double? diagnosticFixedRate;
   final double? materialRatePerSqft;
   final double? materialFixedRate;
   final double? prepFixedRate;
@@ -27,6 +31,7 @@ class EstimatePriceRuleModel {
   final String? aiRushDescription;
   final List<String> negativeKeywords;
   final List<Map<String, dynamic>> aiFollowupQuestions;
+  final String? iconName;
 
   const EstimatePriceRuleModel({
     required this.id,
@@ -35,6 +40,10 @@ class EstimatePriceRuleModel {
     required this.category,
     required this.unit,
     required this.baseRate,
+    this.installFixedRate,
+    this.replaceFixedRate,
+    this.repairFixedRate,
+    this.diagnosticFixedRate,
     this.materialRatePerSqft,
     this.materialFixedRate,
     this.prepFixedRate,
@@ -57,6 +66,7 @@ class EstimatePriceRuleModel {
     this.aiRushDescription,
     this.negativeKeywords = const [],
     this.aiFollowupQuestions = const [],
+    this.iconName,
   });
 
   factory EstimatePriceRuleModel.fromMap(Map<String, dynamic> map) {
@@ -67,6 +77,10 @@ class EstimatePriceRuleModel {
       category: map['category']?.toString() ?? '',
       unit: map['unit']?.toString() ?? '',
       baseRate: _toDouble(map['base_rate']),
+      installFixedRate: _toNullableDouble(map['install_fixed_rate']),
+      replaceFixedRate: _toNullableDouble(map['replace_fixed_rate']),
+      repairFixedRate: _toNullableDouble(map['repair_fixed_rate']),
+      diagnosticFixedRate: _toNullableDouble(map['diagnostic_fixed_rate']),
       displayName: map['display_name']?.toString(),
       aliases: _toStringList(map['aliases']),
       materialRatePerSqft: _toNullableDouble(map['material_rate_per_sqft']),
@@ -87,6 +101,7 @@ class EstimatePriceRuleModel {
       aiRushDescription: map['ai_rush_description']?.toString(),
       isActive: _toBool(map['is_active'], fallback: true),
       negativeKeywords: _toStringList(map['negative_keywords']),
+      iconName: map['icon_name']?.toString(),
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'].toString())
           : null,
@@ -149,6 +164,10 @@ class EstimatePriceRuleModel {
       'category': category,
       'unit': unit,
       'base_rate': baseRate,
+      'install_fixed_rate': installFixedRate,
+      'replace_fixed_rate': replaceFixedRate,
+      'repair_fixed_rate': repairFixedRate,
+      'diagnostic_fixed_rate': diagnosticFixedRate,
       'display_name': displayName,
       'aliases': aliases,
       'material_rate_per_sqft': materialRatePerSqft,
@@ -171,6 +190,7 @@ class EstimatePriceRuleModel {
       'ai_rush_description': aiRushDescription,
       'ai_followup_questions': aiFollowupQuestions,
       'negative_keywords': negativeKeywords,
+      'icon_name': iconName,
     };
   }
 
@@ -194,6 +214,10 @@ class EstimatePriceRuleModel {
     String? aiRushDescription,
     List<String>? aliases,
     double? baseRate,
+    double? installFixedRate,
+    double? replaceFixedRate,
+    double? repairFixedRate,
+    double? diagnosticFixedRate,
     double? materialRatePerSqft,
     double? materialFixedRate,
     double? prepFixedRate,
@@ -203,6 +227,7 @@ class EstimatePriceRuleModel {
     DateTime? updatedAt,
     List<String>? negativeKeywords,
     List<Map<String, dynamic>>? aiFollowupQuestions,
+    String? iconName,
   }) {
     return EstimatePriceRuleModel(
       id: id ?? this.id,
@@ -211,6 +236,10 @@ class EstimatePriceRuleModel {
       category: category ?? this.category,
       unit: unit ?? this.unit,
       baseRate: baseRate ?? this.baseRate,
+      installFixedRate: installFixedRate ?? this.installFixedRate,
+      replaceFixedRate: replaceFixedRate ?? this.replaceFixedRate,
+      repairFixedRate: repairFixedRate ?? this.repairFixedRate,
+      diagnosticFixedRate: diagnosticFixedRate ?? this.diagnosticFixedRate,
       displayName: displayName ?? this.displayName,
       aliases: aliases ?? this.aliases,
       materialRatePerSqft: materialRatePerSqft ?? this.materialRatePerSqft,
@@ -233,6 +262,7 @@ class EstimatePriceRuleModel {
       aiRushDescription: aiRushDescription ?? this.aiRushDescription,
       aiFollowupQuestions: aiFollowupQuestions ?? this.aiFollowupQuestions,
       negativeKeywords: negativeKeywords ?? this.negativeKeywords,
+      iconName: iconName ?? this.iconName,
     );
   }
 }

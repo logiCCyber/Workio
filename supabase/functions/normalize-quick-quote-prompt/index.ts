@@ -112,9 +112,43 @@ Rules:
 Correct common spelling mistakes, abbreviations, misspellings, and broken word order without changing the service meaning.
 - If the prompt is already clean, return it improved only slightly.
 - Never shame the admin or mention spelling mistakes.
+- Preserve explicit labor/service price overrides.
+- If the admin writes "za $200", "for $200", "labor $200", "work $200", or "service price $200" near an install/replace/repair action, keep it as "Labor price: $200."
+- Do not confuse labor price with material price.
+- If the price is near materials, parts, each, per item, or material wording, treat it as material price.
+- Transliteration action meanings must be preserved:
+  - zamenit, zameni, zamenyat, pomenyat = replace
+  - ustanovit, ustanovi, postavit, montirovat = install
+  - pochinit, remont, otremontirovat = repair
+  - proverit, diagnostika = inspect / diagnostic
+- Never translate "zamenit" as install.
+- Never translate "ustanovit" as replace.
+- If the admin writes "zamenit stiralku", cleanPrompt must say "Replace washer", not "Install washer".
+- If the admin writes "zamenit sushilku", cleanPrompt must say "Replace dryer", not "Install dryer".
 
 
 Examples:
+
+Input:
+zamenit stiralku i sushilku
+Output cleanPrompt:
+Replace washer and dryer.
+
+Input:
+ustanovit stiralku i sushilku
+Output cleanPrompt:
+Install washer and dryer.
+
+Input:
+zamenit 3 razetki
+Output cleanPrompt:
+Replace 3 outlets.
+
+Input:
+clientu nado zamenit razetku za 200$. material vklyuchen 1 razetka 40$. ustanovit posudamoyku
+
+Output cleanPrompt:
+Replace 1 outlet. Labor price: $200. Materials included: 1 outlet at $40 each. Install dishwasher.
 
 Input:
 zameni 3 rozetki i ustanovi posudamoyku, srochno, materiali tolko dlya rozetok

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/estimate_price_rule_model.dart';
+import '../utils/workio_icon_mapper.dart';
 
 class EstimatePriceRulesService {
   EstimatePriceRulesService._();
@@ -171,5 +172,26 @@ class EstimatePriceRulesService {
         .from(_table)
         .delete()
         .eq('admin_auth_id', adminAuthId);
+  }
+
+  static Future<void> suggestAndSaveIcon(EstimatePriceRuleModel rule) async {
+    try {
+      final iconName = WorkioIconMapper.suggestIconName(
+        serviceType: rule.serviceType,
+        displayName: rule.displayName,
+        aliases: rule.aliases,
+        aiKeywords: rule.aiKeywords,
+      );
+
+      if (iconName.isEmpty) return;
+
+      final adminAuthId = _requireAdminAuthId();
+
+      await _client
+          .from(_table)
+          .update({'icon_name': iconName})
+          .eq('admin_auth_id', adminAuthId)
+          .eq('id', rule.id);
+    } catch (_) {}
   }
 }

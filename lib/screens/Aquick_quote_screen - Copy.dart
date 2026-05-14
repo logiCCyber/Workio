@@ -32,7 +32,6 @@ import '../services/estimate_price_rules_service.dart';
 import '../services/estimate_rule_resolution_service.dart';
 
 import 'estimate_details_screen.dart';
-import 'estimate_list_screen.dart';
 import '../dialogs/add_client_dialog.dart';
 import '../dialogs/add_property_dialog.dart';
 
@@ -2745,20 +2744,20 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     final prompt = _promptController.text.trim();
 
     if (prompt.isEmpty) {
-      return 'write the job, quantity, materials, and urgency';
+      return 'Workio says: write the job, quantity, materials, and urgency';
     }
 
     final suggestion = _promptSuggestion;
 
     if (suggestion != null) {
-      return 'did you mean ${suggestion.label}? Tap to use';
+      return 'Workio says: did you mean ${suggestion.label}? Tap to use';
     }
 
     if (_coachHint != null) {
-      return '$_coachHint';
+      return 'Workio says: $_coachHint';
     }
 
-    return 'keep typing so I can find the closest service';
+    return 'Workio says: keep typing so I can find the closest service';
   }
 
   void _useWorkioSuggestion() {
@@ -3857,7 +3856,6 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
               'quantity': i.quantity,
               'unitPrice': i.unitPrice,
               'unit': i.unit,
-              'originalPrompt': _promptController.text.trim(),
             }).toList(),
             'hasRush': hasRush,
             'hasMaterials': hasMaterials,
@@ -3906,19 +3904,7 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
 
       _showSnack('Estimate ${created.estimateNumber} created');
 
-      _clearQuote();
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const EstimateListScreen()),
-      );
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => EstimateDetailsScreen(estimateId: created.id),
-        ),
-      );
+      await _openEstimateDetails(created.id);
     } catch (_) {
       if (!mounted) return;
       _showSnack('Failed to convert quote to estimate');
@@ -4270,8 +4256,8 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const height = 58.0;
-        const knob = 50.0;
+        const height = 56.0;
+        const knob = 48.0;
         final maxDrag = constraints.maxWidth - knob - 8;
 
         return GestureDetector(
@@ -4287,75 +4273,41 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
             duration: const Duration(milliseconds: 180),
             height: height,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF1A1C24),
-                  const Color(0xFF22252D),
-                ],
-              ),
+              color: _track,
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: const Color(0xFF9A5A00).withOpacity(0.35),
+                color: const Color(0xFF303440),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF9A5A00).withOpacity(0.12),
-                  blurRadius: 20,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Track fill
-                Positioned(
-                  left: 4,
-                  top: 4,
-                  bottom: 4,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 90),
-                    width: _drag > 0 ? _drag + knob / 2 : 0,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF9A5A00).withOpacity(0.3),
-                          const Color(0xFF9A5A00).withOpacity(0.05),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Label
                 AnimatedOpacity(
                   duration: const Duration(milliseconds: 160),
-                  opacity: widget.isLoading ? 0.5 : 1.0,
+                  opacity: 1,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        widget.isLoading ? 'Generating...' : 'Swipe to generate',
+                        widget.isLoading
+                            ? 'Generating quote...'
+                            : 'Swipe to generate quote',
                         style: const TextStyle(
                           color: Color(0xFFB7BCCB),
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                           fontSize: 14,
-                          letterSpacing: 0.2,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      if (!widget.isLoading)
-                        const Icon(
-                          CupertinoIcons.arrow_right,
-                          color: Color(0xFF9A5A00),
-                          size: 15,
-                        ),
+                      const Icon(
+                        CupertinoIcons.arrow_right,
+                        color: Color(0xFFF59E0B),
+                        size: 17,
+                      ),
                     ],
                   ),
                 ),
 
-                // Knob
                 Positioned(
                   left: 4 + _drag,
                   child: AnimatedContainer(
@@ -4363,17 +4315,13 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
                     width: knob,
                     height: knob,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFFD97706), Color(0xFF9A5A00)],
-                      ),
-                      borderRadius: BorderRadius.circular(18),
+                      color: _orange,
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF9A5A00).withOpacity(0.5),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
+                          color: _orange.withOpacity(0.28),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
                         ),
                       ],
                     ),
@@ -4823,61 +4771,45 @@ class _WorkioTypingLabel extends StatelessWidget {
       padding: EdgeInsets.zero,
       minSize: 0,
       onPressed: onTap,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Static "Workio_" prefix — green monospace
-          const Text(
-            'Workio_',
-            style: TextStyle(
-              color: Color(0xFF39D353),
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              fontFamily: 'monospace',
-              letterSpacing: 0.5,
-              height: 1.25,
-            ),
-          ),
-          // Animated message
-          Expanded(
-            child: TweenAnimationBuilder<int>(
-              key: ValueKey(text),
-              tween: IntTween(begin: 0, end: text.length),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, _) {
-                final visibleText = text.substring(0, math.min(value, text.length));
-                return Text.rich(
+      child: TweenAnimationBuilder<int>(
+        key: ValueKey(text),
+        tween: IntTween(begin: 0, end: text.length),
+        duration: const Duration(milliseconds: 650),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, _) {
+          final visibleText = text.substring(0, math.min(value, text.length));
+
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Text.rich(
+              TextSpan(
+                children: [
                   TextSpan(
-                    children: [
-                      TextSpan(
-                        text: visibleText,
-                        style: TextStyle(
-                          color: onTap == null
-                              ? const Color(0xFFB7BCCB)
-                              : const Color(0xFFFFC46B),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.1,
-                          height: 1.25,
-                        ),
-                      ),
-                      const WidgetSpan(
-                        alignment: PlaceholderAlignment.middle,
-                        child: Padding(
-                          padding: EdgeInsets.only(left: 2),
-                          child: _GreenBlinkCursor(),
-                        ),
-                      ),
-                    ],
+                    text: visibleText,
+                    style: TextStyle(
+                      color: onTap == null
+                          ? const Color(0xFFB7BCCB)
+                          : const Color(0xFFFFC46B),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.1,
+                      height: 1.25,
+                    ),
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                );
-              },
+                  const WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 3),
+                      child: _OrangeBlinkCursor(),
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -4917,47 +4849,6 @@ class _OrangeBlinkCursorState extends State<_OrangeBlinkCursor>
         height: 14,
         decoration: BoxDecoration(
           color: const Color(0xFFF59E0B),
-          borderRadius: BorderRadius.circular(99),
-        ),
-      ),
-    );
-  }
-}
-
-class _GreenBlinkCursor extends StatefulWidget {
-  const _GreenBlinkCursor();
-
-  @override
-  State<_GreenBlinkCursor> createState() => _GreenBlinkCursorState();
-}
-
-class _GreenBlinkCursorState extends State<_GreenBlinkCursor>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 530),
-  )..repeat(reverse: true);
-
-  late final Animation<double> _opacity = Tween<double>(
-    begin: 0.1,
-    end: 1.0,
-  ).animate(_controller);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _opacity,
-      child: Container(
-        width: 2,
-        height: 12,
-        decoration: BoxDecoration(
-          color: const Color(0xFF39D353),
           borderRadius: BorderRadius.circular(99),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../ui/app_toast.dart';
 
 import 'worker_screen.dart';
@@ -324,20 +325,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               // LOGO (big centered) + TITLE
                               Column(
                                 children: [
-                                  Image.asset(
-                                    'assets/images/workio_2.png',
-                                    height: 120,
+                                  SvgPicture.asset(
+                                    'assets/images/workio.svg',
+                                    height: 60,
                                     fit: BoxFit.contain,
-                                    filterQuality: FilterQuality.high,
                                   ),
-                                  const SizedBox(height: 2),
+                                  const SizedBox(height: 6),
                                   Text(
                                     isRegister ? 'Create admin' : 'Sign in',
                                     textAlign: TextAlign.center,
@@ -347,7 +347,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       fontSize: 22,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 2),
                                   Text(
                                     isRegister
                                         ? 'Admin account (workers are created by admin)'
@@ -362,7 +362,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
 
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 8),
 
                               Container(
                                 height: 2,
@@ -377,7 +377,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 14),
 
                               AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 260),

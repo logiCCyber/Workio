@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:math' as math;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +13,7 @@ import 'package:cross_file/cross_file.dart';
 import '../services/message_service.dart';
 import 'chat_image_viewer_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/cupertino.dart';
 
 class AdminChatScreen extends StatefulWidget {
   final String threadId;
@@ -2488,7 +2488,7 @@ class _FileBubble extends StatelessWidget {
   }
 }
 
-class _Composer extends StatelessWidget {
+class _Composer extends StatefulWidget {
   final TextEditingController controller;
   final bool sending;
   final VoidCallback onSend;
@@ -2510,8 +2510,152 @@ class _Composer extends StatelessWidget {
   });
 
   @override
+  State<_Composer> createState() => _ComposerState();
+}
+
+class _ComposerState extends State<_Composer> {
+  final GlobalKey _attachKey = GlobalKey();
+  OverlayEntry? _helpEntry;
+  Timer? _helpTimer;
+
+  void _hideAttachHelp() {
+    _helpTimer?.cancel();
+    _helpTimer = null;
+    _helpEntry?.remove();
+    _helpEntry = null;
+  }
+
+  void _showAttachHelp() {
+    _hideAttachHelp();
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final box = _attachKey.currentContext?.findRenderObject() as RenderBox?;
+    if (overlay == null || box == null) return;
+
+    final overlayBox = overlay.context.findRenderObject() as RenderBox;
+    final target = box.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final size = box.size;
+
+    _helpEntry = OverlayEntry(
+      builder: (_) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _hideAttachHelp,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: overlayBox.size.height - target.dy + 10,
+              child: IgnorePointer(
+                ignoring: false,
+                child: Align(
+                  alignment: Alignment.bottomLeft,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 250),
+                    child: Transform.translate(
+                      offset: Offset(target.dx, 0),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFF202632),
+                                Color(0xFF161B24),
+                              ],
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.08),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.30),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.auto_awesome_rounded,
+                                    size: 15,
+                                    color: const Color(0xFF55A7FF),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'Workio says',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Attach a photo, image, or file here.',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.72),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.2,
+                                  height: 1.28,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: target.dx + 16,
+              bottom: overlayBox.size.height - target.dy - 2,
+              child: IgnorePointer(
+                child: CustomPaint(
+                  size: const Size(16, 10),
+                  painter: _HelpTooltipArrowPainter(),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    overlay.insert(_helpEntry!);
+
+    _helpTimer = Timer(const Duration(milliseconds: 2200), _hideAttachHelp);
+  }
+
+  @override
+  void dispose() {
+    _hideAttachHelp();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final hasReply = replyText != null && replyText!.trim().isNotEmpty;
+    final hasReply =
+        widget.replyText != null && widget.replyText!.trim().isNotEmpty;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -2566,7 +2710,7 @@ class _Composer extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              replyTitle ?? 'Reply',
+                              widget.replyTitle ?? 'Reply',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -2577,40 +2721,37 @@ class _Composer extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              replyText!,
+                              widget.replyText!,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.74),
                                 fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                                height: 1.22,
+                                fontSize: 12.1,
+                                height: 1.2,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 8),
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: onCancelReply,
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: widget.onCancelReply,
                           child: Container(
-                            width: 34,
-                            height: 34,
+                            width: 28,
+                            height: 28,
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
                               color: Colors.white.withOpacity(0.04),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.06),
-                              ),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Center(
+                            child: const Center(
                               child: Icon(
                                 Icons.close_rounded,
-                                color: Colors.white.withOpacity(0.74),
-                                size: 18,
+                                size: 16,
+                                color: Colors.white70,
                               ),
                             ),
                           ),
@@ -2622,13 +2763,14 @@ class _Composer extends StatelessWidget {
                 const SizedBox(height: 10),
               ],
               Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
+                      key: _attachKey,
                       borderRadius: BorderRadius.circular(18),
-                      onTap: sending ? null : onAttachTap,
+                      onTap: widget.onAttachTap,
+                      onLongPress: _showAttachHelp,
                       child: Container(
                         width: 48,
                         height: 48,
@@ -2659,8 +2801,8 @@ class _Composer extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
-                      controller: controller,
-                      onChanged: onChanged,
+                      controller: widget.controller,
+                      onChanged: widget.onChanged,
                       minLines: 1,
                       maxLines: 5,
                       textInputAction: TextInputAction.newline,
@@ -2669,7 +2811,8 @@ class _Composer extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                       decoration: InputDecoration(
-                        hintText: hasReply ? 'Write reply...' : 'Write a message...',
+                        hintText:
+                        hasReply ? 'Write reply...' : 'Write a message...',
                         hintStyle: TextStyle(
                           color: Colors.white.withOpacity(0.34),
                           fontWeight: FontWeight.w600,
@@ -2683,7 +2826,7 @@ class _Composer extends StatelessWidget {
                     color: Colors.transparent,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(18),
-                      onTap: sending ? null : onSend,
+                      onTap: widget.sending ? null : widget.onSend,
                       child: Container(
                         width: 48,
                         height: 48,
@@ -2702,20 +2845,20 @@ class _Composer extends StatelessWidget {
                           ),
                         ),
                         child: Center(
-                          child: sending
+                          child: widget.sending
                               ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.2,
-                                    color: Colors.white,
-                                  ),
-                                )
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.2,
+                              color: Colors.white,
+                            ),
+                          )
                               : const Icon(
-                                  Icons.send_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
+                            Icons.send_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                       ),
                     ),
@@ -2728,6 +2871,39 @@ class _Composer extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HelpTooltipArrowPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(size.width / 2, size.height)
+      ..lineTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..close();
+
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0xFF202632),
+          Color(0xFF161B24),
+        ],
+      ).createShader(Offset.zero & size);
+
+    canvas.drawPath(path, paint);
+
+    final stroke = Paint()
+      ..color = Colors.white.withOpacity(0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    canvas.drawPath(path, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _EmptyChatState extends StatelessWidget {
