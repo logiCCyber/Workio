@@ -194,49 +194,57 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
               _buildSectionCard(
                 title: 'Property Info',
                 subtitle: 'Основная информация об объекте',
-                child: Column(
+                child: _formPanel(
                   children: [
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.location_solid,
                       label: 'Address',
                       value: property.addressLine1,
                     ),
                     if (address2.isNotEmpty) ...[
-                      const SizedBox(height: 10),
+                      const Divider(color: Color(0xFF23252E), height: 1),
                       _PreviewInfoRow(
+                        icon: CupertinoIcons.location,
                         label: 'Address 2',
                         value: address2,
                       ),
                     ],
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.building_2_fill,
                       label: 'City',
                       value: city.isEmpty ? '—' : city,
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.map,
                       label: 'Province',
                       value: province.isEmpty ? '—' : province,
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.number,
                       label: 'Postal Code',
                       value: postalCode.isEmpty ? '—' : postalCode,
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.house_fill,
                       label: 'Type',
                       value: propertyType.isEmpty ? '—' : propertyType,
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.square_grid_2x2,
                       label: 'Square Footage',
                       value: property.squareFootage > 0
                           ? property.squareFootage.toStringAsFixed(0)
                           : '—',
                     ),
                     if (notes.isNotEmpty) ...[
-                      const SizedBox(height: 10),
+                      const Divider(color: Color(0xFF23252E), height: 1),
                       _PreviewInfoRow(
+                        icon: CupertinoIcons.text_alignleft,
                         label: 'Notes',
                         value: notes,
                       ),
@@ -248,28 +256,32 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
               _buildSectionCard(
                 title: 'Client',
                 subtitle: 'Кому принадлежит объект',
-                child: Column(
+                child: _formPanel(
                   children: [
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.person_crop_circle,
                       label: 'Name',
                       value: _client?.fullName ?? '—',
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.building_2_fill,
                       label: 'Company',
                       value: ((_client?.companyName ?? '').trim().isEmpty)
                           ? '—'
                           : _client!.companyName!,
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.mail,
                       label: 'Email',
                       value: ((_client?.email ?? '').trim().isEmpty)
                           ? '—'
                           : _client!.email!,
                     ),
-                    const SizedBox(height: 10),
+                    const Divider(color: Color(0xFF23252E), height: 1),
                     _PreviewInfoRow(
+                      icon: CupertinoIcons.phone,
                       label: 'Phone',
                       value: ((_client?.phone ?? '').trim().isEmpty)
                           ? '—'
@@ -390,6 +402,20 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     );
   }
 
+  Widget _formPanel({
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(children: children),
+    );
+  }
+
   Widget _buildSectionCard({
     required String title,
     String? subtitle,
@@ -434,25 +460,28 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
 }
 
 class _PreviewInfoRow extends StatelessWidget {
+  final IconData icon;
   final String label;
   final String value;
 
   const _PreviewInfoRow({
+    required this.icon,
     required this.label,
     required this.value,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF23252E)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       child: Row(
         children: [
+          Icon(
+            icon,
+            color: const Color(0xFF8E93A6),
+            size: 18,
+          ),
+          const SizedBox(width: 12),
           Text(
             label,
             style: const TextStyle(
@@ -466,10 +495,13 @@ class _PreviewInfoRow extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
+                height: 1.25,
               ),
             ),
           ),

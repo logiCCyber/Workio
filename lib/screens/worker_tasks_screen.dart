@@ -397,6 +397,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
 
   Future<bool> _captureChecklistCompletionPhoto({
     required String taskId,
+    required String subtaskId,
     required String subtaskTitle,
   }) async {
     try {
@@ -408,6 +409,12 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
       await TaskService.addWorkerTaskImage(
         taskId: taskId,
         file: proofFile,
+        proofSubtaskId: subtaskId,
+        proofKind: 'checklist_after',
+        proofMeta: {
+          'subtask_title': subtaskTitle,
+          'proof_label': 'After',
+        },
       );
 
       if (!mounted) return true;
@@ -424,6 +431,52 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         icon: Icons.error_outline_rounded,
         accent: _TaskPalette.red,
       );
+      return false;
+    }
+  }
+
+  Future<bool> _captureTaskCompletionPhoto({
+    required String taskId,
+    required String taskTitle,
+  }) async {
+    try {
+      final file = await TaskService.pickTaskImageFromCamera();
+      if (file == null) return false;
+
+      final proofFile = await _prepareChecklistProofFile(
+        file,
+        'task_completion_${taskTitle.isEmpty ? 'task' : taskTitle}',
+      );
+
+      await TaskService.addWorkerTaskImage(
+        taskId: taskId,
+        file: proofFile,
+        proofKind: 'task_completion_after',
+        proofMeta: {
+          'title': 'Task completion',
+          'task_title': taskTitle,
+          'proof_label': 'After',
+        },
+      );
+
+      if (!mounted) return true;
+
+      _showTaskToast(
+        'Completion photo attached',
+        icon: Icons.photo_camera_rounded,
+        accent: _TaskPalette.green,
+      );
+
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+
+      _showTaskToast(
+        'Completion photo failed: $e',
+        icon: Icons.error_outline_rounded,
+        accent: _TaskPalette.red,
+      );
+
       return false;
     }
   }
@@ -1244,9 +1297,12 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
         final isReasonMode =
             reasonTargetSubtaskId != null && reasonTargetStatus != null;
 
+        final savedStatus = statusLower;
+
         bool isDoneNow() => _s(status).toLowerCase() == 'done';
-        bool isCancelledNow() => _s(status).toLowerCase() == 'cancelled';
-        bool isLockedNow() => isDoneNow() || isCancelledNow();
+        bool isCancelledNow() => savedStatus == 'cancelled';
+        bool isLockedNow() => savedStatus == 'done' || savedStatus == 'cancelled';
+
         final saveLocked = isLockedNow() || isReasonMode;
 
         return Container(
@@ -1345,6 +1401,12 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                     label: 'Needs review',
                                     icon: Icons.rate_review_rounded,
                                     color: _TaskPalette.orange,
+                                  ),
+                                  _statusMenuItem(
+                                    value: 'done',
+                                    label: 'Done',
+                                    icon: Icons.check_circle_rounded,
+                                    color: _TaskPalette.green,
                                   ),
                                 ],
                                 child: Row(
@@ -1740,6 +1802,7 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                                                       final captured =
                                                       await _captureChecklistCompletionPhoto(
                                                         taskId: taskId,
+                                                        subtaskId: subtaskId,
                                                         subtaskTitle: title,
                                                       );
 
@@ -2221,6 +2284,11 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                           _s(a['media_url']).isNotEmpty;
                     }).toList();
 
+                    final normalImageAttachments = imageAttachments.where((a) {
+                      return _s(a['proof_subtask_id']).isEmpty &&
+                          _s(a['proof_kind']).isEmpty;
+                    }).toList();
+
                     final fileAttachments = attachments.where((a) {
                       return _s(a['attachment_type']).toLowerCase() != 'image';
                     }).toList();
@@ -2228,9 +2296,9 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (imageAttachments.isNotEmpty) ...[
+                        if (normalImageAttachments.isNotEmpty) ...[
                           _TaskImageCarousel(
-                            images: imageAttachments,
+                            images: normalImageAttachments,
                             onOpen: _openImagePreview,
                             onDelete: (attachment) => _deleteAttachment(attachment),
                             canDelete: _canWorkerDeleteAttachment,
@@ -2451,11 +2519,33 @@ class _WorkerTasksScreenState extends State<WorkerTasksScreen> {
                             ? null
                             : () async {
                           final text = noteCtrl.text.trim();
+                          final nextStatus = _s(status).isEmpty ? 'todo' : _s(status);
+                          final wantsToComplete =
+                              nextStatus.toLowerCase() == 'done' && savedStatus != 'done';
+
+                          if (wantsToComplete) {
+                            final confirmed = await _confirmChecklistAction(
+                              title: 'Completion photo required',
+                              message:
+                              'Take an after photo to finish this task. The admin will see it as proof of work.',
+                              icon: Icons.photo_camera_rounded,
+                              accent: _TaskPalette.green,
+                            );
+
+                            if (!confirmed) return;
+
+                            final captured = await _captureTaskCompletionPhoto(
+                              taskId: taskId,
+                              taskTitle: _s(task['title']),
+                            );
+
+                            if (!captured) return;
+                          }
 
                           try {
                             await TaskService.updateWorkerTask(
                               taskId: taskId,
-                              status: _s(status).isEmpty ? 'todo' : _s(status),
+                              status: nextStatus,
                               workerNote: text.isEmpty ? savedWorkerNote : text,
                             );
 

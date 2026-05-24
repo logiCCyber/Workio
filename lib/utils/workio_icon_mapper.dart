@@ -151,11 +151,9 @@ class WorkioIconMapper {
     // Plumbing
     'faucet': Icons.plumbing,
     'tap': Icons.plumbing,
-    'sink': Icons.plumbing,
     'drain': Icons.plumbing,
     'pipe': Icons.plumbing,
     'plumb': Icons.plumbing,
-    'toilet': Icons.plumbing,
     'shower': Icons.shower_outlined,
     'bathtub': Icons.bathtub_outlined,
     'tub': Icons.bathtub_outlined,
@@ -163,6 +161,13 @@ class WorkioIconMapper {
     'leak': Icons.water_damage_outlined,
     'water': Icons.water_drop_outlined,
     'sewer': Icons.plumbing,
+
+    // Plumbing
+    'toilet': Icons.wc,
+    'wc': Icons.wc,
+    'vanity': Icons.bathroom_outlined,
+    'bathroom': Icons.bathroom_outlined,
+    'sink': Icons.water_drop_outlined,
 
     // Appliances
     'fridge': Icons.kitchen,

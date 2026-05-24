@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'dart:ui';
 
 import '../models/client_model.dart';
 import '../models/estimate_item_model.dart';
@@ -218,8 +219,79 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
   void _showSnack(String message) {
     if (!mounted) return;
 
+    final lower = message.toLowerCase();
+
+    final isSuccess = lower.contains('created') ||
+        lower.contains('saved') ||
+        lower.contains('updated') ||
+        lower.contains('uploaded') ||
+        lower.contains('removed');
+
+    final isError = lower.contains('failed') ||
+        lower.contains('error') ||
+        lower.contains('select') ||
+        lower.contains('enter') ||
+        lower.contains('add at least');
+
+    final icon = isSuccess
+        ? CupertinoIcons.checkmark_circle_fill
+        : isError
+        ? CupertinoIcons.xmark_circle_fill
+        : CupertinoIcons.info_circle_fill;
+
+    final color = isSuccess
+        ? const Color(0xFF22C55E)
+        : isError
+        ? const Color(0xFFFF6B6B)
+        : const Color(0xFF38BDF8);
+
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+        duration: const Duration(seconds: 3),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF22252D),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: color.withOpacity(0.35),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.40),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -252,26 +324,28 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     });
   }
 
-  void _insertVoiceTextToScope(
+  void _insertVoiceTextToController(
+      TextEditingController controller,
       String spokenText, {
         required bool append,
       }) {
     final clean = spokenText.trim();
     if (clean.isEmpty) return;
 
-    final current = _scopeController.text.trim();
+    final current = controller.text.trim();
 
     final next = append
         ? (current.isEmpty ? clean : '$current $clean').trim()
         : clean;
 
-    _scopeController.value = TextEditingValue(
+    controller.value = TextEditingValue(
       text: next,
       selection: TextSelection.collapsed(offset: next.length),
     );
   }
 
-  Future<void> _startScopeVoiceInput({
+  Future<void> _startVoiceInput({
+    required TextEditingController controller,
     required bool append,
   }) async {
     if (!_speechReady) {
@@ -291,7 +365,8 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
         if (!mounted) return;
 
         if (result.finalResult) {
-          _insertVoiceTextToScope(
+          _insertVoiceTextToController(
+            controller,
             result.recognizedWords,
             append: _voiceAppendMode,
           );
@@ -309,7 +384,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     );
   }
 
-  Future<void> _stopScopeVoiceInput() async {
+  Future<void> _stopVoiceInput() async {
     await _speech.stop();
 
     if (!mounted) return;
@@ -317,43 +392,6 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     setState(() {
       _isListening = false;
     });
-  }
-
-  Future<void> _openScopeVoiceSheet() async {
-    if (_isListening) {
-      await _stopScopeVoiceInput();
-      return;
-    }
-
-    final action = await showCupertinoModalPopup<String>(
-      context: context,
-      builder: (context) {
-        return CupertinoActionSheet(
-          title: const Text('Voice Scope'),
-          message: const Text('Choose how Workio should insert your voice text'),
-          actions: [
-            CupertinoActionSheetAction(
-              onPressed: () => Navigator.pop(context, 'replace'),
-              child: const Text('Replace scope'),
-            ),
-            CupertinoActionSheetAction(
-              onPressed: () => Navigator.pop(context, 'append'),
-              child: const Text('Append to scope'),
-            ),
-          ],
-          cancelButton: CupertinoActionSheetAction(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-        );
-      },
-    );
-
-    if (action == 'replace') {
-      await _startScopeVoiceInput(append: false);
-    } else if (action == 'append') {
-      await _startScopeVoiceInput(append: true);
-    }
   }
 
   EstimateTotals get _totals {
@@ -489,7 +527,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     final result = await showModalBottomSheet<_DiscountResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -567,7 +605,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                     width: double.infinity,
                     child: CupertinoButton(
                       padding: const EdgeInsets.symmetric(vertical: 15),
-                      color: const Color(0xFF5B8CFF),
+                      color: const Color(0xFF38BDF8),
                       borderRadius: BorderRadius.circular(16),
                       onPressed: () {
                         final value = EstimateCalculator.parseNumber(
@@ -654,7 +692,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
               const SizedBox(height: 18),
 
               _sheetHeader(
-                icon: CupertinoIcons.chart_pie,
+                icon: CupertinoIcons.percent,
                 title: 'Tax Rate',
                 subtitle: 'Set the tax percentage for this estimate',
               ),
@@ -662,7 +700,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
               const SizedBox(height: 18),
 
               _sheetInputPanel(
-                icon: CupertinoIcons.percent,
+                icon: CupertinoIcons.money_dollar_circle,
                 label: 'Tax percent',
                 controller: valueController,
                 hintText: '13',
@@ -674,7 +712,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                 width: double.infinity,
                 child: CupertinoButton(
                   padding: const EdgeInsets.symmetric(vertical: 15),
-                  color: const Color(0xFF5B8CFF),
+                  color: const Color(0xFF38BDF8),
                   borderRadius: BorderRadius.circular(16),
                   onPressed: () {
                     final percent = EstimateCalculator.parseNumber(
@@ -810,7 +848,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                             keyboardType: keyboardType,
                             maxLines: maxLines,
                             minLines: maxLines > 1 ? 3 : 1,
-                            cursorColor: const Color(0xFF5B8CFF),
+                            cursorColor: const Color(0xFF38BDF8),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 15,
@@ -934,7 +972,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                       controller: controller,
                       keyboardType: keyboardType,
                       textAlign: TextAlign.center,
-                      cursorColor: const Color(0xFF5B8CFF),
+                      cursorColor: const Color(0xFF38BDF8),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -1013,7 +1051,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                           controller: titleController,
                           hintText: 'Service item title',
                         ),
-                        const Divider(color: Color(0xFF23252E), height: 1),
+                        const Divider(color: Color(0xFF303442), height: 1),
                         inputRow(
                           icon: CupertinoIcons.text_alignleft,
                           label: 'Description',
@@ -1066,7 +1104,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                             });
                           },
                         ),
-                        const Divider(color: Color(0xFF23252E), height: 1),
+                        const Divider(color: Color(0xFF303442), height: 1),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                           child: Row(
@@ -1106,7 +1144,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                       width: double.infinity,
                       child: CupertinoButton(
                         padding: const EdgeInsets.symmetric(vertical: 15),
-                        color: const Color(0xFF5B8CFF),
+                        color: const Color(0xFF38BDF8),
                         borderRadius: BorderRadius.circular(16),
                         onPressed: () async {
                           final title = titleController.text.trim();
@@ -1298,18 +1336,28 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     String Function(T item)? subtitleBuilder,
     IconData Function(T item)? itemIconBuilder,
   }) {
+    final sheetHeight = items.length <= 1
+        ? 0.42
+        : items.length <= 3
+        ? 0.56
+        : 0.72;
+
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) {
         return SafeArea(
           top: false,
           child: FractionallySizedBox(
-            heightFactor: 0.70,
+            heightFactor: sheetHeight,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
               child: Column(
@@ -1318,16 +1366,25 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                     width: 44,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF3A3D49),
+                      color: const Color(0xFF3D4250),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
+
                   const SizedBox(height: 18),
 
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(icon, color: const Color(0xFFB8C1D9), size: 22),
-                      const SizedBox(width: 10),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Icon(
+                          icon,
+                          color: const Color(0xFFF3F6FC),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1335,19 +1392,20 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                             Text(
                               title,
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.2,
+                                color: Color(0xFFF1F4F8),
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.3,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               subtitle,
                               style: const TextStyle(
-                                color: Color(0xFF8E93A6),
+                                color: Color(0xFFA0A7B8),
                                 fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.w600,
+                                height: 1.25,
                               ),
                             ),
                           ],
@@ -1360,76 +1418,101 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
 
                   Expanded(
                     child: ListView.separated(
+                      padding: EdgeInsets.zero,
                       itemCount: items.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final item = items[index];
-                        final itemTitle = titleBuilder(item);
-                        final itemSubtitle = subtitleBuilder?.call(item) ?? '';
+
+                        final titleText = titleBuilder(item).trim();
+                        final subtitleText =
+                        (subtitleBuilder?.call(item) ?? '').trim();
+
                         final itemIcon =
                             itemIconBuilder?.call(item) ?? CupertinoIcons.circle;
 
                         return Material(
-                          color: const Color(0xFF101117),
-                          borderRadius: BorderRadius.circular(18),
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(18),
-                            onTap: () => Navigator.pop(sheetContext, item),
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => Navigator.pop(context, item),
                             child: Container(
-                              padding: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.all(15),
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
+                                color: const Color(0xFF151922),
+                                borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: const Color(0xFF23252E),
+                                  color: const Color(0xFF343A49),
+                                  width: 1,
                                 ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.18),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(
-                                    itemIcon,
-                                    color: const Color(0xFF8E93A6),
-                                    size: 19,
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      itemIcon,
+                                      color: const Color(0xFF38BDF8),
+                                      size: 20,
+                                    ),
                                   ),
-                                  const SizedBox(width: 12),
+
+                                  const SizedBox(width: 13),
+
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                       CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          itemTitle,
+                                          titleText.isEmpty
+                                              ? 'Untitled'
+                                              : titleText,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
-                                            color: Colors.white,
+                                            color: Color(0xFFF1F4F8),
                                             fontSize: 15,
                                             fontWeight: FontWeight.w800,
                                             height: 1.25,
                                           ),
                                         ),
-                                        if (itemSubtitle.trim().isNotEmpty) ...[
+                                        if (subtitleText.isNotEmpty) ...[
                                           const SizedBox(height: 5),
                                           Text(
-                                            itemSubtitle,
+                                            subtitleText,
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                              color: Color(0xFF8E93A6),
+                                              color: Color(0xFFA0A7B8),
                                               fontSize: 12.5,
                                               fontWeight: FontWeight.w500,
-                                              height: 1.3,
+                                              height: 1.25,
                                             ),
                                           ),
                                         ],
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  const Icon(
-                                    CupertinoIcons.chevron_right,
-                                    color: Color(0xFF8E93A6),
-                                    size: 16,
+
+                                  const SizedBox(width: 10),
+
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      CupertinoIcons.chevron_right,
+                                      color: Color(0xFF9AA3B7),
+                                      size: 16,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1454,166 +1537,275 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     required IconData icon,
   }) async {
     final tempController = TextEditingController(text: controller.text.trim());
-    final focusNode = FocusNode();
+    final editorFocusNode = FocusNode();
+
+    bool isClosing = false;
+
+    Future<void> closeSheet(
+        BuildContext sheetContext, {
+          String? value,
+        }) async {
+      if (isClosing) return;
+      isClosing = true;
+
+      editorFocusNode.unfocus();
+      FocusManager.instance.primaryFocus?.unfocus();
+
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      await Future.delayed(const Duration(milliseconds: 220));
+
+      if (!sheetContext.mounted) return;
+
+      Navigator.of(sheetContext).pop(value);
+    }
 
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: const Color(0xFF1B1E27),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: SizedBox(
-            height: MediaQuery.of(sheetContext).size.height * 0.88,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3A3D49),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    Row(
-                      children: [
-                        Icon(
-                          icon,
-                          color: const Color(0xFF8FB0FF),
-                          size: 22,
+        return WillPopScope(
+          onWillPop: () async {
+            if (_isListening) {
+              await _stopVoiceInput();
+            }
+            await closeSheet(sheetContext);
+            return false;
+          },
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+            ),
+            child: SizedBox(
+              height: MediaQuery.of(sheetContext).size.height * 0.88,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3A3D49),
+                          borderRadius: BorderRadius.circular(999),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            title,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Row(
+                        children: [
+                          Icon(
+                            icon,
+                            color: const Color(0xFFF3F6FC),
+                            size: 23,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                          ),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minSize: 0,
+                            onPressed: () async {
+                              if (_isListening) {
+                                await _stopVoiceInput();
+                              } else {
+                                await _startVoiceInput(
+                                  controller: tempController,
+                                  append: true,
+                                );
+                              }
+                            },
+                            child: Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: _isListening
+                                    ? const Color(0xFF3A1F24)
+                                    : const Color(0xFF242730),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: _isListening
+                                      ? const Color(0xFFFF6B6B).withOpacity(0.42)
+                                      : const Color(0xFF343846),
+                                ),
+                              ),
+                              child: Icon(
+                                _isListening
+                                    ? CupertinoIcons.stop_fill
+                                    : CupertinoIcons.mic_fill,
+                                color: _isListening
+                                    ? const Color(0xFFFF6B6B)
+                                    : const Color(0xFF38BDF8),
+                                size: 19,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            minSize: 0,
+                            onPressed: () async {
+                              if (_isListening) {
+                                await _stopVoiceInput();
+                              }
+                              await closeSheet(sheetContext);
+                            },
+                            child: const Icon(
+                              CupertinoIcons.xmark_circle_fill,
+                              color: Color(0xFF8E93A6),
+                              size: 30,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Review and edit this text before saving.',
+                          style: TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF181B23),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(
+                              color: const Color(0xFF303442),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.26),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: TextField(
+                            controller: tempController,
+                            focusNode: editorFocusNode,
+                            expands: true,
+                            maxLines: null,
+                            minLines: null,
+                            textAlignVertical: TextAlignVertical.top,
+                            cursorColor: const Color(0xFF38BDF8),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.3,
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w700,
+                              height: 1.45,
                             ),
-                          ),
-                        ),
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: () => Navigator.pop(sheetContext),
-                          child: const Icon(
-                            CupertinoIcons.xmark_circle_fill,
-                            color: Color(0xFF8E93A6),
-                            size: 28,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Review and edit this text before saving.',
-                        style: TextStyle(
-                          color: Color(0xFF8E93A6),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    Expanded(
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF101117),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: const Color(0xFF23252E)),
-                        ),
-                        child: TextField(
-                          controller: tempController,
-                          focusNode: focusNode,
-                          expands: true,
-                          maxLines: null,
-                          minLines: null,
-                          keyboardType: TextInputType.multiline,
-                          textAlignVertical: TextAlignVertical.top,
-                          cursorColor: const Color(0xFF5B8CFF),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            height: 1.45,
-                          ),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            hintText: 'Enter text...',
-                            hintStyle: TextStyle(
-                              color: Color(0xFF697086),
-                              fontSize: 15,
+                            decoration: const InputDecoration(
+                              hintText: 'Type here...',
+                              hintStyle: TextStyle(
+                                color: Color(0xFF697086),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.zero,
                             ),
                           ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 14),
+                      const SizedBox(height: 14),
 
-                    Row(
-                      children: [
-                        Expanded(
-                          child: CupertinoButton(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            color: const Color(0xFF20232D),
-                            borderRadius: BorderRadius.circular(16),
-                            onPressed: () => Navigator.pop(sheetContext),
-                            child: const Text(
-                              'Cancel',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: CupertinoButton(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              color: const Color(0xFF242730),
+                              borderRadius: BorderRadius.circular(16),
+                              onPressed: () {
+                                tempController.clear();
+                              },
+                              child: const Text(
+                                'Clear',
+                                style: TextStyle(
+                                  color: Color(0xFFD6DCE8),
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: CupertinoButton(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            color: const Color(0xFF5B8CFF),
-                            borderRadius: BorderRadius.circular(16),
-                            onPressed: () {
-                              Navigator.pop(
-                                sheetContext,
-                                tempController.text.trim(),
-                              );
-                            },
-                            child: const Text(
-                              'Save',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: CupertinoButton(
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              color: const Color(0xFF38BDF8),
+                              borderRadius: BorderRadius.circular(16),
+                              onPressed: () async {
+                                if (_isListening) {
+                                  await _stopVoiceInput();
+                                }
+
+                                await closeSheet(
+                                  sheetContext,
+                                  value: tempController.text.trim(),
+                                );
+                              },
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.checkmark_circle_fill,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Save Text',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1622,15 +1814,15 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
       },
     );
 
-    await Future.delayed(const Duration(milliseconds: 250));
+    await Future.delayed(const Duration(milliseconds: 300));
 
+    editorFocusNode.dispose();
     tempController.dispose();
-    focusNode.dispose();
 
     if (result == null) return;
 
     setState(() {
-      controller.text = result.trim();
+      controller.text = result;
     });
   }
 
@@ -1640,9 +1832,26 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF1B1F28),
+            Color(0xFF151922),
+          ],
+        ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(
+          color: const Color(0xFF303442),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 7),
+          ),
+        ],
       ),
       child: Column(children: children),
     );
@@ -1654,30 +1863,32 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     required String value,
     required VoidCallback onTap,
   }) {
-    final cleanValue = value.trim().isEmpty ? 'Tap to add text' : value.trim();
+    final isEmpty = value.trim().isEmpty;
+    final cleanValue = isEmpty ? 'Tap to add text' : value.trim();
 
     return Material(
-      color: const Color(0xFF101117),
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFF23252E)),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 18,
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: _estimateFieldIcon(
+                  icon,
+                  color: isEmpty
+                      ? const Color(0xFF8E93A6)
+                      : const Color(0xFFF3F6FC),
+                ),
               ),
-              const SizedBox(width: 12),
+
+              const SizedBox(width: 10),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1687,31 +1898,32 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                         Text(
                           label,
                           style: const TextStyle(
-                            color: Color(0xFF8E93A6),
+                            color: Color(0xFFA0A7B8),
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         const Spacer(),
                         const Icon(
                           CupertinoIcons.arrow_up_left_arrow_down_right,
                           color: Color(0xFF8E93A6),
-                          size: 15,
+                          size: 14,
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 7),
                     Text(
                       cleanValue,
-                      maxLines: 5,
+                      maxLines: 4,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: value.trim().isEmpty
+                        color: isEmpty
                             ? const Color(0xFF697086)
-                            : Colors.white,
+                            : const Color(0xFFF3F6FC),
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                         height: 1.4,
+                        letterSpacing: -0.1,
                       ),
                     ),
                   ],
@@ -1779,47 +1991,53 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFF23252E)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: const Color(0xFF8E93A6), size: 18),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: const Color(0xFF8E93A6),
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF8E93A6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 5),
-                TextField(
-                  controller: controller,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  cursorColor: const Color(0xFF5B8CFF),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: hintText,
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF697086),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              cursorColor: const Color(0xFF38BDF8),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: hintText,
+                hintStyle: const TextStyle(
+                  color: Color(0xFF697086),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ),
         ],
@@ -1833,12 +2051,37 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
     required Widget child,
     Widget? trailing,
   }) {
+    final cleanSubtitle = (subtitle ?? '').trim();
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF252A32),
+            Color(0xFF1D222B),
+            Color(0xFF181C24),
+          ],
+        ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        border: Border.all(
+          color: const Color(0xFF343A49),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.34),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.025),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1852,20 +2095,21 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                     Text(
                       title,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFFF3F6FC),
                         fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w900,
                         letterSpacing: -0.2,
                       ),
                     ),
-                    if ((subtitle ?? '').trim().isNotEmpty) ...[
+                    if (cleanSubtitle.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        subtitle!,
+                        cleanSubtitle,
                         style: const TextStyle(
-                          color: Color(0xFF8E93A6),
+                          color: Color(0xFFA0A7B8),
                           fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
                         ),
                       ),
                     ],
@@ -1889,41 +2133,116 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 20,
-        title: const Text(
-          'New Estimate',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: _isSaving ? null : _saveEstimate,
-              child: _isSaving
-                  ? const CupertinoActivityIndicator(color: Colors.white)
-                  : const Text(
-                'Save',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(96),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF242730),
+                    borderRadius: BorderRadius.circular(26),
+                    border: Border.all(
+                      color: const Color(0xFF343846),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.38),
+                        blurRadius: 28,
+                        offset: const Offset(0, 16),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.035),
+                        blurRadius: 12,
+                        spreadRadius: -6,
+                        offset: const Offset(0, -3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2A2D36),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFF3A3E4B),
+                                width: 1,
+                              ),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white.withOpacity(0.82),
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Create Estimate',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Color(0xFFF4F6FA),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 20,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Subtotal ${EstimateFormatters.formatCurrency(totals.subtotal)} • Total ${EstimateFormatters.formatCurrency(totals.total)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFFA0A7B8),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const Icon(
+                        Icons.calculate_rounded,
+                        color: Color(0xFF38BDF8),
+                        size: 25,
+                      ),
+
+                      const SizedBox(width: 6),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
       body: _isLoading
           ? const Center(
@@ -1934,42 +2253,48 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
           children: [
-            _formPanel(
-              children: [
-                _PremiumPickerField(
-                  label: 'Client',
-                  value: _selectedClient == null
-                      ? 'Select client'
-                      : _selectedClient!.fullName,
-                  onTap: _selectClient,
-                  showClearButton: _selectedClient != null,
-                  onClear: () {
-                    setState(() {
-                      _selectedClient = null;
-                      _selectedProperty = null;
-                      _properties = [];
-                    });
-                  },
-                  emptyIcon: CupertinoIcons.add,
-                  onEmptyIconTap: _addNewClient,
-                ),
-                const Divider(color: Color(0xFF23252E), height: 1),
-                _PremiumPickerField(
-                  label: 'Property',
-                  value: _selectedProperty == null
-                      ? 'Select property'
-                      : _selectedProperty!.fullAddress,
-                  onTap: _selectProperty,
-                  showClearButton: _selectedProperty != null,
-                  onClear: () {
-                    setState(() {
-                      _selectedProperty = null;
-                    });
-                  },
-                  emptyIcon: CupertinoIcons.add,
-                  onEmptyIconTap: _addNewProperty,
-                ),
-              ],
+            _buildSectionCard(
+              title: 'Client & Property',
+              subtitle: 'Client and estimate property',
+              child: _formPanel(
+                children: [
+                  _PremiumPickerField(
+                    label: 'Client',
+                    leadingIcon: CupertinoIcons.person_crop_circle,
+                    value: _selectedClient == null
+                        ? 'Select client'
+                        : _selectedClient!.fullName,
+                    onTap: _selectClient,
+                    showClearButton: _selectedClient != null,
+                    onClear: () {
+                      setState(() {
+                        _selectedClient = null;
+                        _selectedProperty = null;
+                        _properties = [];
+                      });
+                    },
+                    emptyIcon: CupertinoIcons.add,
+                    onEmptyIconTap: _addNewClient,
+                  ),
+                  const Divider(color: Color(0xFF303442), height: 1),
+                  _PremiumPickerField(
+                    label: 'Property',
+                    leadingIcon: CupertinoIcons.house_fill,
+                    value: _selectedProperty == null
+                        ? 'Select property'
+                        : _selectedProperty!.fullAddress,
+                    onTap: _selectProperty,
+                    showClearButton: _selectedProperty != null,
+                    onClear: () {
+                      setState(() {
+                        _selectedProperty = null;
+                      });
+                    },
+                    emptyIcon: CupertinoIcons.add,
+                    onEmptyIconTap: _addNewProperty,
+                  ),
+                ],
+              ),
             ),
 
             const SizedBox(height: 14),
@@ -1980,6 +2305,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                 children: [
                   _PremiumPickerField(
                     label: 'Template',
+                    leadingIcon: CupertinoIcons.square_stack_3d_up,
                     value: _selectedTemplate == null
                         ? 'Select template'
                         : _selectedTemplate!.name,
@@ -1991,15 +2317,17 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                       });
                     },
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const Divider(color: Color(0xFF303442), height: 1),
                   _PremiumTextField(
                     controller: _titleController,
                     label: 'Title',
+                    leadingIcon: CupertinoIcons.doc_text,
                     hintText: 'Service Estimate • City',
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const Divider(color: Color(0xFF303442), height: 1),
                   _PremiumPickerField(
                     label: 'Valid Until',
+                    leadingIcon: CupertinoIcons.calendar,
                     value: EstimateFormatters.formatDate(_validUntil),
                     onTap: _pickValidUntil,
                     showClearButton: _validUntil != null,
@@ -2014,10 +2342,9 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
             ),
             const SizedBox(height: 14),
             _buildSectionCard(
-              title: 'Scope of Work',
-              subtitle: 'Scope of work description',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              title: 'Scope & Notes',
+              subtitle: 'Work details and client notes',
+              child: _formPanel(
                 children: [
                   _largeTextRow(
                     icon: CupertinoIcons.doc_text,
@@ -2031,41 +2358,18 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _isListening
-                              ? (_voiceAppendMode
-                              ? 'Workio says: listening... I’ll append your words.'
-                              : 'Workio says: listening... I’ll replace the scope.')
-                              : 'Workio says: tap the mic to dictate the scope.',
-                          style: const TextStyle(
-                            color: Color(0xFF8E93A6),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w500,
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      CupertinoButton(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        color: _isListening
-                            ? const Color(0xFF7A1F1F)
-                            : const Color(0xFF101117),
-                        borderRadius: BorderRadius.circular(16),
-                        onPressed: !_speechReady
-                            ? null
-                            : (_isListening ? _stopScopeVoiceInput : _openScopeVoiceSheet),
-                        child: Icon(
-                          _isListening ? CupertinoIcons.stop_fill : CupertinoIcons.mic_fill,
-                          color: _isListening ? Colors.white : const Color(0xFFB6BCD0),
-                          size: 20,
-                        ),
-                      ),
-                    ],
+                  const Divider(color: Color(0xFF303442), height: 1),
+                  _largeTextRow(
+                    icon: CupertinoIcons.text_alignleft,
+                    label: 'Notes',
+                    value: _notesController.text,
+                    onTap: () {
+                      _openLargeTextEditor(
+                        title: 'Edit Notes',
+                        controller: _notesController,
+                        icon: CupertinoIcons.text_alignleft,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -2079,7 +2383,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                 onPressed: () => _addOrEditItem(),
                 child: const Icon(
                   CupertinoIcons.add_circled_solid,
-                  color: Color(0xFF5B8CFF),
+                  color: Color(0xFF38BDF8),
                   size: 24,
                 ),
               ),
@@ -2107,23 +2411,6 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
             ),
             const SizedBox(height: 14),
             _buildSectionCard(
-              title: 'Notes',
-              subtitle: 'Additional notes for the client',
-              child: _largeTextRow(
-                icon: CupertinoIcons.text_alignleft,
-                label: 'Notes',
-                value: _notesController.text,
-                onTap: () {
-                  _openLargeTextEditor(
-                    title: 'Edit Notes',
-                    controller: _notesController,
-                    icon: CupertinoIcons.text_alignleft,
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 14),
-            _buildSectionCard(
               title: 'Totals',
               subtitle: 'Tax, discount, and total amount',
               child: Column(
@@ -2136,7 +2423,7 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                         value: '${(_taxRate * 100).toStringAsFixed(2)}%',
                         onTap: _showTaxEditor,
                       ),
-                      const Divider(color: Color(0xFF23252E), height: 1),
+                      const Divider(color: Color(0xFF303442), height: 1),
                       _TotalsEditRow(
                         icon: CupertinoIcons.tag,
                         label: 'Discount',
@@ -2154,23 +2441,31 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
 
                   _TotalsPanel(
                     children: [
-                      _TotalsValueRow(
-                        icon: CupertinoIcons.sum,
-                        label: 'Subtotal',
-                        value: EstimateFormatters.formatCurrency(totals.subtotal),
-                        muted: true,
-                      ),
-                      _TotalsValueRow(
-                        icon: CupertinoIcons.percent,
-                        label: _taxLabel,
-                        value: EstimateFormatters.formatCurrency(totals.tax),
-                        muted: true,
-                      ),
-                      _TotalsValueRow(
-                        icon: CupertinoIcons.tag,
-                        label: 'Discount',
-                        value: '- ${EstimateFormatters.formatCurrency(totals.discount)}',
-                        muted: true,
+                      _TotalsPanel(
+                        children: [
+                          _TotalsValueRow(
+                            icon: CupertinoIcons.sum,
+                            label: 'Subtotal',
+                            value: EstimateFormatters.formatCurrency(totals.subtotal),
+                            muted: true,
+                          ),
+                          const Divider(color: Color(0xFF303442), height: 1),
+
+                          _TotalsValueRow(
+                            icon: CupertinoIcons.percent,
+                            label: _taxLabel,
+                            value: EstimateFormatters.formatCurrency(totals.tax),
+                            muted: true,
+                          ),
+                          const Divider(color: Color(0xFF303442), height: 1),
+
+                          _TotalsValueRow(
+                            icon: CupertinoIcons.tag,
+                            label: 'Discount',
+                            value: '- ${EstimateFormatters.formatCurrency(totals.discount)}',
+                            muted: true,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -2183,38 +2478,9 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF101117),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFF23252E)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    CupertinoIcons.info_circle,
-                    color: Color(0xFF8E93A6),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Defaults: $_taxLabel • ${(_taxRate * 100).toStringAsFixed(2)}% • $_currencyCode',
-                      style: const TextStyle(
-                        color: Color(0xFF8E93A6),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 18),
             CupertinoButton(
-              color: const Color(0xFF5B8CFF),
+              color: const Color(0xFF38BDF8),
               borderRadius: BorderRadius.circular(18),
               padding: const EdgeInsets.symmetric(vertical: 16),
               onPressed: _isSaving ? null : _saveEstimate,
@@ -2236,12 +2502,30 @@ class _CreateEstimateScreenState extends State<CreateEstimateScreen> {
   }
 }
 
+Widget _estimateFieldIcon(
+    IconData icon, {
+      Color color = const Color(0xFFF3F6FC),
+    }) {
+  return SizedBox(
+    width: 20,
+    height: 20,
+    child: Center(
+      child: Icon(
+        icon,
+        color: color.withOpacity(0.90),
+        size: 16.5,
+      ),
+    ),
+  );
+}
+
 class _PremiumTextField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
   final String hintText;
   final int maxLines;
   final TextInputType? keyboardType;
+  final IconData? leadingIcon;
 
   const _PremiumTextField({
     required this.controller,
@@ -2249,6 +2533,7 @@ class _PremiumTextField extends StatefulWidget {
     required this.hintText,
     this.maxLines = 1,
     this.keyboardType,
+    this.leadingIcon,
   });
 
   @override
@@ -2302,73 +2587,80 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final isSingleLine = widget.maxLines == 1;
+    final hasIcon = widget.leadingIcon != null;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.label,
-              style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Row(
+        crossAxisAlignment: widget.maxLines > 1
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
+        children: [
+          if (hasIcon) ...[
+            Padding(
+              padding: EdgeInsets.only(top: widget.maxLines > 1 ? 2 : 0),
+              child: _estimateFieldIcon(widget.leadingIcon!),
             ),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment:
-              isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+            const SizedBox(width: 10),
+          ],
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    keyboardType: widget.keyboardType,
-                    maxLines: widget.maxLines,
-                    minLines: isSingleLine ? 1 : widget.maxLines,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.35,
-                    ),
-                    cursorColor: const Color(0xFF5B8CFF),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: widget.hintText,
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF697086),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
+                Text(
+                  widget.label,
+                  style: const TextStyle(
+                    color: Color(0xFFA0A7B8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (_showClearButton) ...[
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: _clearText,
-                    child: const Icon(
-                      CupertinoIcons.xmark_circle_fill,
-                      color: Color(0xFF8E93A6),
-                      size: 18,
-                    ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: widget.controller,
+                  focusNode: _focusNode,
+                  keyboardType: widget.keyboardType,
+                  maxLines: widget.maxLines,
+                  minLines: widget.maxLines > 1 ? 3 : 1,
+                  cursorColor: const Color(0xFF38BDF8),
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    height: 1.35,
                   ),
-                ],
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: widget.hintText,
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF697086),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
               ],
             ),
+          ),
+
+          if (_showClearButton) ...[
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: () {
+                widget.controller.clear();
+                _focusNode.requestFocus();
+              },
+              child: const Icon(
+                CupertinoIcons.xmark_circle_fill,
+                color: Color(0xFF8E93A6),
+                size: 18,
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -2425,7 +2717,7 @@ class _PremiumInitialTextField extends StatelessWidget {
                 fontWeight: FontWeight.w500,
                 height: 1.35,
               ),
-              cursorColor: const Color(0xFF5B8CFF),
+              cursorColor: const Color(0xFF38BDF8),
               decoration: InputDecoration(
                 isDense: true,
                 hintText: hintText,
@@ -2447,41 +2739,50 @@ class _PremiumInitialTextField extends StatelessWidget {
 
 class _PremiumPickerField extends StatelessWidget {
   final String label;
+  final IconData leadingIcon;
   final String value;
   final VoidCallback onTap;
-  final VoidCallback? onClear;
   final bool showClearButton;
+  final VoidCallback? onClear;
   final IconData? emptyIcon;
   final VoidCallback? onEmptyIconTap;
 
   const _PremiumPickerField({
     required this.label,
+    required this.leadingIcon,
     required this.value,
     required this.onTap,
-    this.onClear,
     this.showClearButton = false,
+    this.onClear,
     this.emptyIcon,
     this.onEmptyIconTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final clean = value.trim();
     final isPlaceholder =
-        value.startsWith('Select') || value.trim().isEmpty || value == '—';
+        clean.isEmpty || clean.toLowerCase().startsWith('select');
 
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
-        child: Container(
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-          ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              _estimateFieldIcon(
+                leadingIcon,
+                color: isPlaceholder
+                    ? const Color(0xFF8E93A6)
+                    : const Color(0xFFF3F6FC),
+              ),
+
+              const SizedBox(width: 10),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2489,29 +2790,31 @@ class _PremiumPickerField extends StatelessWidget {
                     Text(
                       label,
                       style: const TextStyle(
-                        color: Color(0xFF8E93A6),
+                        color: Color(0xFFA0A7B8),
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
-                      value,
+                      isPlaceholder ? value : clean,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: isPlaceholder
                             ? const Color(0xFF697086)
-                            : Colors.white,
+                            : const Color(0xFFF3F6FC),
                         fontSize: 15,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w800,
                         height: 1.25,
                       ),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(width: 12),
+
               if (showClearButton && onClear != null)
                 GestureDetector(
                   onTap: onClear,
@@ -2521,20 +2824,22 @@ class _PremiumPickerField extends StatelessWidget {
                     size: 18,
                   ),
                 )
-              else if (emptyIcon != null && onEmptyIconTap != null)
+              else if (isPlaceholder &&
+                  emptyIcon != null &&
+                  onEmptyIconTap != null)
                 GestureDetector(
                   onTap: onEmptyIconTap,
-                  child: Icon(
-                    emptyIcon,
-                    color: const Color(0xFF8E93A6),
-                    size: 18,
+                  child: const Icon(
+                    CupertinoIcons.add_circled_solid,
+                    color: Color(0xFF38BDF8),
+                    size: 21,
                   ),
                 )
               else
                 const Icon(
                   CupertinoIcons.chevron_down,
                   color: Color(0xFF8E93A6),
-                  size: 18,
+                  size: 16,
                 ),
             ],
           ),
@@ -2731,7 +3036,7 @@ class _SimpleDateSheetState extends State<_SimpleDateSheet> {
                         child: Container(
                           decoration: BoxDecoration(
                             color: selected
-                                ? const Color(0xFF5B8CFF)
+                                ? const Color(0xFF38BDF8)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -2762,7 +3067,7 @@ class _SimpleDateSheetState extends State<_SimpleDateSheet> {
                 width: double.infinity,
                 child: CupertinoButton(
                   padding: const EdgeInsets.symmetric(vertical: 15),
-                  color: const Color(0xFF5B8CFF),
+                  color: const Color(0xFF38BDF8),
                   borderRadius: BorderRadius.circular(16),
                   onPressed: () {
                     Navigator.pop(context, selectedDate);
@@ -2828,7 +3133,7 @@ class _UnitSelectionSheet extends StatelessWidget {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3A3D49),
+                  color: const Color(0xFF3D4250),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -2838,19 +3143,19 @@ class _UnitSelectionSheet extends StatelessWidget {
               const Row(
                 children: [
                   Icon(
-                    CupertinoIcons.cube_box,
-                    color: Color(0xFFB8C1D9),
-                    size: 22,
+                    CupertinoIcons.cube_box_fill,
+                    color: Color(0xFFF3F6FC),
+                    size: 24,
                   ),
-                  SizedBox(width: 10),
+                  SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       'Choose Unit',
                       style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
+                        color: Color(0xFFF1F4F8),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
                       ),
                     ),
                   ),
@@ -2861,6 +3166,7 @@ class _UnitSelectionSheet extends StatelessWidget {
 
               Expanded(
                 child: ListView.separated(
+                  padding: EdgeInsets.zero,
                   itemCount: units.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
@@ -2868,53 +3174,66 @@ class _UnitSelectionSheet extends StatelessWidget {
                     final selected = unit == selectedUnit;
 
                     return Material(
-                      color: selected
-                          ? const Color(0xFF16233F)
-                          : const Color(0xFF101117),
-                      borderRadius: BorderRadius.circular(18),
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(20),
                         onTap: () => Navigator.pop(context, unit),
                         child: Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(15),
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
+                            color: selected
+                                ? const Color(0xFF102A36)
+                                : const Color(0xFF151922),
+                            borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: selected
-                                  ? const Color(0xFF5B8CFF)
-                                  : const Color(0xFF23252E),
+                                  ? const Color(0xFF38BDF8)
+                                  : const Color(0xFF343A49),
+                              width: 1,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: selected
+                                    ? const Color(0xFF38BDF8).withOpacity(0.14)
+                                    : Colors.black.withOpacity(0.18),
+                                blurRadius: 18,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 _unitIcon(unit),
                                 color: selected
-                                    ? const Color(0xFF8FB0FF)
-                                    : const Color(0xFF8E93A6),
-                                size: 19,
+                                    ? const Color(0xFF38BDF8)
+                                    : const Color(0xFF9AA3B7),
+                                size: 20,
                               ),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 13),
+
                               Expanded(
                                 child: Text(
                                   EstimateFormatters.formatUnit(unit),
                                   style: TextStyle(
                                     color: selected
-                                        ? Colors.white
+                                        ? const Color(0xFFF3F6FC)
                                         : const Color(0xFFE7EAF2),
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ),
+
                               Icon(
                                 selected
                                     ? CupertinoIcons.checkmark_circle_fill
                                     : CupertinoIcons.chevron_right,
                                 color: selected
-                                    ? const Color(0xFF5B8CFF)
+                                    ? const Color(0xFF38BDF8)
                                     : const Color(0xFF8E93A6),
-                                size: selected ? 20 : 16,
+                                size: selected ? 21 : 16,
                               ),
                             ],
                           ),
@@ -2940,15 +3259,22 @@ class _InlineEmptyItemsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.20),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: const Row(
         children: [
           Icon(
-            CupertinoIcons.square_list,
-            color: Color(0xFF8E93A6),
+            CupertinoIcons.square_list_fill,
+            color: Color(0xFF38BDF8),
             size: 20,
           ),
           SizedBox(width: 10),
@@ -2956,9 +3282,10 @@ class _InlineEmptyItemsState extends StatelessWidget {
             child: Text(
               'No items yet. Add your first line item.',
               style: TextStyle(
-                color: Color(0xFF8E93A6),
+                color: Color(0xFFA0A7B8),
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
               ),
             ),
           ),
@@ -2981,29 +3308,57 @@ class _EstimateItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final description = (item.description ?? '').trim();
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF181B23),
+            Color(0xFF131720),
+          ],
+        ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              const Icon(
+                CupertinoIcons.cube_box_fill,
+                color: Color(0xFF38BDF8),
+                size: 18,
+              ),
+              const SizedBox(width: 9),
+
               Expanded(
                 child: Text(
                   item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Color(0xFFF3F6FC),
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.1,
                   ),
                 ),
               ),
+
               const SizedBox(width: 8),
+
               _SmallIconButton(
                 icon: CupertinoIcons.pencil,
                 onTap: onEdit,
@@ -3012,23 +3367,28 @@ class _EstimateItemTile extends StatelessWidget {
               _SmallIconButton(
                 icon: CupertinoIcons.trash,
                 onTap: onDelete,
-                color: const Color(0xFFE05A5A),
+                color: const Color(0xFFFF6B6B),
               ),
             ],
           ),
-          if ((item.description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
+
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 8),
             Text(
-              item.description!,
+              description,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Color(0xFF8E93A6),
+                color: Color(0xFFA0A7B8),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.35,
               ),
             ),
           ],
-          const SizedBox(height: 10),
+
+          const SizedBox(height: 12),
+
           Row(
             children: [
               Expanded(
@@ -3047,13 +3407,15 @@ class _EstimateItemTile extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _MiniInfo(
-                  label: 'Unit Price',
+                  label: 'Price',
                   value: EstimateFormatters.formatCurrency(item.unitPrice),
                 ),
               ),
             ],
           ),
+
           const SizedBox(height: 10),
+
           _MiniInfo(
             label: 'Line Total',
             value: EstimateFormatters.formatCurrency(item.lineTotal),
@@ -3118,32 +3480,44 @@ class _MiniInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: emphasized
+            ? const Color(0xFF102A36)
+            : const Color(0xFF10141C),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F212A)),
+        border: Border.all(
+          color: emphasized
+              ? const Color(0xFF38BDF8).withOpacity(0.42)
+              : const Color(0xFF252B36),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Color(0xFF8E93A6),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.9,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 7),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white,
+              color: emphasized
+                  ? const Color(0xFF7DD3FC)
+                  : const Color(0xFFF3F6FC),
               fontSize: emphasized ? 15 : 13,
-              fontWeight: emphasized ? FontWeight.w700 : FontWeight.w600,
+              fontWeight: emphasized ? FontWeight.w900 : FontWeight.w800,
+              letterSpacing: -0.15,
             ),
           ),
         ],
@@ -3162,10 +3536,21 @@ class _TotalsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(
+          color: const Color(0xFF303442),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(children: children),
     );
@@ -3196,13 +3581,16 @@ class _TotalsEditRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
           child: Row(
             children: [
-              Icon(icon, color: const Color(0xFF8E93A6), size: 18),
+              _estimateFieldIcon(
+                icon,
+                color: const Color(0xFFF3F6FC),
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   label,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Color(0xFFF3F6FC),
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
@@ -3210,6 +3598,8 @@ class _TotalsEditRow extends StatelessWidget {
               ),
               Text(
                 value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Color(0xFFB8C1D9),
                   fontSize: 14,
@@ -3249,13 +3639,18 @@ class _TotalsValueRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF8E93A6), size: 18),
+          _estimateFieldIcon(
+            icon,
+            color: const Color(0xFF38BDF8),
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
               label,
               style: TextStyle(
-                color: muted ? const Color(0xFF8E93A6) : Colors.white,
+                color: muted
+                    ? const Color(0xFF8E93A6)
+                    : const Color(0xFFF3F6FC),
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
               ),
@@ -3264,7 +3659,7 @@ class _TotalsValueRow extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFFF3F6FC),
               fontSize: 15,
               fontWeight: FontWeight.w900,
             ),
@@ -3287,25 +3682,39 @@ class _TotalsGrandRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF102A36),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF5B8CFF)),
+        border: Border.all(
+          color: const Color(0xFF38BDF8).withOpacity(0.52),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF38BDF8).withOpacity(0.16),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.24),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            width: 20,
-            height: 20,
+            width: 22,
+            height: 22,
             decoration: const BoxDecoration(
-              color: Color(0xFF8E93A6),
+              color: Color(0xFF38BDF8),
               shape: BoxShape.circle,
             ),
             child: const Center(
               child: Text(
                 r'$',
                 style: TextStyle(
-                  color: Color(0xFF101117),
-                  fontSize: 12,
+                  color: Color(0xFF08131A),
+                  fontSize: 13,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -3316,7 +3725,7 @@ class _TotalsGrandRow extends StatelessWidget {
             child: Text(
               'Total',
               style: TextStyle(
-                color: Colors.white,
+                color: Color(0xFFF3F6FC),
                 fontSize: 15,
                 fontWeight: FontWeight.w900,
               ),
@@ -3325,7 +3734,7 @@ class _TotalsGrandRow extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFFF3F6FC),
               fontSize: 20,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.3,
@@ -3351,7 +3760,7 @@ class _ChoiceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? const Color(0xFF5B8CFF) : const Color(0xFF101117),
+      color: selected ? const Color(0xFF38BDF8) : const Color(0xFF101117),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -3362,7 +3771,7 @@ class _ChoiceButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: selected
-                  ? const Color(0xFF5B8CFF)
+                  ? const Color(0xFF38BDF8)
                   : const Color(0xFF23252E),
             ),
           ),

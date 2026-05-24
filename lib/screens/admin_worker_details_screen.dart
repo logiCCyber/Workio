@@ -102,6 +102,1508 @@ class _AdminWorkerDetailsScreenState
     return raw;
   }
 
+  String _timeOffLabel(String type) {
+    switch (type.trim().toLowerCase()) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
+
+  IconData _timeOffIcon(String type) {
+    switch (type.trim().toLowerCase()) {
+      case 'sick_leave':
+        return Icons.healing_rounded;
+      case 'personal':
+        return Icons.person_off_rounded;
+      case 'unavailable':
+        return Icons.block_rounded;
+      case 'company_closed':
+        return Icons.business_rounded;
+      case 'vacation':
+      default:
+        return Icons.sunny;
+    }
+  }
+
+  Color _timeOffAccent(String type) {
+    switch (type.trim().toLowerCase()) {
+      case 'vacation':
+        return const Color(0xFFE0B84D); // soft warm yellow
+
+      case 'sick_leave':
+        return const Color(0xFFE06A4B); // orange-red
+
+      case 'personal':
+        return const Color(0xFF3EC7C1); // modern turquoise/cyan
+
+      case 'unavailable':
+        return const Color(0xFFC97A3D); // darker orange
+
+      default:
+        return const Color(0xFF8B7CF6);
+    }
+  }
+
+  String _dateKey(DateTime dt) {
+    final d = DateTime(dt.year, dt.month, dt.day);
+
+    String two(int v) => v.toString().padLeft(2, '0');
+
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  Future<void> _saveWorkerTimeOff({
+    required String type,
+    required DateTime startDate,
+    required DateTime endDate,
+    required bool blockClockIn,
+  }) async {
+    final adminId = supabase.auth.currentUser?.id;
+    if (adminId == null) {
+      _showError('Admin session not found');
+      return;
+    }
+
+    final worker = workerFull ?? widget.worker;
+
+    final workerId = _s(worker['id']);
+    final workerAuthId = _s(worker['auth_user_id']);
+
+    if (workerId.isEmpty || workerAuthId.isEmpty) {
+      _showError('Worker id not found');
+      return;
+    }
+
+    await supabase.from('worker_time_off').insert({
+      'admin_id': adminId,
+      'worker_id': workerId,
+      'worker_auth_id': workerAuthId,
+      'type': type,
+      'title': _timeOffLabel(type),
+      'reason': null,
+      'start_date': _dateKey(startDate),
+      'end_date': _dateKey(endDate),
+      'status': 'active',
+      'block_clock_in': blockClockIn,
+      'notify_before_days': 2,
+    });
+  }
+
+  Future<void> _openWorkerTimeOffSheet() async {
+    final worker = workerFull ?? widget.worker;
+    final workerName = _s(worker['name']).isEmpty ? 'Worker' : _s(worker['name']);
+
+    String selectedType = 'vacation';
+    DateTime startDate = DateTime.now();
+    DateTime endDate = DateTime.now().add(const Duration(days: 2));
+    bool blockClockIn = true;
+    bool saving = false;
+
+    Future<DateTime?> pickDate(DateTime initial) {
+      return showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+        lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+        builder: (context, child) {
+          return Theme(
+            data: ThemeData.dark().copyWith(
+              colorScheme: const ColorScheme.dark(
+                primary: Color(0xFFA78BFA),
+                surface: Color(0xFF1F2025),
+              ),
+            ),
+            child: child!,
+          );
+        },
+      );
+    }
+
+    Widget typeSegment({
+      required String type,
+      required void Function(void Function()) setSheetState,
+    }) {
+      final selected = selectedType == type;
+      final accent = _timeOffAccent(type);
+
+      return Expanded(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              setSheetState(() {
+                selectedType = type;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 76,
+              decoration: BoxDecoration(
+                color: selected ? accent.withOpacity(0.60) : Colors.transparent,
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _timeOffIcon(type),
+                      size: 18,
+                      color: selected
+                          ? accent
+                          : Colors.white.withOpacity(0.62),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      _timeOffLabel(type),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected
+                            ? Colors.white.withOpacity(0.98)
+                            : Colors.white.withOpacity(0.70),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 10.4,
+                        height: 1.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget dateTile({
+      required String label,
+      required DateTime value,
+      required IconData icon,
+      required VoidCallback onTap,
+    }) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Container(
+            height: 74,
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: Colors.white.withOpacity(0.045),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 17,
+                  color: Colors.white.withOpacity(0.48),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.52),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11.3,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        DateFormat('MMM d, yyyy').format(value),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    Future<void> pickTimeOffRange(
+        void Function(void Function()) setSheetState,
+        ) async {
+      final today = DateTime.now();
+      final minDay = DateTime(today.year, today.month, today.day);
+      DateTime visibleMonth = DateTime(startDate.year, startDate.month, 1);
+      DateTime? localStart = DateTime(startDate.year, startDate.month, startDate.day);
+      DateTime? localEnd = DateTime(endDate.year, endDate.month, endDate.day);
+
+      DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+      bool sameDay(DateTime a, DateTime b) {
+        return a.year == b.year && a.month == b.month && a.day == b.day;
+      }
+
+      bool isInRange(DateTime day) {
+        if (localStart == null || localEnd == null) return false;
+
+        final d = dayOnly(day);
+        final s = dayOnly(localStart!);
+        final e = dayOnly(localEnd!);
+
+        return !d.isBefore(s) && !d.isAfter(e);
+      }
+
+      List<DateTime> buildGridDays(DateTime month) {
+        final first = DateTime(month.year, month.month, 1);
+        final offset = first.weekday % 7; // Sunday = 0
+        final gridStart = first.subtract(Duration(days: offset));
+
+        return List.generate(
+          42,
+              (i) => gridStart.add(Duration(days: i)),
+        );
+      }
+
+      String rangeText() {
+        if (localStart == null && localEnd == null) return 'Choose time off dates';
+        if (localStart != null && localEnd == null) {
+          return DateFormat('MMM d, yyyy').format(localStart!);
+        }
+
+        final s = localStart!;
+        final e = localEnd ?? localStart!;
+
+        if (sameDay(s, e)) return DateFormat('MMM d, yyyy').format(s);
+
+        if (s.year == e.year) {
+          return '${DateFormat('MMM d').format(s)} — ${DateFormat('MMM d, yyyy').format(e)}';
+        }
+
+        return '${DateFormat('MMM d, yyyy').format(s)} — ${DateFormat('MMM d, yyyy').format(e)}';
+      }
+
+      final picked = await showModalBottomSheet<DateTimeRange>(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: true,
+        enableDrag: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          return StatefulBuilder(
+            builder: (context, setCalendarState) {
+              final days = buildGridDays(visibleMonth);
+              final monthText = DateFormat('MMMM yyyy').format(visibleMonth);
+
+              void onDayTap(DateTime day) {
+                final d = dayOnly(day);
+
+                if (d.isBefore(minDay)) return;
+
+                setCalendarState(() {
+                  if (localStart == null || (localStart != null && localEnd != null)) {
+                    localStart = d;
+                    localEnd = null;
+                    return;
+                  }
+
+                  final s = dayOnly(localStart!);
+
+                  if (sameDay(d, s)) {
+                    localEnd = d;
+                    return;
+                  }
+
+                  if (d.isBefore(s)) {
+                    localStart = d;
+                    localEnd = null;
+                    return;
+                  }
+
+                  localEnd = d;
+                });
+              }
+
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  10,
+                  38,
+                  10,
+                  10 + MediaQuery.of(sheetContext).padding.bottom,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(32),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            const Color(0xFF2B3038).withOpacity(0.98),
+                            const Color(0xFF232831).withOpacity(0.99),
+                            const Color(0xFF1A1F27).withOpacity(0.99),
+                          ],
+                        ),
+                        border: Border.all(color: Colors.white.withOpacity(0.08)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.36),
+                            blurRadius: 28,
+                            offset: const Offset(0, 16),
+                          ),
+                        ],
+                      ),
+                      child: SafeArea(
+                        top: false,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 46,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.date_range_rounded,
+                                  color: Colors.white.withOpacity(0.72),
+                                  size: 22,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Select Time Off Dates',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 20,
+                                          height: 1.05,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        rangeText(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.56),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12.2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            Container(
+                              padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(24),
+                                color: Colors.white.withOpacity(0.045),
+                                border: Border.all(color: Colors.white.withOpacity(0.08)),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      _TimeOffMonthButton(
+                                        icon: Icons.chevron_left_rounded,
+                                        onTap: () {
+                                          setCalendarState(() {
+                                            visibleMonth = DateTime(
+                                              visibleMonth.year,
+                                              visibleMonth.month - 1,
+                                              1,
+                                            );
+                                          });
+                                        },
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          monthText,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 15.5,
+                                          ),
+                                        ),
+                                      ),
+                                      _TimeOffMonthButton(
+                                        icon: Icons.chevron_right_rounded,
+                                        onTap: () {
+                                          setCalendarState(() {
+                                            visibleMonth = DateTime(
+                                              visibleMonth.year,
+                                              visibleMonth.month + 1,
+                                              1,
+                                            );
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 14),
+
+                                  Row(
+                                    children: const [
+                                      _TimeOffWeekDay('S'),
+                                      _TimeOffWeekDay('M'),
+                                      _TimeOffWeekDay('T'),
+                                      _TimeOffWeekDay('W'),
+                                      _TimeOffWeekDay('T'),
+                                      _TimeOffWeekDay('F'),
+                                      _TimeOffWeekDay('S'),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 8),
+
+                                  GridView.builder(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    itemCount: days.length,
+                                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 7,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                      childAspectRatio: 1,
+                                    ),
+                                    itemBuilder: (context, index) {
+                                      final day = days[index];
+                                      final inMonth = day.month == visibleMonth.month;
+                                      final isStart = localStart != null && sameDay(day, localStart!);
+                                      final isEnd = localEnd != null && sameDay(day, localEnd!);
+                                      final inRange = isInRange(day);
+                                      final selected = isStart || isEnd;
+
+                                      final enabled = !DateTime(day.year, day.month, day.day).isBefore(minDay);
+
+                                      return _TimeOffCalendarDay(
+                                        day: day,
+                                        inMonth: inMonth,
+                                        selected: selected,
+                                        inRange: inRange,
+                                        enabled: enabled,
+                                        onTap: enabled ? () => onDayTap(day) : null,
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(18),
+                                    onTap: () {
+                                      setCalendarState(() {
+                                        localStart = null;
+                                        localEnd = null;
+                                      });
+                                    },
+                                    child: Container(
+                                      height: 52,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(18),
+                                        color: Colors.white.withOpacity(0.045),
+                                        border: Border.all(color: Colors.white.withOpacity(0.08)),
+                                      ),
+                                      child: Text(
+                                        'Reset',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.72),
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(18),
+                                    onTap: () {
+                                      if (localStart == null) return;
+
+                                      final s = dayOnly(localStart!);
+                                      final e = dayOnly(localEnd ?? localStart!);
+
+                                      Navigator.pop(
+                                        sheetContext,
+                                        DateTimeRange(
+                                          start: s,
+                                          end: e.isBefore(s) ? s : e,
+                                        ),
+                                      );
+                                    },
+                                    child: Container(
+                                      height: 52,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(18),
+                                        color: const Color(0xFF42D66B),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF42D66B).withOpacity(0.20),
+                                            blurRadius: 18,
+                                            offset: const Offset(0, 10),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Text(
+                                        'Apply',
+                                        style: TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+
+      if (picked == null) return;
+
+      setSheetState(() {
+        startDate = picked.start;
+        endDate = picked.end.isBefore(picked.start) ? picked.start : picked.end;
+      });
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                10,
+                38,
+                10,
+                10 + MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                  child: Container(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      16 + MediaQuery.of(sheetContext).padding.bottom,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(32),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFF2B3038).withOpacity(0.98),
+                          const Color(0xFF232831).withOpacity(0.99),
+                          const Color(0xFF1A1F27).withOpacity(0.99),
+                        ],
+                      ),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.36),
+                          blurRadius: 28,
+                          offset: const Offset(0, 16),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Icon(
+                                  Icons.beach_access_rounded,
+                                  color: Colors.white.withOpacity(0.72),
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Worker Time Off',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 21,
+                                        height: 1.05,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Set vacation or unavailable days for $workerName',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.56),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12.2,
+                                        height: 1.25,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(22),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(22),
+                                color: Colors.white.withOpacity(0.045),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  typeSegment(
+                                    type: 'vacation',
+                                    setSheetState: setSheetState,
+                                  ),
+                                  typeSegment(
+                                    type: 'sick_leave',
+                                    setSheetState: setSheetState,
+                                  ),
+                                  typeSegment(
+                                    type: 'personal',
+                                    setSheetState: setSheetState,
+                                  ),
+                                  typeSegment(
+                                    type: 'unavailable',
+                                    setSheetState: setSheetState,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                child: dateTile(
+                                  label: 'Start date',
+                                  value: startDate,
+                                  icon: Icons.event_available_rounded,
+                                  onTap: () => pickTimeOffRange(setSheetState),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: dateTile(
+                                  label: 'End date',
+                                  value: endDate,
+                                  icon: Icons.event_busy_rounded,
+                                  onTap: () {},
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(13, 10, 13, 10),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              color: Colors.white.withOpacity(0.045),
+                              border: Border.all(color: Colors.white.withOpacity(0.08)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.lock_clock_rounded,
+                                  size: 18,
+                                  color: Colors.white.withOpacity(0.48),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Block Start Shift',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.82),
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
+                                Switch(
+                                  value: blockClockIn,
+                                  activeColor: const Color(0xFF42D66B),
+                                  activeTrackColor: const Color(0xFF42D66B).withOpacity(0.28),
+                                  onChanged: (v) {
+                                    setSheetState(() {
+                                      blockClockIn = v;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          SizedBox(
+                            width: double.infinity,
+                            height: 52,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF42D66B),
+                                foregroundColor: Colors.black,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              onPressed: saving
+                                  ? null
+                                  : () async {
+                                setSheetState(() => saving = true);
+
+                                try {
+                                  await _saveWorkerTimeOff(
+                                    type: selectedType,
+                                    startDate: startDate,
+                                    endDate: endDate,
+                                    blockClockIn: blockClockIn,
+                                  );
+
+                                  if (!mounted) return;
+
+                                  Navigator.pop(sheetContext);
+                                  AppToast.success(context, 'Time off saved');
+                                  _refreshTimeOffRows();
+                                } catch (e) {
+                                  _showError('Time off failed: $e');
+                                } finally {
+                                  if (mounted) {
+                                    setSheetState(() => saving = false);
+                                  }
+                                }
+                              },
+                              child: saving
+                                  ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                                  : const Text(
+                                'Save Time Off',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchWorkerTimeOffRows() async {
+    final adminId = supabase.auth.currentUser?.id;
+    if (adminId == null) return [];
+
+    final worker = workerFull ?? widget.worker;
+
+    final workerId = _s(worker['id']);
+    final workerAuthId = _s(worker['auth_user_id']);
+
+    if (workerId.isEmpty && workerAuthId.isEmpty) return [];
+
+    final today = _dateKey(DateTime.now());
+
+    final rows = await supabase
+        .from('worker_time_off')
+        .select()
+        .eq('admin_id', adminId)
+        .eq('status', 'active')
+        .gte('end_date', today)
+        .order('start_date', ascending: true);
+
+    final list = List<Map<String, dynamic>>.from(rows as List);
+
+
+    return list.where((row) {
+      final rowWorkerId = _s(row['worker_id']);
+      final rowWorkerAuthId = _s(row['worker_auth_id']);
+
+      final matchByWorkerId =
+          workerId.isNotEmpty && rowWorkerId == workerId;
+
+      final matchByAuthId =
+          workerAuthId.isNotEmpty && rowWorkerAuthId == workerAuthId;
+
+      return matchByWorkerId || matchByAuthId;
+    }).toList();
+  }
+
+  void _refreshTimeOffRows() {
+    if (!mounted) return;
+
+    setState(() {
+      _timeOffRefreshKey++;
+      _timeOffRowsFuture = _fetchWorkerTimeOffRows();
+    });
+  }
+
+  DateTime? _parseTimeOffDate(Object? raw) {
+    final s = _s(raw);
+    if (s.isEmpty) return null;
+
+    try {
+      final d = DateTime.parse(s).toLocal();
+      return DateTime(d.year, d.month, d.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _timeOffRangeText(Map<String, dynamic> row) {
+    final start = _parseTimeOffDate(row['start_date']);
+    final end = _parseTimeOffDate(row['end_date']);
+
+    if (start == null || end == null) return 'No date';
+
+    final sameYear = start.year == end.year;
+
+    final startText = sameYear
+        ? DateFormat('MMM d').format(start)
+        : DateFormat('MMM d, yyyy').format(start);
+
+    final endText = DateFormat('MMM d, yyyy').format(end);
+
+    return '$startText – $endText';
+  }
+
+  String _timeOffStatusText(Map<String, dynamic> row) {
+    final start = _parseTimeOffDate(row['start_date']);
+    final end = _parseTimeOffDate(row['end_date']);
+
+    if (start == null || end == null) return 'Scheduled time off';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (today.isBefore(start)) {
+      final days = start.difference(today).inDays;
+      if (days == 0) return 'Starts today';
+      if (days == 1) return 'Starts tomorrow';
+      return 'Starts in $days days';
+    }
+
+    if (!today.isAfter(end)) {
+      final days = end.difference(today).inDays;
+      if (days == 0) return 'Ends today';
+      if (days == 1) return 'Ends tomorrow';
+      return 'Ends in $days days';
+    }
+
+    return 'Completed';
+  }
+
+  double _timeOffProgress(Map<String, dynamic> row) {
+    final start = _parseTimeOffDate(row['start_date']);
+    final end = _parseTimeOffDate(row['end_date']);
+
+    if (start == null || end == null) return 0;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final totalDays = end.difference(start).inDays + 1;
+    if (totalDays <= 0) return 0;
+
+    if (today.isBefore(start)) return 0;
+    if (today.isAfter(end)) return 1;
+
+    final passedDays = today.difference(start).inDays + 1;
+    return (passedDays / totalDays).clamp(0.0, 1.0);
+  }
+
+  String _timeOffElapsedText(Map<String, dynamic> row) {
+    final start = _parseTimeOffDate(row['start_date']);
+    final end = _parseTimeOffDate(row['end_date']);
+
+    if (start == null || end == null) return 'No progress';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (today.isBefore(start)) return 'Not started yet';
+
+    final passed = today.isAfter(end)
+        ? end.difference(start).inDays + 1
+        : today.difference(start).inDays + 1;
+
+    if (passed <= 0) return 'Not started yet';
+    if (passed == 1) return '1 day passed';
+
+    return '$passed days passed';
+  }
+
+  String _timeOffRemainingText(Map<String, dynamic> row) {
+    final end = _parseTimeOffDate(row['end_date']);
+
+    if (end == null) return 'No end date';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (today.isAfter(end)) return 'Completed';
+
+    final left = end.difference(today).inDays;
+
+    if (left == 0) return 'Ends today';
+    if (left == 1) return '1 day left';
+
+    return '$left days left';
+  }
+
+  Future<void> _cancelWorkerTimeOff(Map<String, dynamic> row) async {
+    final id = _s(row['id']);
+    if (id.isEmpty) return;
+
+    await supabase
+        .from('worker_time_off')
+        .update({
+      'status': 'cancelled',
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    })
+        .eq('id', id);
+
+    if (!mounted) return;
+
+    AppToast.success(context, 'Time off cancelled');
+
+    _refreshTimeOffRows();
+  }
+
+  Future<void> _confirmCancelWorkerTimeOff(Map<String, dynamic> row) async {
+    final label = _timeOffLabel(_s(row['type']));
+    final range = _timeOffRangeText(row);
+
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  14,
+                  16,
+                  16 + MediaQuery.of(sheetContext).padding.bottom,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF2A2024).withOpacity(0.98),
+                      const Color(0xFF211C22).withOpacity(0.99),
+                      const Color(0xFF171A21).withOpacity(0.99),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.redAccent.withOpacity(0.22),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.redAccent.withOpacity(0.12),
+                      blurRadius: 24,
+                      spreadRadius: -8,
+                      offset: const Offset(0, 12),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.36),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 5,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(15),
+                              color: Colors.redAccent.withOpacity(0.16),
+                              border: Border.all(
+                                color: Colors.redAccent.withOpacity(0.26),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.event_busy_rounded,
+                              color: Colors.redAccent,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Cancel time off?',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 20,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      Text(
+                        '$label • $range',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.78),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                          height: 1.35,
+                        ),
+                      ),
+
+                      const SizedBox(height: 6),
+
+                      Text(
+                        'The worker will be able to start shift again if no other active time off exists.',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.54),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.2,
+                          height: 1.35,
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: BorderSide(
+                                  color: Colors.white.withOpacity(0.14),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: () => Navigator.pop(sheetContext, false),
+                              child: const Text(
+                                'Keep',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: () => Navigator.pop(sheetContext, true),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (ok == true) {
+      await _cancelWorkerTimeOff(row);
+    }
+  }
+
+  Widget _timeOffActionPill({
+    required String text,
+    required Color textColor,
+    required VoidCallback? onTap,
+  }) {
+    final child = Container(
+      width: 68,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withOpacity(0.055),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.075),
+        ),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: FontWeight.w900,
+          fontSize: 9.6,
+          height: 1.0,
+        ),
+      ),
+    );
+
+    if (onTap == null) return child;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _workerTimeOffPanel() {
+    final future = _timeOffRowsFuture ??= _fetchWorkerTimeOffRows();
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      key: ValueKey(_timeOffRefreshKey),
+      future: future,
+      builder: (context, snapshot) {
+        final rows = snapshot.data ?? const <Map<String, dynamic>>[];
+
+        if (snapshot.connectionState == ConnectionState.waiting && rows.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        if (rows.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return _sectionCentered(
+          Container(
+            margin: EdgeInsets.zero,
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF2F3036).withOpacity(0.98),
+                  const Color(0xFF24252B).withOpacity(0.99),
+                  const Color(0xFF1A1D24).withOpacity(0.99),
+                ],
+              ),
+              border: Border.all(
+                color: const Color(0xFFA78BFA).withOpacity(0.18),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFA78BFA).withOpacity(0.10),
+                  blurRadius: 22,
+                  spreadRadius: -8,
+                  offset: const Offset(0, 12),
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.32),
+                  blurRadius: 22,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.beach_access_rounded,
+                        color: Colors.white.withOpacity(0.72),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Active Time Off',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14.5,
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                ...List.generate(rows.length, (index) {
+                  final row = rows[index];
+                  final type = _s(row['type']);
+                  final accent = _timeOffAccent(type);
+                  final blocked = row['block_clock_in'] == true;
+                  final progress = _timeOffProgress(row);
+                  final elapsedText = _timeOffElapsedText(row);
+                  final remainingText = _timeOffRemainingText(row);
+
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == rows.length - 1 ? 0 : 10,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 11, 10, 11),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        color: Colors.white.withOpacity(0.045),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.08),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _timeOffIcon(type),
+                            color: accent,
+                            size: 19,
+                          ),
+                          const SizedBox(width: 10),
+
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _timeOffLabel(type),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 13.2,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  _timeOffRangeText(row),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.58),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11.4,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: LinearProgressIndicator(
+                                    value: progress,
+                                    minHeight: 5,
+                                    backgroundColor: Colors.white.withOpacity(0.08),
+                                    valueColor: AlwaysStoppedAnimation<Color>(accent),
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        elapsedText,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.48),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 10.5,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      remainingText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: accent,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 10.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              _timeOffActionPill(
+                                text: 'Remove',
+                                textColor: Colors.white.withOpacity(0.68),
+                                onTap: () => _confirmCancelWorkerTimeOff(row),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _deleteWorker() async {
     final session = supabase.auth.currentSession;
     if (session == null) {
@@ -3205,6 +4707,8 @@ class _AdminWorkerDetailsScreenState
   // DateTime _focusedDay = DateTime.now();
   // DateTime? _selectedDay;
   Map<String, dynamic>? workerFull;
+  int _timeOffRefreshKey = 0;
+  Future<List<Map<String, dynamic>>>? _timeOffRowsFuture;
 
   // Future<void> _exportPdf() async {
   //   final pdf = pw.Document();
@@ -3533,6 +5037,7 @@ class _AdminWorkerDetailsScreenState
     _loadHistory();
     _paymentsFuture = _loadPayments();
     _lastPaymentFuture = _loadLastPayment();
+    _timeOffRowsFuture = _fetchWorkerTimeOffRows();
 
     // ⏱ тик каждую секунду
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -3587,6 +5092,7 @@ class _AdminWorkerDetailsScreenState
     if (data != null) {
       setState(() {
         workerFull = Map<String, dynamic>.from(data);
+        _timeOffRowsFuture = _fetchWorkerTimeOffRows();
       });
     }
   }
@@ -6493,7 +7999,7 @@ class _AdminWorkerDetailsScreenState
     required bool isSuspended,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
       child: Align(
         alignment: Alignment.center,
         child: ConstrainedBox(
@@ -8453,6 +9959,8 @@ class _AdminWorkerDetailsScreenState
                         onSelected: (v) async {
                           if (v == 'statistics') {
                             _showWorkerSummarySheet();
+                          } else if (v == 'time_off') {
+                            await _openWorkerTimeOffSheet();
                           } else if (v == 'pdf_menu') {
                             await _openWorkerPdfMenuSheet();
                           } else if (v == 'edit') {
@@ -8488,6 +9996,33 @@ class _AdminWorkerDetailsScreenState
                                       color: enabledColor,
                                       fontWeight: FontWeight.w700,
                                     ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'time_off',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.beach_access_rounded,
+                                    size: 18,
+                                    color: enabledColor,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Time Off',
+                                      style: TextStyle(
+                                        color: enabledColor,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: Colors.white.withOpacity(0.38),
                                   ),
                                 ],
                               ),
@@ -8651,7 +10186,6 @@ class _AdminWorkerDetailsScreenState
             padding: const EdgeInsets.only(bottom: 24),
             children: [
 
-              // ================= HEADER =================
               workerHeaderExact(
                 email: (workerFull?['email'] ?? widget.worker['email'] ?? '').toString(),
                 avatarUrl: workerFull?['avatar_url']
@@ -8665,9 +10199,13 @@ class _AdminWorkerDetailsScreenState
                 lastPaidDate: null,
               ),
 
+              _workerTimeOffPanel(),
+
+              const SizedBox(height: 6),
+
               historyPanel,
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
             ],
           ),
@@ -12333,6 +13871,128 @@ class _SectionEmptyState extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TimeOffMonthButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _TimeOffMonthButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withOpacity(0.045),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Icon(
+            icon,
+            color: Colors.white.withOpacity(0.72),
+            size: 21,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeOffWeekDay extends StatelessWidget {
+  final String text;
+
+  const _TimeOffWeekDay(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Center(
+        child: Text(
+          text,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.50),
+            fontWeight: FontWeight.w900,
+            fontSize: 11,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeOffCalendarDay extends StatelessWidget {
+  final DateTime day;
+  final bool inMonth;
+  final bool selected;
+  final bool inRange;
+  final VoidCallback? onTap;
+  final bool enabled;
+
+  const _TimeOffCalendarDay({
+    required this.day,
+    required this.inMonth,
+    required this.selected,
+    required this.inRange,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = selected
+        ? Colors.white.withOpacity(0.16)
+        : inRange
+        ? const Color(0xFF42D66B).withOpacity(0.11)
+        : Colors.white.withOpacity(0.025);
+
+    final border = selected
+        ? Colors.white.withOpacity(0.18)
+        : inRange
+        ? const Color(0xFF42D66B).withOpacity(0.18)
+        : Colors.white.withOpacity(0.055);
+
+    final textColor = !enabled
+        ? Colors.white.withOpacity(0.16)
+        : !inMonth
+        ? Colors.white.withOpacity(0.24)
+        : selected
+        ? Colors.white
+        : Colors.white.withOpacity(0.82);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: border),
+          ),
+          child: Text(
+            '${day.day}',
+            style: TextStyle(
+              color: textColor,
+              fontWeight: selected ? FontWeight.w900 : FontWeight.w800,
+              fontSize: 13,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -37,7 +37,10 @@ class _WorkerScreenState extends State<WorkerScreen>
   String? _avatarUrl;
   final WorkerService _service = WorkerService();
 
-  bool get canStartShift => _accessMode == 'active';
+  bool get _isOnTimeOff =>
+      _activeTimeOff != null && _activeTimeOff?['block_clock_in'] == true;
+
+  bool get canStartShift => _accessMode == 'active' && !_isOnTimeOff;
 
   bool get isViewOnly {
     final mode = _accessMode.trim().toLowerCase();
@@ -53,8 +56,10 @@ class _WorkerScreenState extends State<WorkerScreen>
 
   Map<String, dynamic>? _activeShift;
   Map<String, dynamic>? _lastCompleted;
+  Map<String, dynamic>? _activeTimeOff;
   double _totalHours = 0;
   double _totalEarned = 0;
+  bool _timeOffPosterShown = false;
 
   Timer? _ticker;
   Duration _elapsed = Duration.zero;
@@ -232,6 +237,7 @@ class _WorkerScreenState extends State<WorkerScreen>
         _service.getTotals(),
         _service.getWorkerProfile(),
         _service.getLastPayment(),
+        _service.getActiveTimeOff(),
       ]);
 
       final active = results[0] as Map<String, dynamic>?;
@@ -239,6 +245,7 @@ class _WorkerScreenState extends State<WorkerScreen>
       final totals = results[2] as dynamic;
       final worker = results[3] as Map<String, dynamic>?;
       final lastPayment = results[4] as Map<String, dynamic>?;
+      final activeTimeOff = results[5] as Map<String, dynamic>?;
 
       if (worker == null) {
         throw Exception('Worker profile not found');
@@ -262,13 +269,34 @@ class _WorkerScreenState extends State<WorkerScreen>
 
       _activeShift = active;
       _lastCompleted = last;
+      _activeTimeOff = activeTimeOff;
       _totalHours = totals.totalHours;
       _totalEarned = totals.totalEarned;
 
       _setupTicker();
 
+      final shouldShowTimeOffPoster =
+          activeTimeOff != null &&
+              activeTimeOff['block_clock_in'] == true &&
+              !_timeOffPosterShown &&
+              !silent;
+
+      if (activeTimeOff == null) {
+        _timeOffPosterShown = false;
+      }
+
       if (mounted) {
         setState(() {});
+
+        if (shouldShowTimeOffPoster) {
+          _timeOffPosterShown = true;
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _showTimeOffPoster();
+            }
+          });
+        }
       }
     } catch (_) {
     } finally {
@@ -323,6 +351,228 @@ class _WorkerScreenState extends State<WorkerScreen>
   String _fmtClock(DateTime dtLocal) => DateFormat.Hm().format(dtLocal);
   String _fmtDate(DateTime dtLocal) => DateFormat.yMMMd().format(dtLocal);
 
+  String _timeOffTypeLabel() {
+    final type = (_activeTimeOff?['type'] ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
+
+  String _timeOffEndText() {
+    final raw = (_activeTimeOff?['end_date'] ?? '').toString().trim();
+    final dt = DateTime.tryParse(raw);
+
+    if (dt == null) return raw.isEmpty ? 'the selected date' : raw;
+
+    return DateFormat.yMMMd().format(dt.toLocal());
+  }
+
+  IconData _timeOffNoticeIcon() {
+    final type = (_activeTimeOff?['type'] ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'vacation':
+        return Icons.wb_sunny_rounded;
+      case 'sick_leave':
+        return Icons.healing_rounded;
+      case 'personal':
+        return Icons.event_available_rounded;
+      case 'unavailable':
+        return Icons.block_rounded;
+      case 'company_closed':
+        return Icons.business_rounded;
+      default:
+        return Icons.event_busy_rounded;
+    }
+  }
+
+  String _timeOffNoticeTitle() {
+    final type = (_activeTimeOff?['type'] ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'vacation':
+        return 'You are on vacation';
+      case 'sick_leave':
+        return 'You are on sick leave';
+      case 'personal':
+        return 'You are on personal day';
+      case 'unavailable':
+        return 'You are unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      default:
+        return 'Time off active';
+    }
+  }
+
+  String _timeOffNoticeMessage() {
+    return 'Time tracking is paused until ${_timeOffEndText()}.';
+  }
+
+  Future<void> _showTimeOffPoster() async {
+    if (!mounted || !_isOnTimeOff) return;
+
+    final title = _timeOffNoticeTitle();
+    final message = _timeOffNoticeMessage();
+    final icon = _timeOffNoticeIcon();
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.68),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 18),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF2F3036),
+                      Color(0xFF24252B),
+                      Color(0xFF1A1D24),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.09),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.42),
+                      blurRadius: 30,
+                      offset: const Offset(0, 18),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+
+                    const SizedBox(height: 22),
+
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        color: Colors.white.withOpacity(0.055),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.09),
+                        ),
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 32,
+                        color: Colors.white.withOpacity(0.78),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 21,
+                        height: 1.08,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.62),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.2,
+                        height: 1.35,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF42D66B),
+                          foregroundColor: Colors.black,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text(
+                          'OK',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _handleBlockedStartTap() {
+    if (_isOnTimeOff) {
+      _toast(
+        _timeOffNoticeTitle(),
+        _timeOffNoticeMessage(),
+        icon: _timeOffNoticeIcon(),
+        accentColor: Colors.white.withOpacity(0.70),
+      );
+      return;
+    }
+
+    _toast(
+      'View-only mode',
+      'You can open chat and tasks, but cannot change anything.',
+      icon: Icons.visibility_rounded,
+      accentColor: const Color(0xFFFFC14D),
+    );
+  }
+
   Future<void> _startShift() async {
     setState(() => _actionBusy = true);
     try {
@@ -341,7 +591,17 @@ class _WorkerScreenState extends State<WorkerScreen>
         );
       }
     } catch (e) {
-      _toast('Error', e.toString(), icon: Icons.error_outline);
+      final message = e.toString().replaceFirst('Exception: ', '');
+
+      _toast(
+        message.toLowerCase().contains('time off') ||
+            message.toLowerCase().contains('vacation')
+            ? 'Start blocked'
+            : 'Error',
+        message,
+        icon: Icons.error_outline,
+        accentColor: const Color(0xFFFF7A7A),
+      );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -751,7 +1011,6 @@ class _WorkerScreenState extends State<WorkerScreen>
           ),
         ),
       );
-
       if (mounted) {
         setState(() {});
       }
@@ -978,16 +1237,7 @@ class _WorkerScreenState extends State<WorkerScreen>
                       onMessagesTap: _openWorkerChat,
                       onPrimaryTap: onShift
                           ? _endShiftConfirm
-                          : (canStartShift
-                          ? _startShift
-                          : () {
-                        _toast(
-                          'View-only mode',
-                          'You can open chat and tasks, but cannot change anything.',
-                          icon: Icons.visibility_rounded,
-                          accentColor: const Color(0xFFFFC14D),
-                        );
-                      }),
+                          : (canStartShift ? _startShift : _handleBlockedStartTap),
                       onPaymentsTap: () {
                         Navigator.push(
                           context,

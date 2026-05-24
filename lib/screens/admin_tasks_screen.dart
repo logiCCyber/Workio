@@ -55,6 +55,49 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
     return 'Uploaded';
   }
 
+  String _proofMetaText(Map<String, dynamic> attachment, String key) {
+    final raw = attachment['proof_meta'];
+
+    if (raw is Map) {
+      final meta = Map<String, dynamic>.from(raw);
+      return _s(meta[key]);
+    }
+
+    return '';
+  }
+
+  bool _isTaskImage(Map<String, dynamic> attachment) {
+    return _s(attachment['attachment_type']).toLowerCase() == 'image' &&
+        _s(attachment['media_url']).isNotEmpty;
+  }
+
+  bool _isAdminBeforePhoto(Map<String, dynamic> attachment) {
+    if (!_isTaskImage(attachment)) return false;
+
+    final role = _s(attachment['uploaded_by_role']).toLowerCase();
+    final proofKind = _s(attachment['proof_kind']).toLowerCase();
+    final proofLabel = _proofMetaText(attachment, 'proof_label').toLowerCase();
+
+    return role == 'admin' &&
+        (proofKind == 'checklist_before' || proofLabel == 'before');
+  }
+
+  bool _isTaskCompletionAfterPhoto(Map<String, dynamic> attachment) {
+    if (!_isTaskImage(attachment)) return false;
+
+    final role = _s(attachment['uploaded_by_role']).toLowerCase();
+    final proofKind = _s(attachment['proof_kind']).toLowerCase();
+    final proofLabel = _proofMetaText(attachment, 'proof_label').toLowerCase();
+    final title = _proofMetaText(attachment, 'title').toLowerCase();
+    final taskTitle = _proofMetaText(attachment, 'task_title');
+
+    return role == 'worker' &&
+        (proofKind == 'task_completion_after' ||
+            proofLabel == 'after' ||
+            title.contains('completion') ||
+            taskTitle.isNotEmpty);
+  }
+
   OverlayEntry? _taskToastEntry;
 
   void _hideTaskToast() {
@@ -259,10 +302,13 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
   bool _isAssignableWorker(Map<String, dynamic> w) {
     final mode = _workerMode(w);
     final isActive = w['is_active'] == true;
+    final onBlockedTimeOff =
+        w['time_off_active'] == true && w['time_off_block_clock_in'] == true;
 
     if (!isActive) return false;
     if (mode == 'suspended') return false;
     if (mode == 'view_only') return false;
+    if (onBlockedTimeOff) return false;
 
     return true;
   }
@@ -614,6 +660,130 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
     }
   }
 
+  Future<void> _openChecklistProofSourceSheet({
+    required String taskId,
+    required String subtaskId,
+    required String subtaskTitle,
+  }) async {
+    final source = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF2B2F36),
+                Color(0xFF23272E),
+                Color(0xFF1B1F26),
+              ],
+            ),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.add_a_photo_rounded,
+                      color: _TaskPalette.green,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        subtaskTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _TaskPalette.textMain,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _TaskActionCapsule(
+                        label: 'Gallery',
+                        icon: Icons.photo_library_outlined,
+                        height: 58,
+                        onTap: () => Navigator.pop(context, 'gallery'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _TaskActionCapsule(
+                        label: 'Camera',
+                        icon: Icons.photo_camera_outlined,
+                        accentColor: _TaskPalette.green,
+                        height: 58,
+                        onTap: () => Navigator.pop(context, 'camera'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (source == null) return;
+
+    try {
+      XFile? file;
+
+      if (source == 'camera') {
+        file = await TaskService.pickTaskImageFromCamera();
+      } else {
+        file = await ImagePicker().pickImage(source: ImageSource.gallery);
+      }
+
+      if (file == null) return;
+
+      await TaskService.addAdminTaskImage(
+        taskId: taskId,
+        file: file,
+        proofSubtaskId: subtaskId,
+        proofKind: 'checklist_before',
+        proofMeta: {
+          'subtask_title': subtaskTitle,
+          'proof_label': 'Before',
+        },
+      );
+
+      if (!mounted) return;
+
+      _showTaskToast(
+        'Proof photo added',
+        icon: Icons.add_a_photo_rounded,
+        accent: _TaskPalette.green,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showTaskToast(
+        'Proof photo failed: $e',
+        icon: Icons.error_outline_rounded,
+        accent: _TaskPalette.red,
+      );
+    }
+  }
+
   Future<void> _addTaskFile(String taskId) async {
     try {
       final file = await TaskService.pickTaskFile();
@@ -638,6 +808,527 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
         accent: _TaskPalette.red,
       );
     }
+  }
+
+  bool _hasChecklistBeforeProofFor({
+    required List<Map<String, dynamic>> attachments,
+    required String subtaskId,
+  }) {
+    return attachments.any((a) {
+      return _s(a['proof_subtask_id']) == subtaskId &&
+          _isAdminBeforePhoto(a);
+    });
+  }
+
+  Map<String, dynamic>? _proofAttachmentFor({
+    required List<Map<String, dynamic>> attachments,
+    required String subtaskId,
+    required String side, // before | after
+  }) {
+    final cleanSide = side.toLowerCase();
+
+    final matches = attachments.where((a) {
+      final proofSubtaskId = _s(a['proof_subtask_id']);
+      if (proofSubtaskId != subtaskId) return false;
+
+      final role = _s(a['uploaded_by_role']).toLowerCase();
+      final proofKind = _s(a['proof_kind']).toLowerCase();
+      final proofLabel = _proofMetaText(a, 'proof_label').toLowerCase();
+
+      if (cleanSide == 'before') {
+        return role == 'admin' &&
+            (proofKind.contains('before') || proofLabel == 'before');
+      }
+
+      return role == 'worker' &&
+          (proofKind.contains('after') || proofLabel == 'after');
+    }).toList();
+
+    return matches.isEmpty ? null : matches.last;
+  }
+
+  void _openWorkProofSheet({
+    required String taskId,
+    required String taskTitle,
+    required List<Map<String, dynamic>> proofAttachments,
+  }) {
+    int pageIndex = 0;
+    final pageController = PageController();
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              top: false,
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF2A2E35).withOpacity(0.98),
+                      const Color(0xFF23272E).withOpacity(0.99),
+                      const Color(0xFF1B1F26).withOpacity(1),
+                    ],
+                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.36),
+                      blurRadius: 28,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: TaskService.watchTaskSubtasks(taskId),
+                  builder: (context, snapshot) {
+                    final subtasks = snapshot.data ?? const <Map<String, dynamic>>[];
+
+                    if (subtasks.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Text(
+                          'No checklist items found',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      );
+                    }
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.16),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.compare_rounded,
+                              color: _TaskPalette.green,
+                              size: 23,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Work Proof',
+                                    style: TextStyle(
+                                      color: _TaskPalette.textMain,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 21,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    taskTitle.isEmpty
+                                        ? 'Before and after photos'
+                                        : taskTitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.54),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(999),
+                              onTap: () => Navigator.pop(sheetContext),
+                              child: SizedBox(
+                                width: 34,
+                                height: 34,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    color: Colors.white.withOpacity(0.72),
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: pageIndex <= 0
+                                  ? null
+                                  : () {
+                                pageController.previousPage(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                );
+                              },
+                              icon: Icon(
+                                Icons.chevron_left_rounded,
+                                color: pageIndex <= 0
+                                    ? Colors.white.withOpacity(0.25)
+                                    : Colors.white,
+                                size: 30,
+                              ),
+                            ),
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  '${pageIndex + 1}/${subtasks.length}',
+                                  style: const TextStyle(
+                                    color: _TaskPalette.textMain,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: pageIndex >= subtasks.length - 1
+                                  ? null
+                                  : () {
+                                pageController.nextPage(
+                                  duration: const Duration(milliseconds: 220),
+                                  curve: Curves.easeOutCubic,
+                                );
+                              },
+                              icon: Icon(
+                                Icons.chevron_right_rounded,
+                                color: pageIndex >= subtasks.length - 1
+                                    ? Colors.white.withOpacity(0.25)
+                                    : Colors.white,
+                                size: 30,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(
+                          height: 560,
+                          child: PageView.builder(
+                            controller: pageController,
+                            itemCount: subtasks.length,
+                            onPageChanged: (index) {
+                              setSheetState(() {
+                                pageIndex = index;
+                              });
+                            },
+                            itemBuilder: (context, index) {
+                              final item = subtasks[index];
+                              final subtaskId = _s(item['id']);
+                              final title = _s(item['title']);
+
+                              final before = _proofAttachmentFor(
+                                attachments: proofAttachments,
+                                subtaskId: subtaskId,
+                                side: 'before',
+                              );
+
+                              final after = _proofAttachmentFor(
+                                attachments: proofAttachments,
+                                subtaskId: subtaskId,
+                                side: 'after',
+                              );
+
+                              return SingleChildScrollView(
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.04),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.08),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        title.isEmpty ? 'Checklist item' : title,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: _TaskPalette.textMain,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    _proofImageTile(
+                                      label: 'Before',
+                                      subtitle: 'Photo from admin',
+                                      attachment: before,
+                                      accent: const Color(0xFF7C9BFF),
+                                      emptyText: 'No before photo yet',
+                                    ),
+
+                                    const SizedBox(height: 12),
+
+                                    _proofImageTile(
+                                      label: 'After',
+                                      subtitle: 'Completion photo from worker',
+                                      attachment: after,
+                                      accent: _TaskPalette.green,
+                                      emptyText: 'No after photo yet',
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _proofImageTile({
+    required String label,
+    required String subtitle,
+    required Map<String, dynamic>? attachment,
+    required Color accent,
+    required String emptyText,
+  }) {
+    final url = attachment == null ? '' : _s(attachment['media_url']);
+    final hasImage = url.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF2D3138).withOpacity(0.96),
+            const Color(0xFF23272E).withOpacity(0.99),
+          ],
+        ),
+        border: Border.all(
+          color: accent.withOpacity(hasImage ? 0.26 : 0.12),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                hasImage ? Icons.photo_camera_rounded : Icons.image_not_supported_rounded,
+                color: accent,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: _TaskPalette.textMain,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 4),
+
+          Text(
+            hasImage ? subtitle : emptyText,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.55),
+              fontWeight: FontWeight.w700,
+              fontSize: 12.2,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          GestureDetector(
+            onTap: hasImage ? () => _openImagePreview(url) : null,
+            child: Container(
+              height: 190,
+              width: double.infinity,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.22),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.08),
+                ),
+              ),
+              child: hasImage
+                  ? Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Center(
+                  child: Text(
+                    'Image failed to load',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+              )
+                  : Center(
+                child: Icon(
+                  Icons.photo_size_select_actual_outlined,
+                  color: Colors.white.withOpacity(0.30),
+                  size: 38,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _workProofButton({
+    required String taskId,
+    required String taskTitle,
+    required List<Map<String, dynamic>> proofAttachments,
+  }) {
+    final hasBefore = proofAttachments.any(_isAdminBeforePhoto);
+    final hasAfter = proofAttachments.any(_isTaskCompletionAfterPhoto);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: () {
+          _openWorkProofSheet(
+            taskId: taskId,
+            taskTitle: taskTitle,
+            proofAttachments: proofAttachments,
+          );
+        },
+        child: _SheetSectionCard(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 9),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(15),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF356657),
+                        Color(0xFF274C41),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: _TaskPalette.green.withOpacity(0.20),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.compare_rounded,
+                    color: Colors.white,
+                    size: 21,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Work Proof',
+                        style: TextStyle(
+                          color: _TaskPalette.textMain,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Text(
+                            hasBefore ? 'Before added' : 'Before missing',
+                            style: TextStyle(
+                              color: hasBefore
+                                  ? const Color(0xFF7C9BFF)
+                                  : Colors.white.withOpacity(0.42),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11.4,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.32),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            hasAfter ? 'After added' : 'After missing',
+                            style: TextStyle(
+                              color: hasAfter
+                                  ? _TaskPalette.green
+                                  : Colors.white.withOpacity(0.42),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.keyboard_arrow_right_rounded,
+                  color: Colors.white.withOpacity(0.62),
+                  size: 24,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openImagePreview(String imageUrl) async {
@@ -1412,6 +2103,7 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                             final isProofTarget =
                                                 selectedProofSubtaskId != null && selectedProofSubtaskId == itemId;
 
+
                                             IconData statusIcon;
                                             Color statusColor;
 
@@ -1514,6 +2206,43 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                                                   decorationColor: Colors.white.withOpacity(0.42),
                                                                 ),
                                                               ),
+                                                            ),
+                                                            const SizedBox(width: 8),
+                                                            StreamBuilder<List<Map<String, dynamic>>>(
+                                                              stream: TaskService.watchTaskAttachments(taskId),
+                                                              builder: (context, proofSnapshot) {
+                                                                final proofAttachments =
+                                                                    proofSnapshot.data ?? const <Map<String, dynamic>>[];
+
+                                                                final hasBeforeProof = _hasChecklistBeforeProofFor(
+                                                                  attachments: proofAttachments,
+                                                                  subtaskId: itemId,
+                                                                );
+
+                                                                if (hasBeforeProof) {
+                                                                  return const Icon(
+                                                                    Icons.minimize,
+                                                                    color: _TaskPalette.green,
+                                                                    size: 20,
+                                                                  );
+                                                                }
+
+                                                                final canAddBeforePhoto = itemStatus == 'todo';
+
+                                                                if (!canAddBeforePhoto) {
+                                                                  return const SizedBox(width: 20, height: 20);
+                                                                }
+
+                                                                return _ProofMiniActionBtn(
+                                                                  icon: Icons.add_a_photo_rounded,
+                                                                  color: _TaskPalette.green,
+                                                                  onTap: () => _openChecklistProofSourceSheet(
+                                                                    taskId: taskId,
+                                                                    subtaskId: itemId,
+                                                                    subtaskTitle: title,
+                                                                  ),
+                                                                );
+                                                              },
                                                             ),
                                                             if (showArrow) ...[
                                                               const SizedBox(width: 6),
@@ -1728,17 +2457,37 @@ class _AdminTasksScreenState extends State<AdminTasksScreen> {
                                     _s(a['media_url']).isNotEmpty;
                               }).toList();
 
+                              final normalImageAttachments = imageAttachments.where((a) {
+                                return _s(a['proof_subtask_id']).isEmpty &&
+                                    _s(a['proof_kind']).isEmpty;
+                              }).toList();
+
                               final fileAttachments = attachments.where((a) {
                                 return _s(a['attachment_type']).toLowerCase() !=
                                     'image';
                               }).toList();
 
+                              final proofAttachments = imageAttachments.where((a) {
+                                return _s(a['proof_subtask_id']).isNotEmpty ||
+                                    _s(a['proof_kind']).isNotEmpty;
+                              }).toList();
+
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  if (imageAttachments.isNotEmpty) ...[
+                                  if (proofAttachments.isNotEmpty) ...[
+                                    _workProofButton(
+                                      taskId: taskId,
+                                      taskTitle: _s(task['title']),
+                                      proofAttachments: proofAttachments,
+                                    ),
+                                    if (normalImageAttachments.isNotEmpty || fileAttachments.isNotEmpty)
+                                      const SizedBox(height: 10),
+                                  ],
+
+                                  if (normalImageAttachments.isNotEmpty) ...[
                                     _TaskImageCarousel(
-                                      images: imageAttachments,
+                                      images: normalImageAttachments,
                                       onOpen: _openImagePreview,
                                       onDelete: (attachment) =>
                                           _deleteAttachment(attachment),
@@ -6900,6 +7649,40 @@ class _MiniSelectCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: body,
+      ),
+    );
+  }
+}
+
+class _ProofMiniActionBtn extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ProofMiniActionBtn({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: SizedBox(
+          width: 30,
+          height: 30,
+          child: Center(
+            child: Icon(
+              icon,
+              color: color,
+              size: 20,
+            ),
+          ),
+        ),
       ),
     );
   }

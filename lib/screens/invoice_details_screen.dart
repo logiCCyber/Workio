@@ -25,6 +25,7 @@ import '../services/invoice_email_service.dart';
 import '../utils/estimate_calculator.dart';
 import '../utils/estimate_formatters.dart';
 import '../utils/company_logo_helper.dart';
+import '../utils/workio_icon_mapper.dart';
 
 import '../dialogs/send_invoice_dialog.dart';
 
@@ -117,7 +118,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
       if (invoice == null) {
         if (!mounted) return;
-        _showSnack('Invoice не найден');
+        _showSnack('Invoice not found');
         Navigator.pop(context);
         return;
       }
@@ -168,7 +169,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
         _isLoading = false;
       });
 
-      _showSnack('Не удалось загрузить invoice');
+      _showSnack('Failed to load invoice');
     }
     await _loadDocuments();
     await _loadEmailLogs();
@@ -191,10 +192,10 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       if (!mounted) return;
 
       await _loadInitialData();
-      _showSnack('Платёж обновлён');
+      _showSnack('Payment updated');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при обновлении платежа');
+      _showSnack('Failed to update payment');
     } finally {
       if (!mounted) return;
 
@@ -208,36 +209,25 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
 
     if (invoice == null) {
-      _showSnack('Invoice не найден');
+      _showSnack('Invoice not found');
       return;
     }
 
     if (_balanceDue <= 0) {
-      _showSnack('Этот invoice уже оплачен');
+      _showSnack('This invoice is already paid');
       return;
     }
 
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('Confirm full payment?'),
-        content: Text(
-          'Are you sure you received the full balance amount of '
-              '${EstimateFormatters.formatCurrency(_balanceDue)}?',
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Yes, mark as paid'),
-          ),
-        ],
-      ),
+    final confirmed = await _showWorkioConfirmDialog(
+      icon: CupertinoIcons.checkmark_circle_fill,
+      accent: const Color(0xFF33C27F),
+      title: 'Confirm full payment?',
+      message:
+      'Are you sure you received the full balance amount of ${EstimateFormatters.formatCurrency(_balanceDue)}?',
+      confirmText: 'Mark Paid',
     );
+
+    if (!confirmed) return;
 
     if (confirmed != true) return;
 
@@ -266,7 +256,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       _showSnack('Invoice marked as paid');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при mark as paid');
+      _showSnack('Failed to mark invoice as paid');
     } finally {
       if (!mounted) return;
 
@@ -278,9 +268,9 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
   static const List<String> _paymentMethodOptions = [
     'Cash',
-    'E-transfer',
+    'E.transfer',
     'Card',
-    'Bank Transfer',
+    'Bank',
     'Cheque',
     'Other',
   ];
@@ -308,10 +298,14 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     DateTime paymentDate = existingPayment?.paymentDate ?? DateTime.now();
     String selectedMethod = (existingPayment?.paymentMethod ?? '').trim();
 
+    if (selectedMethod.isEmpty) {
+      selectedMethod = 'Cash';
+    }
+
     final result = await showModalBottomSheet<InvoicePaymentModel>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1B1E27),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -358,6 +352,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       children: [
                         _paymentSheetInputRow(
                           icon: CupertinoIcons.money_dollar_circle,
+                          color: const Color(0xFFF3F6FC),
                           label: 'Amount',
                           controller: amountController,
                           hintText: '0.00',
@@ -368,6 +363,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                         _summaryDivider(),
                         _paymentSheetPickerRow(
                           icon: CupertinoIcons.calendar,
+                          color: const Color(0xFFF3F6FC),
                           label: 'Payment Date',
                           value: EstimateFormatters.formatDate(paymentDate),
                           onTap: () async {
@@ -394,14 +390,14 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                         children: const [
                           Icon(
                             CupertinoIcons.creditcard,
-                            color: Color(0xFF9AA4BF),
+                            color: const Color(0xFFF3F6FC),
                             size: 15,
                           ),
                           SizedBox(width: 8),
                           Text(
                             'Payment Method',
                             style: TextStyle(
-                              color: Color(0xFF9AA4BF),
+                              color: const Color(0xFFBFC6D4),
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                             ),
@@ -426,14 +422,14 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     _paymentSheetPanel(
                       children: [
                         _paymentSheetInputRow(
-                          icon: CupertinoIcons.number,
+                          color: const Color(0xFFF3F6FC),
                           label: 'Reference Number',
                           controller: referenceController,
                           hintText: 'Optional reference',
                         ),
                         _summaryDivider(),
                         _paymentSheetInputRow(
-                          icon: CupertinoIcons.text_alignleft,
+                          color: const Color(0xFFF3F6FC),
                           label: 'Notes',
                           controller: notesController,
                           hintText: 'Optional notes',
@@ -448,7 +444,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       width: double.infinity,
                       child: CupertinoButton(
                         padding: const EdgeInsets.symmetric(vertical: 15),
-                        color: const Color(0xFF5B8CFF),
+                        color: const Color(0xFF7C5CFF),
                         borderRadius: BorderRadius.circular(16),
                         onPressed: () async {
                           final amount = EstimateCalculator.parseNumber(
@@ -531,9 +527,25 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF242730),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.26),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.025),
+            blurRadius: 8,
+            spreadRadius: -4,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
         children: children,
@@ -542,7 +554,8 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
   }
 
   Widget _paymentSheetInputRow({
-    required IconData icon,
+    IconData? icon,
+    Color color = const Color(0xFF8E93A6),
     required String label,
     required TextEditingController controller,
     required String hintText,
@@ -555,15 +568,17 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
         crossAxisAlignment:
         maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
-          Padding(
-            padding: EdgeInsets.only(top: maxLines > 1 ? 4 : 0),
-            child: Icon(
-              icon,
-              color: const Color(0xFF8E93A6),
-              size: 18,
+          if (icon != null) ...[
+            Padding(
+              padding: EdgeInsets.only(top: maxLines > 1 ? 4 : 0),
+              child: Icon(
+                icon,
+                color: color,
+                size: 18,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
+            const SizedBox(width: 12),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -582,7 +597,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                   keyboardType: keyboardType,
                   maxLines: maxLines,
                   minLines: maxLines > 1 ? 3 : 1,
-                  cursorColor: const Color(0xFF5B8CFF),
+                  cursorColor: const Color(0xFF7C5CFF),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -610,7 +625,8 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
   }
 
   Widget _paymentSheetPickerRow({
-    required IconData icon,
+    IconData? icon,
+    Color color = const Color(0xFF8E93A6),
     required String label,
     required String value,
     required VoidCallback onTap,
@@ -624,12 +640,14 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           child: Row(
             children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 18,
-              ),
-              const SizedBox(width: 12),
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  color: color,
+                  size: 18,
+                ),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,14 +688,24 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     switch (method.trim().toLowerCase()) {
       case 'cash':
         return CupertinoIcons.money_dollar_circle;
+
       case 'e-transfer':
-        return CupertinoIcons.paperplane;
+      case 'e.transfer':
+        return CupertinoIcons.paperplane_fill;
+
       case 'card':
-        return CupertinoIcons.creditcard;
+        return CupertinoIcons.creditcard_fill;
+
       case 'bank transfer':
+      case 'bank':
         return CupertinoIcons.building_2_fill;
+
       case 'cheque':
-        return CupertinoIcons.doc_text;
+        return CupertinoIcons.doc_text_fill;
+
+      case 'other':
+        return CupertinoIcons.ellipsis_circle_fill;
+
       default:
         return CupertinoIcons.ellipsis_circle;
     }
@@ -696,9 +724,12 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       width: double.infinity,
       height: 56,
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF242730),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -718,15 +749,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     width: itemWidth,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF5B8CFF),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF5B8CFF).withValues(alpha: 0.22),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
+                        color: const Color(0xFF7C5CFF).withValues(alpha: 0.32),
                       ),
                     ),
                   ),
@@ -857,11 +880,270 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     );
   }
 
+  Future<bool> _showWorkioConfirmDialog({
+    required IconData icon,
+    required Color accent,
+    required String title,
+    required String message,
+    String cancelText = 'Cancel',
+    String confirmText = 'Confirm',
+    bool destructive = false,
+  }) async {
+    final result = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withValues(alpha: 0.68),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return const SizedBox.shrink();
+      },
+      transitionBuilder: (dialogContext, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: MediaQuery.of(dialogContext).size.width - 42,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF242730),
+                    borderRadius: BorderRadius.circular(26),
+                    border: Border.all(
+                      color: const Color(0xFF343846),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        blurRadius: 34,
+                        offset: const Offset(0, 18),
+                      ),
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.12),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.13),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.42),
+                          ),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: accent,
+                          size: 27,
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFF3F6FC),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFA1A7B8),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.38,
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: CupertinoButton(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              color: const Color(0xFF20232D),
+                              borderRadius: BorderRadius.circular(16),
+                              onPressed: () {
+                                Navigator.pop(dialogContext, false);
+                              },
+                              child: Text(
+                                cancelText,
+                                style: const TextStyle(
+                                  color: Color(0xFFF3F6FC),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: CupertinoButton(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              color: destructive
+                                  ? const Color(0xFFFF5C5C)
+                                  : accent,
+                              borderRadius: BorderRadius.circular(16),
+                              onPressed: () {
+                                Navigator.pop(dialogContext, true);
+                              },
+                              child: Text(
+                                confirmText,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    return result == true;
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+    final clean = message.trim();
+    if (clean.isEmpty) return;
+
+    final lower = clean.toLowerCase();
+
+    final isError =
+        lower.contains('failed') ||
+            lower.contains('error') ||
+            lower.contains('not found') ||
+            lower.contains('cannot');
+
+    final isSuccess =
+        lower.contains('saved') ||
+            lower.contains('updated') ||
+            lower.contains('added') ||
+            lower.contains('deleted') ||
+            lower.contains('sent') ||
+            lower.contains('copied') ||
+            lower.contains('archived') ||
+            lower.contains('paid');
+
+    final Color accent = isError
+        ? const Color(0xFFFF5C5C)
+        : isSuccess
+        ? const Color(0xFF33C27F)
+        : const Color(0xFF7C5CFF);
+
+    final IconData icon = isError
+        ? CupertinoIcons.xmark_circle_fill
+        : isSuccess
+        ? CupertinoIcons.checkmark_circle_fill
+        : CupertinoIcons.info_circle_fill;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+
+    messenger.showSnackBar(
+      SnackBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+        padding: EdgeInsets.zero,
+        duration: const Duration(milliseconds: 2400),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: const Color(0xFF242730),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.45),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
+              ),
+              BoxShadow(
+                color: accent.withValues(alpha: 0.12),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: accent,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  clean,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: messenger.hideCurrentSnackBar,
+                child: const Padding(
+                  padding: EdgeInsets.all(3),
+                  child: Icon(
+                    CupertinoIcons.xmark,
+                    color: Color(0xFF9AA3B7),
+                    size: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -869,7 +1151,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
 
     if (invoice == null) {
-      _showSnack('Invoice не найден');
+      _showSnack('Invoice not found');
       return;
     }
 
@@ -890,7 +1172,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final latestLog = _latestEmailLog;
 
     if (latestLog == null) {
-      _showSnack('Пока нет прошлой отправки');
+      _showSnack('No previous send yet');
       return;
     }
 
@@ -920,7 +1202,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
 
     if (invoice == null) {
-      _showSnack('Invoice не найден');
+      _showSnack('Invoice not found');
       return;
     }
 
@@ -948,10 +1230,10 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       await _loadDocuments();
       await _loadEmailLogs();
 
-      _showSnack('Invoice отправлен');
+      _showSnack('Invoice sent');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при отправке invoice');
+      _showSnack('Failed to send invoice');
     } finally {
       if (!mounted) return;
 
@@ -992,7 +1274,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
         _isEmailLogsLoading = false;
       });
 
-      _showSnack('Не удалось загрузить email history');
+      _showSnack('Failed to load email history');
     }
   }
 
@@ -1002,7 +1284,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF20242D),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1019,23 +1301,54 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     width: 42,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.16),
+                      color: Colors.white.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Email History',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                  const SizedBox(height: 18),
+
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Icon(
+                          CupertinoIcons.mail_solid,
+                          color: Color(0xFFF3F6FC),
+                          size: 26,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Email History',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Track sent emails, reminders, and delivery activity',
+                              style: TextStyle(
+                                color: Color(0xFF9AA3B2),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 14),
+
+                  const SizedBox(height: 16),
                   Expanded(
                     child: ListView.separated(
                       itemCount: _emailLogs.length,
@@ -1091,7 +1404,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
         _isDocumentsLoading = false;
       });
 
-      _showSnack('Не удалось загрузить документы');
+      _showSnack('Failed to load email history');
     }
   }
 
@@ -1101,7 +1414,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1B1E27),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1162,7 +1475,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
 
     if (invoice == null) {
-      _showSnack('Invoice не найден');
+      _showSnack('Invoice not found');
       return;
     }
 
@@ -1184,7 +1497,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при открытии PDF');
+      _showSnack('Failed to open PDF');
     } finally {
       if (!mounted) return;
 
@@ -1198,7 +1511,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
 
     if (invoice == null) {
-      _showSnack('Invoice не найден');
+      _showSnack('Invoice not found');
       return;
     }
 
@@ -1220,7 +1533,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при шаринге PDF');
+      _showSnack('Failed to share PDF');
     } finally {
       if (!mounted) return;
 
@@ -1234,12 +1547,12 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
 
     if (invoice == null) {
-      _showSnack('Invoice не найден');
+      _showSnack('Invoice not found');
       return;
     }
 
     if (invoice.id.trim().isEmpty) {
-      _showSnack('Сначала сохрани invoice');
+      _showSnack('Save the invoice first');
       return;
     }
 
@@ -1262,11 +1575,11 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
       if (!mounted) return;
 
-      _showSnack('PDF сохранён');
+      _showSnack('PDF saved');
       await _loadDocuments();
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при сохранении PDF');
+      _showSnack('Error saving PDF');
     } finally {
       if (!mounted) return;
 
@@ -1287,10 +1600,10 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       );
 
       if (!launched) {
-        _showSnack('Не удалось открыть документ');
+        _showSnack('Could not open document');
       }
     } catch (e) {
-      _showSnack('Ошибка при открытии документа');
+      _showSnack('Error opening document');
     }
   }
 
@@ -1300,11 +1613,11 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
       if (!mounted) return;
 
-      _showSnack('Документ удалён');
+      _showSnack('Document deleted');
       await _loadDocuments();
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при удалении документа');
+      _showSnack('Error deleting document');
     }
   }
 
@@ -1437,7 +1750,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     return showModalBottomSheet<DateTime>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF101117),
+      backgroundColor: const Color(0xFF1B1E27),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
@@ -1478,22 +1791,44 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       const SizedBox(height: 18),
 
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            CupertinoIcons.calendar,
-                            color: Color(0xFFB8C1D9),
-                            size: 22,
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Icon(
+                              CupertinoIcons.calendar,
+                              color: Color(0xFFF3F6FC),
+                              size: 22,
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text(
-                              title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.2,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 180),
+                                  child: Text(
+                                    _workioShortDate(selectedDate),
+                                    key: ValueKey(selectedDate.toIso8601String()),
+                                    style: const TextStyle(
+                                      color: Color(0xFFA1A7B8),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -1505,10 +1840,18 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
+                          clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0D0E14),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: const Color(0xFF23252E)),
+                            color: const Color(0xFF242730),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0xFF343846)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.30),
+                                blurRadius: 20,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
                           ),
                           child: Column(
                             children: [
@@ -1530,11 +1873,18 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                                       width: 42,
                                       height: 42,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF15161C),
+                                        color: const Color(0xFF20232D),
                                         borderRadius: BorderRadius.circular(14),
                                         border: Border.all(
-                                          color: const Color(0xFF23252E),
+                                          color: const Color(0xFF343846),
                                         ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(alpha: 0.22),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 5),
+                                          ),
+                                        ],
                                       ),
                                       child: const Icon(
                                         CupertinoIcons.chevron_left,
@@ -1631,7 +1981,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                                       ),
 
                                       const SizedBox(height: 10),
-                                      const Divider(color: Color(0xFF23252E), height: 1),
+                                      const Divider(color: Color(0xFF343846), height: 1),
                                       const SizedBox(height: 10),
 
                                       Expanded(
@@ -1673,31 +2023,49 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                                                   );
                                                 });
                                               },
-                                              child: AnimatedContainer(
+                                              child: AnimatedScale(
                                                 duration: const Duration(milliseconds: 140),
-                                                decoration: BoxDecoration(
-                                                  color: isSelected
-                                                      ? const Color(0xFF5B8CFF)
-                                                      : Colors.transparent,
-                                                  borderRadius: BorderRadius.circular(14),
-                                                  border: isSelected
-                                                      ? Border.all(
-                                                    color: const Color(0xFF83A6FF),
-                                                  )
-                                                      : null,
-                                                ),
-                                                alignment: Alignment.center,
-                                                child: Text(
-                                                  '${date.day}',
-                                                  style: TextStyle(
+                                                scale: isSelected ? 1.06 : 1.0,
+                                                curve: Curves.easeOutCubic,
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(milliseconds: 160),
+                                                  curve: Curves.easeOutCubic,
+                                                  decoration: BoxDecoration(
                                                     color: isSelected
-                                                        ? Colors.white
+                                                        ? const Color(0xFF7C5CFF)
                                                         : isCurrentMonth
-                                                        ? Colors.white
-                                                        : const Color(0xFF4F5668),
-                                                    fontSize: 16,
-                                                    fontWeight:
-                                                    isSelected ? FontWeight.w800 : FontWeight.w600,
+                                                        ? const Color(0xFF20232D)
+                                                        : Colors.transparent,
+                                                    borderRadius: BorderRadius.circular(14),
+                                                    border: Border.all(
+                                                      color: isSelected
+                                                          ? const Color(0xFF9D7CFF)
+                                                          : isCurrentMonth
+                                                          ? const Color(0xFF303442)
+                                                          : Colors.transparent,
+                                                    ),
+                                                    boxShadow: isSelected
+                                                        ? [
+                                                      BoxShadow(
+                                                        color: const Color(0xFF7C5CFF).withValues(alpha: 0.22),
+                                                        blurRadius: 12,
+                                                        offset: const Offset(0, 6),
+                                                      ),
+                                                    ]
+                                                        : null,
+                                                  ),
+                                                  alignment: Alignment.center,
+                                                  child: Text(
+                                                    '${date.day}',
+                                                    style: TextStyle(
+                                                      color: isSelected
+                                                          ? Colors.white
+                                                          : isCurrentMonth
+                                                          ? const Color(0xFFF3F6FC)
+                                                          : const Color(0xFF687086),
+                                                      fontSize: 16,
+                                                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
@@ -1741,13 +2109,13 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                             child: CupertinoButton(
                               padding:
                               const EdgeInsets.symmetric(vertical: 15),
-                              color: const Color(0xFF5B8CFF),
+                              color: const Color(0xFF7C5CFF),
                               borderRadius: BorderRadius.circular(16),
                               onPressed: () {
                                 Navigator.pop(sheetContext, selectedDate);
                               },
                               child: const Text(
-                                'OK',
+                                'Apply Date',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w800,
@@ -1807,118 +2175,153 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
     final selected = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF15161C),
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (_) {
         return SafeArea(
           top: false,
-          child: SizedBox(
-            height: 540,
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 42,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3A3D49),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      CupertinoIcons.tag_fill,
-                      color: Colors.white,
-                      size: 18,
+          child: FractionallySizedBox(
+            heightFactor: 0.72,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              child: Column(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3D4250),
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    SizedBox(width: 8),
-                    Text(
-                      'Change Status',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Choose the current invoice status',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Divider(color: Color(0xFF262832), height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: statuses.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final status = statuses[index];
-                      final selectedNow = status == _status;
 
-                      return Material(
-                        color: const Color(0xFF101117),
-                        borderRadius: BorderRadius.circular(18),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: () => Navigator.pop(context, status),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: selectedNow
-                                    ? const Color(0xFF5B8CFF)
-                                    : const Color(0xFF23252E),
+                  const SizedBox(height: 18),
+
+                  const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: 3),
+                        child: Icon(
+                          CupertinoIcons.tag_fill,
+                          color: Color(0xFFF3F6FC),
+                          size: 23,
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Change Status',
+                              style: TextStyle(
+                                color: Color(0xFFF1F4F8),
+                                fontSize: 23,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
                               ),
                             ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _invoiceStatusIcon(status),
+                            SizedBox(height: 4),
+                            Text(
+                              'Choose the current invoice status',
+                              style: TextStyle(
+                                color: Color(0xFFA0A7B8),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Expanded(
+                    child: ListView.separated(
+                      padding: EdgeInsets.zero,
+                      itemCount: statuses.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final status = statuses[index];
+                        final selectedNow = status == _status;
+                        final statusColor = _invoiceStatusColor(status);
+
+                        return Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => Navigator.pop(context, status),
+                            child: Container(
+                              padding: const EdgeInsets.all(15),
+                              decoration: BoxDecoration(
+                                color: selectedNow
+                                    ? statusColor.withValues(alpha: 0.16)
+                                    : const Color(0xFF151922),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
                                   color: selectedNow
-                                      ? const Color(0xFF5B8CFF)
-                                      : const Color(0xFFB6BCD0),
-                                  size: 18,
+                                      ? statusColor.withValues(alpha: 0.85)
+                                      : const Color(0xFF343A49),
+                                  width: 1,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    _statusLabel(status),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.18),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _invoiceStatusIcon(status),
+                                    color: selectedNow
+                                        ? statusColor
+                                        : const Color(0xFFF3F6FC),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 13),
+                                  Expanded(
+                                    child: Text(
+                                      _statusLabel(status),
+                                      style: const TextStyle(
+                                        color: Color(0xFFF1F4F8),
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (selectedNow)
-                                  const Icon(
-                                    CupertinoIcons.checkmark_circle_fill,
-                                    color: Color(0xFF5B8CFF),
-                                    size: 18,
+                                  Icon(
+                                    selectedNow
+                                        ? CupertinoIcons.checkmark_circle_fill
+                                        : CupertinoIcons.chevron_right,
+                                    color: selectedNow
+                                        ? statusColor
+                                        : const Color(0xFF9AA3B7),
+                                    size: selectedNow ? 21 : 16,
                                   ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1961,47 +2364,79 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final value = await showModalBottomSheet<double>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (context) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
             20,
-            20,
+            16,
             20,
             MediaQuery.of(context).viewInsets.bottom + 20,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3D4250),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 18),
+
               _buildSheetHeader(
                 icon: CupertinoIcons.percent,
                 title: 'Tax Amount',
                 subtitle: 'Set the tax amount for this invoice',
               ),
+
               const SizedBox(height: 16),
+
               _PremiumTextField(
                 controller: valueController,
                 label: 'Tax',
                 hintText: '0.00',
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
+
               const SizedBox(height: 18),
+
               SizedBox(
                 width: double.infinity,
                 child: CupertinoButton(
-                  color: const Color(0xFF5B8CFF),
+                  color: const Color(0xFF7C5CFF),
                   borderRadius: BorderRadius.circular(16),
                   onPressed: () {
                     final parsed =
                     EstimateCalculator.parseNumber(valueController.text);
                     Navigator.pop(context, parsed);
                   },
-                  child: const Text(
-                    'Apply',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        CupertinoIcons.check_mark_circled_solid,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Apply',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2028,47 +2463,79 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final value = await showModalBottomSheet<double>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (context) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
             20,
-            20,
+            16,
             20,
             MediaQuery.of(context).viewInsets.bottom + 20,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3D4250),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 18),
+
               _buildSheetHeader(
                 icon: CupertinoIcons.tag,
                 title: 'Discount Amount',
                 subtitle: 'Set the discount amount',
               ),
+
               const SizedBox(height: 16),
+
               _PremiumTextField(
                 controller: valueController,
                 label: 'Discount',
                 hintText: '0.00',
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
+
               const SizedBox(height: 18),
+
               SizedBox(
                 width: double.infinity,
                 child: CupertinoButton(
-                  color: const Color(0xFF5B8CFF),
+                  color: const Color(0xFF7C5CFF),
                   borderRadius: BorderRadius.circular(16),
                   onPressed: () {
                     final parsed =
                     EstimateCalculator.parseNumber(valueController.text);
                     Navigator.pop(context, parsed);
                   },
-                  child: const Text(
-                    'Apply',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        CupertinoIcons.check_mark_circled_solid,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Apply',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2110,10 +2577,14 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final result = await showModalBottomSheet<InvoiceItemModel>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -2128,6 +2599,17 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3D4250),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
                     _buildSheetHeader(
                       icon: existingItem == null
                           ? CupertinoIcons.add_circled
@@ -2168,12 +2650,17 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                           onTap: () async {
                             final unit = await showModalBottomSheet<String>(
                               context: context,
-                              backgroundColor: const Color(0xFF15161C),
+                              isScrollControlled: true,
+                              isDismissible: true,
+                              enableDrag: true,
+                              useSafeArea: true,
+                              backgroundColor: const Color(0xFF1B1F28),
                               shape: const RoundedRectangleBorder(
                                 borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(28),
+                                  top: Radius.circular(30),
                                 ),
                               ),
+                              clipBehavior: Clip.antiAlias,
                               builder: (_) {
                                 const units = [
                                   'fixed',
@@ -2236,7 +2723,8 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: CupertinoButton(
-                        color: const Color(0xFF5B8CFF),
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        color: const Color(0xFF7C5CFF),
                         borderRadius: BorderRadius.circular(16),
                         onPressed: () {
                           final title = titleController.text.trim();
@@ -2270,9 +2758,25 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
                           Navigator.pop(context, item);
                         },
-                        child: Text(
-                          existingItem == null ? 'Add Item' : 'Save Changes',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              existingItem == null
+                                  ? CupertinoIcons.plus_circle_fill
+                                  : CupertinoIcons.checkmark_circle_fill,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              existingItem == null ? 'Add Item' : 'Save Changes',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -2296,17 +2800,32 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     });
   }
 
-  void _removeItem(int index) {
+  Future<void> _removeItem(int index) async {
+    if (index < 0 || index >= _items.length) return;
+
+    final item = _items[index];
+
+    final confirmed = await _showWorkioConfirmDialog(
+      icon: CupertinoIcons.trash_fill,
+      accent: const Color(0xFFFF5C5C),
+      title: 'Delete item?',
+      message: '“${item.title}” will be removed from this invoice.',
+      confirmText: 'Delete',
+      destructive: true,
+    );
+
+    if (!confirmed) return;
+
     setState(() {
       _items.removeAt(index);
       _items = _items
           .asMap()
           .entries
-          .map(
-            (entry) => entry.value.copyWith(sortOrder: entry.key),
-      )
+          .map((entry) => entry.value.copyWith(sortOrder: entry.key))
           .toList();
     });
+
+    _showSnack('Item deleted');
   }
 
   Future<void> _addPayment() async {
@@ -2324,10 +2843,10 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       if (!mounted) return;
 
       await _loadInitialData();
-      _showSnack('Платёж добавлен');
+      _showSnack('Payment added');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при добавлении платежа');
+      _showSnack('Error adding payment');
     } finally {
       if (!mounted) return;
 
@@ -2338,26 +2857,17 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
   }
 
   Future<void> _deletePayment(InvoicePaymentModel payment) async {
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('Удалить платёж?'),
-        content: Text(
-          'Платёж на ${EstimateFormatters.formatCurrency(payment.amount)} будет удалён.',
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await _showWorkioConfirmDialog(
+      icon: CupertinoIcons.trash_fill,
+      accent: const Color(0xFFFF5C5C),
+      title: 'Delete payment?',
+      message:
+      'The payment of ${EstimateFormatters.formatCurrency(payment.amount)} will be deleted.',
+      confirmText: 'Delete',
+      destructive: true,
     );
+
+    if (!confirmed) return;
 
     if (confirmed != true) return;
 
@@ -2367,10 +2877,10 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       if (!mounted) return;
 
       await _loadInitialData();
-      _showSnack('Платёж удалён');
+      _showSnack('Payment deleted');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при удалении платежа');
+      _showSnack('Failed to delete payment');
     }
   }
 
@@ -2380,7 +2890,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF20242D),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -2402,16 +2912,44 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Payments',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 3),
+                        child: Icon(
+                          CupertinoIcons.creditcard_fill,
+                          color: Color(0xFFF3F6FC),
+                          size: 24,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Payments',
+                              style: TextStyle(
+                                color: Color(0xFFF1F4F8),
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${_payments.length} payment${_payments.length == 1 ? '' : 's'} recorded',
+                              style: const TextStyle(
+                                color: Color(0xFFA0A7B8),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
                   Expanded(
@@ -2441,25 +2979,15 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
     if (invoice == null) return;
 
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('Archive invoice?'),
-        content: Text(
-          'Invoice "${invoice.title}" will be moved to archived.',
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
+    final confirmed = await _showWorkioConfirmDialog(
+      icon: CupertinoIcons.archivebox_fill,
+      accent: const Color(0xFF8B5CF6),
+      title: 'Archive invoice?',
+      message: 'Invoice “${invoice.title}” will be moved to archived.',
+      confirmText: 'Archive',
     );
+
+    if (!confirmed) return;
 
     if (confirmed != true) return;
 
@@ -2493,28 +3021,17 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     final invoice = _invoice;
     if (invoice == null) return;
 
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (_) => CupertinoAlertDialog(
-        title: const Text('Delete permanently?'),
-        content: const Text(
-          'Only mistaken draft invoices should be deleted permanently. This action cannot be undone.',
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await _showWorkioConfirmDialog(
+      icon: CupertinoIcons.exclamationmark_triangle_fill,
+      accent: const Color(0xFFFF5C5C),
+      title: 'Delete permanently?',
+      message:
+      'Only mistaken draft invoices should be deleted permanently. This action cannot be undone.',
+      confirmText: 'Delete',
+      destructive: true,
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     setState(() {
       _isDeleting = true;
@@ -2551,12 +3068,12 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     if (invoice == null) return;
 
     if (_titleController.text.trim().isEmpty) {
-      _showSnack('Введите title invoice');
+      _showSnack('Enter invoice title');
       return;
     }
 
     if (_items.isEmpty) {
-      _showSnack('Добавь хотя бы один item');
+      _showSnack('Add at least one item');
       return;
     }
 
@@ -2599,10 +3116,10 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
         _invoice = saved;
       });
 
-      _showSnack('Invoice обновлён');
+      _showSnack('Invoice updated');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при сохранении invoice');
+      _showSnack('Error saving invoice');
     } finally {
       if (!mounted) return;
 
@@ -2644,17 +3161,17 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: true,
+      enableDrag: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) {
         return WillPopScope(
           onWillPop: () async {
-            await closeSheet(sheetContext);
-            return false;
+            return true;
           },
           child: AnimatedPadding(
             duration: const Duration(milliseconds: 180),
@@ -2663,7 +3180,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
               bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
             ),
             child: SizedBox(
-              height: MediaQuery.of(sheetContext).size.height * 0.88,
+              height: MediaQuery.of(sheetContext).size.height * 0.84,
               child: SafeArea(
                 top: false,
                 child: Padding(
@@ -2684,7 +3201,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                         children: [
                           Icon(
                             icon,
-                            color: const Color(0xFF8FB0FF),
+                            color: const Color(0xFFF3F6FC),
                             size: 22,
                           ),
                           const SizedBox(width: 10),
@@ -2697,17 +3214,6 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.3,
                               ),
-                            ),
-                          ),
-                          CupertinoButton(
-                            padding: EdgeInsets.zero,
-                            onPressed: () async {
-                              await closeSheet(sheetContext);
-                            },
-                            child: const Icon(
-                              CupertinoIcons.xmark_circle_fill,
-                              color: Color(0xFF8E93A6),
-                              size: 28,
                             ),
                           ),
                         ],
@@ -2728,14 +3234,77 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
                       const SizedBox(height: 16),
 
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF151922),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFF343A49),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _TextEditorIconButton(
+                                icon: Icons.select_all_rounded,
+                                color: const Color(0xFFF3F6FC),
+                                onTap: () {
+                                  final text = tempController.text;
+                                  if (text.isEmpty) return;
+
+                                  editorFocusNode.requestFocus();
+                                  tempController.selection = TextSelection(
+                                    baseOffset: 0,
+                                    extentOffset: text.length,
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 6),
+                              _TextEditorIconButton(
+                                icon: CupertinoIcons.doc_on_doc,
+                                color: const Color(0xFFF3F6FC),
+                                onTap: () async {
+                                  final text = tempController.text.trim();
+                                  if (text.isEmpty) return;
+
+                                  await Clipboard.setData(ClipboardData(text: text));
+                                  _showSnack('Copied');
+                                },
+                              ),
+                              const SizedBox(width: 6),
+                              _TextEditorIconButton(
+                                icon: CupertinoIcons.xmark,
+                                color: const Color(0xFFFF6B6B),
+                                onTap: () {
+                                  tempController.clear();
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
                       Expanded(
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF101117),
+                            color: const Color(0xFF181B23),
                             borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: const Color(0xFF23252E)),
+                            border: Border.all(color: const Color(0xFF343846)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.26),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
                           ),
                           child: TextField(
                             controller: tempController,
@@ -2745,7 +3314,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                             minLines: null,
                             keyboardType: TextInputType.multiline,
                             textAlignVertical: TextAlignVertical.top,
-                            cursorColor: const Color(0xFF5B8CFF),
+                            cursorColor: const Color(0xFF7C5CFF),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
@@ -2789,7 +3358,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                           Expanded(
                             child: CupertinoButton(
                               padding: const EdgeInsets.symmetric(vertical: 15),
-                              color: const Color(0xFF5B8CFF),
+                              color: const Color(0xFF7C5CFF),
                               borderRadius: BorderRadius.circular(16),
                               onPressed: () async {
                                 await closeSheet(
@@ -2797,12 +3366,23 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                                   value: tempController.text.trim(),
                                 );
                               },
-                              child: const Text(
-                                'Save',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.checkmark_circle_fill,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Save',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -2865,7 +3445,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
   IconData _invoiceStatusIcon(String status) {
     switch (status.trim().toLowerCase()) {
       case 'draft':
-        return CupertinoIcons.doc_text;
+        return CupertinoIcons.doc_fill;
       case 'sent':
         return CupertinoIcons.paperplane_fill;
       case 'partial':
@@ -2883,10 +3463,32 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     }
   }
 
+  Color _invoiceStatusColor(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'draft':
+        return const Color(0xFFF3F6FC); // white
+      case 'sent':
+        return const Color(0xFF0EA5E9); // blue
+      case 'partial':
+        return const Color(0xFFFFB300); // yellow
+      case 'paid':
+        return const Color(0xFF16A34A); // green
+      case 'overdue':
+        return const Color(0xFFD94A4A); // soft red
+      case 'void':
+        return const Color(0xFF8E93A6); // gray
+      case 'archived':
+        return const Color(0xFF7C5CFF); // purple
+      default:
+        return const Color(0xFF8E93A6);
+    }
+  }
+
   Widget _summaryDivider() {
     return const Divider(
-      color: Color(0xFF23252E),
+      color: Color(0xFF343846),
       height: 1,
+      thickness: 1,
     );
   }
 
@@ -2900,9 +3502,16 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2957,9 +3566,16 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2988,12 +3604,41 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     );
   }
 
+  Widget _summaryGlowIcon(
+      IconData icon,
+      Color color, {
+        double size = 18,
+      }) {
+    return Icon(
+      icon,
+      color: color.withValues(alpha: 0.92),
+      size: size,
+    );
+  }
+
+  Widget _editableSummarySurface({
+    required Widget child,
+  }) {
+    return ColoredBox(
+      color: const Color(0xFF181B23),
+      child: child,
+    );
+  }
+
   Widget _summaryPanel({required List<Widget> children}) {
     return Container(
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF242730),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
       ),
       child: Column(
         children: children,
@@ -3003,6 +3648,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
   Widget _totalInfoRow({
     required IconData icon,
+    Color iconColor = const Color(0xFF8E93A6),
     required String label,
     required String value,
   }) {
@@ -3012,7 +3658,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
         children: [
           Icon(
             icon,
-            color: const Color(0xFF8E93A6),
+            color: iconColor,
             size: 18,
           ),
           const SizedBox(width: 10),
@@ -3028,7 +3674,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFFD0D5E2),
               fontSize: 15,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.1,
@@ -3044,6 +3690,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     required String label,
     required String value,
     int maxLines = 2,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     final isPlaceholder =
         value.trim().isEmpty || value.trim() == '—' || value.trim().toLowerCase() == 'not set';
@@ -3053,11 +3700,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            color: const Color(0xFF8E93A6),
-            size: 18,
-          ),
+          _summaryGlowIcon(icon, iconColor),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -3077,7 +3720,9 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                   maxLines: maxLines,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: isPlaceholder ? const Color(0xFF697086) : Colors.white,
+                    color: isPlaceholder
+                        ? const Color(0xFF697086)
+                        : const Color(0xFFD0D5E2),
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     height: 1.25,
@@ -3097,6 +3742,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     required String value,
     required VoidCallback onTap,
     int maxLines = 2,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     final isPlaceholder = value.startsWith('Select') || value.trim() == '—';
 
@@ -3110,11 +3756,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 18,
-              ),
+              _summaryGlowIcon(icon, iconColor),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -3159,52 +3801,90 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
   Widget _summaryTitleRow() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          const Icon(
-            CupertinoIcons.doc_text,
-            color: Color(0xFF8E93A6),
-            size: 18,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
+          Padding(
+            padding: const EdgeInsets.only(right: 34),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Title',
-                  style: TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                _summaryGlowIcon(
+                  CupertinoIcons.doc_text_fill,
+                  const Color(0xFFF3F6FC),
                 ),
-                const SizedBox(height: 5),
-                TextField(
-                  controller: _titleController,
-                  maxLines: 2,
-                  minLines: 1,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
-                  ),
-                  cursorColor: Color(0xFF5B8CFF),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: 'Invoice title',
-                    hintStyle: TextStyle(
-                      color: Color(0xFF697086),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Title',
+                        style: TextStyle(
+                          color: Color(0xFF8E93A6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      TextField(
+                        controller: _titleController,
+                        maxLines: 2,
+                        minLines: 1,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
+                        ),
+                        cursorColor: const Color(0xFF8B5CF6),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: 'Invoice title',
+                          hintStyle: TextStyle(
+                            color: Color(0xFF697086),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
+            ),
+          ),
+
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _titleController,
+                builder: (context, value, _) {
+                  if (value.text.trim().isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      _titleController.clear();
+                      setState(() {});
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: Color(0xFF8E93A6),
+                        size: 18,
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -3217,6 +3897,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     required String label,
     required String value,
     required VoidCallback onTap,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     return Material(
       color: Colors.transparent,
@@ -3228,11 +3909,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 16,
-              ),
+              _summaryGlowIcon(icon, iconColor, size: 16),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
@@ -3269,6 +3946,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
   Widget _buildTextPreviewRow({
     required IconData icon,
+    Color iconColor = const Color(0xFFF3F6FC),
     required String label,
     required String value,
     required VoidCallback onTap,
@@ -3290,7 +3968,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                 child: Icon(
                   icon,
                   size: 18,
-                  color: const Color(0xFF9AA3B2),
+                  color: iconColor,
                 ),
               ),
               const SizedBox(width: 12),
@@ -3309,11 +3987,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                           ),
                         ),
                         const Spacer(),
-                        const Icon(
-                          CupertinoIcons.arrow_up_left_arrow_down_right,
-                          color: Color(0xFF8E93A6),
-                          size: 15,
-                        ),
+                        const _SoftExpandHintIcon(),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -3348,9 +4022,25 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
+        color: const Color(0xFF242730),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.38),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.035),
+            blurRadius: 12,
+            spreadRadius: -6,
+            offset: const Offset(0, -3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3364,7 +4054,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     Text(
                       title,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFFF4F6FA),
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.2,
@@ -3375,9 +4065,9 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       Text(
                         subtitle!,
                         style: const TextStyle(
-                          color: Color(0xFF8E93A6),
+                          color: Color(0xFFA1A7B8),
                           fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -3433,14 +4123,23 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
               height: 66,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF17181F),
+                color: const Color(0xFF242730),
                 borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: const Color(0xFF252832)),
+                border: Border.all(
+                  color: const Color(0xFF343846),
+                  width: 1,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.28),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
+                    color: Colors.black.withValues(alpha: 0.38),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.035),
+                    blurRadius: 12,
+                    spreadRadius: -6,
+                    offset: const Offset(0, -3),
                   ),
                 ],
               ),
@@ -3454,9 +4153,9 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF20222B),
+                        color: const Color(0xFF2A2D36),
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFF2B2E38)),
+                        border: Border.all(color: const Color(0xFF3A3E4B)),
                       ),
                       child: const Icon(
                         CupertinoIcons.chevron_left,
@@ -3468,17 +4167,35 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
 
                   const SizedBox(width: 10),
 
-                  const Expanded(
-                    child: Text(
-                      'Invoice Details',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                      ),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Invoice Details',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Subtotal ${EstimateFormatters.formatCurrency(_subtotal)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFFA0A7B8),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
@@ -3487,7 +4204,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     icon: _isArchiving
                         ? const CupertinoActivityIndicator(color: Colors.white)
                         : const Icon(
-                      CupertinoIcons.archivebox,
+                      CupertinoIcons.archivebox_fill,
                       color: Color(0xFFB6BCD0),
                       size: 21,
                     ),
@@ -3500,32 +4217,12 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       icon: _isDeleting
                           ? const CupertinoActivityIndicator(color: Colors.white)
                           : const Icon(
-                        CupertinoIcons.trash,
-                        color: Color(0xFFFF7B7B),
+                        CupertinoIcons.trash_fill,
+                        color: Color(0xFFD94A4A),
                         size: 21,
                       ),
                       tooltip: 'Delete',
                     ),
-
-                  const SizedBox(width: 4),
-
-                  CupertinoButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minSize: 38,
-                    color: const Color(0xFF5B8CFF),
-                    borderRadius: BorderRadius.circular(14),
-                    onPressed: _isSaving ? null : _saveChanges,
-                    child: _isSaving
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : const Text(
-                      'Save',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -3560,63 +4257,85 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 12),
+
                   _summaryPanel(
                     children: [
                       _summaryInfoRow(
-                        icon: CupertinoIcons.person,
+                        icon: CupertinoIcons.person_fill,
+                        iconColor: const Color(0xFF7C5CFF),
                         label: 'Client',
                         value: _client?.fullName ?? '—',
                       ),
                       _summaryDivider(),
+
                       _summaryInfoRow(
                         icon: CupertinoIcons.building_2_fill,
+                        iconColor: const Color(0xFFFFC107),
                         label: 'Client Company',
                         value: (_client?.companyName ?? '').trim().isEmpty
                             ? '—'
                             : _client!.companyName!,
                       ),
                       _summaryDivider(),
+
                       _summaryInfoRow(
                         icon: CupertinoIcons.location_solid,
+                        iconColor: const Color(0xFFD94A4A),
                         label: 'Property',
                         value: _property?.fullAddress ?? '—',
                       ),
                       _summaryDivider(),
-                      _summaryTitleRow(),
-                      _summaryDivider(),
-                      _summaryPickerRow(
-                        icon: _invoiceStatusIcon(_status),
-                        label: 'Status',
-                        value: _statusLabel(_status),
-                        onTap: _pickStatus,
-                        maxLines: 1,
+
+                      _editableSummarySurface(
+                        child: _summaryTitleRow(),
                       ),
                       _summaryDivider(),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _summaryCompactPicker(
-                              icon: CupertinoIcons.calendar,
-                              label: 'Issue Date',
-                              value: EstimateFormatters.formatDate(_issueDate),
-                              onTap: _pickIssueDate,
-                            ),
+
+                      _editableSummarySurface(
+                        child: _summaryPickerRow(
+                          icon: _invoiceStatusIcon(_status),
+                          iconColor: _invoiceStatusColor(_status),
+                          label: 'Status',
+                          value: _statusLabel(_status),
+                          onTap: _pickStatus,
+                          maxLines: 1,
+                        ),
+                      ),
+                      _summaryDivider(),
+
+                      _editableSummarySurface(
+                        child: SizedBox(
+                          height: 76,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _summaryCompactPicker(
+                                  icon: CupertinoIcons.calendar,
+                                  iconColor: const Color(0xFF0EA5E9),
+                                  label: 'Issue Date',
+                                  value: EstimateFormatters.formatDate(_issueDate),
+                                  onTap: _pickIssueDate,
+                                ),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 64,
+                                color: const Color(0xFF343846),
+                              ),
+                              Expanded(
+                                child: _summaryCompactPicker(
+                                  icon: CupertinoIcons.calendar_badge_plus,
+                                  iconColor: const Color(0xFF0EA5E9),
+                                  label: 'Due Date',
+                                  value: EstimateFormatters.formatDate(_dueDate),
+                                  onTap: _pickDueDate,
+                                ),
+                              ),
+                            ],
                           ),
-                          Container(
-                            width: 1,
-                            height: 62,
-                            color: const Color(0xFF23252E),
-                          ),
-                          Expanded(
-                            child: _summaryCompactPicker(
-                              icon: CupertinoIcons.calendar_badge_plus,
-                              label: 'Due Date',
-                              value: EstimateFormatters.formatDate(_dueDate),
-                              onTap: _pickDueDate,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
@@ -3631,6 +4350,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                 children: [
                   _summaryInfoRow(
                     icon: CupertinoIcons.building_2_fill,
+                    iconColor: const Color(0xFFFFC107),
                     label: 'Company',
                     value: (_companySettings?.companyName.trim().isNotEmpty ?? false)
                         ? _companySettings!.companyName
@@ -3649,6 +4369,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                   _summaryDivider(),
                   _summaryInfoRow(
                     icon: CupertinoIcons.phone_fill,
+                    iconColor: const Color(0xFF7C5CFF),
                     label: 'Phone',
                     value: (_companySettings?.companyPhone?.trim().isNotEmpty ?? false)
                         ? _companySettings!.companyPhone!
@@ -3658,6 +4379,7 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                   _summaryDivider(),
                   _summaryInfoRow(
                     icon: CupertinoIcons.location_solid,
+                    iconColor: const Color(0xFFD94A4A),
                     label: 'Address',
                     value: (_companySettings?.companyAddress?.trim().isNotEmpty ?? false)
                         ? _companySettings!.companyAddress!
@@ -3670,13 +4392,13 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
             const SizedBox(height: 14),
             _buildSectionCard(
               title: 'Items',
-              subtitle: 'Позиции invoice',
+              subtitle: 'Invoice items',
               trailing: CupertinoButton(
                 padding: EdgeInsets.zero,
                 onPressed: () => _addOrEditItem(),
                 child: const Icon(
                   CupertinoIcons.add_circled_solid,
-                  color: Color(0xFF5B8CFF),
+                  color: Color(0xFF7C5CFF),
                   size: 24,
                 ),
               ),
@@ -3705,39 +4427,50 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
             const SizedBox(height: 14),
             _buildSectionCard(
               title: 'Notes & Terms',
-              subtitle: 'Дополнительная информация',
+              subtitle: 'Additional information',
               child: _summaryPanel(
                 children: [
-                  _buildTextPreviewRow(
-                    icon: CupertinoIcons.text_alignleft,
-                    label: 'Notes',
-                    value: _notesController.text.trim(),
-                    onTap: () => _openLargeTextEditor(
-                      title: 'Edit Notes',
-                      controller: _notesController,
-                      icon: CupertinoIcons.text_alignleft,
+                  _editableSummarySurface(
+                    child: _buildTextPreviewRow(
+                      icon: CupertinoIcons.text_bubble_fill,
+                      iconColor: const Color(0xFFF3F6FC),
+                      label: 'Notes',
+                      value: _notesController.text.trim(),
+                      onTap: () => _openLargeTextEditor(
+                        title: 'Edit Notes',
+                        controller: _notesController,
+                        icon: CupertinoIcons.text_alignleft,
+                      ),
                     ),
                   ),
                   _summaryDivider(),
-                  _buildTextPreviewRow(
-                    icon: CupertinoIcons.doc_plaintext,
-                    label: 'Terms',
-                    value: _termsController.text.trim(),
-                    onTap: () => _openLargeTextEditor(
-                      title: 'Edit Terms',
-                      controller: _termsController,
-                      icon: CupertinoIcons.doc_plaintext,
+
+                  _editableSummarySurface(
+                    child: _buildTextPreviewRow(
+                      icon: CupertinoIcons.doc_text_fill,
+                      iconColor: const Color(0xFFF3F6FC),
+                      label: 'Terms',
+                      value: _termsController.text.trim(),
+                      onTap: () => _openLargeTextEditor(
+                        title: 'Edit Terms',
+                        controller: _termsController,
+                        icon: CupertinoIcons.doc_text_fill,
+                      ),
                     ),
                   ),
                   _summaryDivider(),
-                  _buildTextPreviewRow(
-                    icon: CupertinoIcons.creditcard,
-                    label: 'Payment Instructions',
-                    value: _paymentInstructionsController.text.trim(),
-                    onTap: () => _openLargeTextEditor(
-                      title: 'Edit Payment Instructions',
-                      controller: _paymentInstructionsController,
-                      icon: CupertinoIcons.creditcard,
+
+                  _editableSummarySurface(
+                    child: _buildTextPreviewRow(
+                      icon: CupertinoIcons.creditcard_fill,
+                      iconColor: const Color(0xFF7C5CFF),
+                      label: 'Payment Instructions',
+                      value: _paymentInstructionsController.text.trim(),
+                      onTap: () => _openLargeTextEditor(
+                        title: 'Edit Payment Instructions',
+                        controller: _paymentInstructionsController,
+                        icon: CupertinoIcons.creditcard_fill,
+                      ),
                     ),
                   ),
                 ],
@@ -3751,20 +4484,27 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                 children: [
                   _summaryPanel(
                     children: [
-                      _TotalsActionRow(
-                        icon: CupertinoIcons.money_dollar_circle,
-                        label: 'Tax Amount',
-                        value: EstimateFormatters.formatCurrency(_taxAmount),
-                        onTap: _showTaxEditor,
-                        compact: true,
+                      _editableSummarySurface(
+                        child: _TotalsActionRow(
+                          icon: CupertinoIcons.money_dollar_circle,
+                          iconColor: const Color(0xFFF3F6FC),
+                          label: 'Tax Amount',
+                          value: EstimateFormatters.formatCurrency(_taxAmount),
+                          onTap: _showTaxEditor,
+                          compact: true,
+                        ),
                       ),
                       _summaryDivider(),
-                      _TotalsActionRow(
-                        icon: CupertinoIcons.tag,
-                        label: 'Discount Amount',
-                        value: EstimateFormatters.formatCurrency(_discountAmount),
-                        onTap: _showDiscountEditor,
-                        compact: true,
+
+                      _editableSummarySurface(
+                        child: _TotalsActionRow(
+                          icon: CupertinoIcons.tag,
+                          iconColor: const Color(0xFFF3F6FC),
+                          label: 'Discount Amount',
+                          value: EstimateFormatters.formatCurrency(_discountAmount),
+                          onTap: _showDiscountEditor,
+                          compact: true,
+                        ),
                       ),
                     ],
                   ),
@@ -3775,30 +4515,35 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     children: [
                       _totalInfoRow(
                         icon: CupertinoIcons.sum,
+                        iconColor: const Color(0xFFFFB300),
                         label: 'Subtotal',
                         value: EstimateFormatters.formatCurrency(_subtotal),
                       ),
                       _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.money_dollar_circle,
+                        iconColor: const Color(0xFFF3F6FC),
                         label: 'Tax',
                         value: EstimateFormatters.formatCurrency(_taxAmount),
                       ),
                       _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.tag,
+                        iconColor: const Color(0xFFE85D3D),
                         label: 'Discount',
                         value: '- ${EstimateFormatters.formatCurrency(_discountAmount)}',
                       ),
                       _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.checkmark_seal,
+                        iconColor: const Color(0xFF84CC16),
                         label: 'Total',
                         value: EstimateFormatters.formatCurrency(_total),
                       ),
                       _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.creditcard,
+                        iconColor: const Color(0xFF7C5CFF),
                         label: 'Paid',
                         value: EstimateFormatters.formatCurrency(_paidAmount),
                       ),
@@ -3992,15 +4737,15 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                             width: double.infinity,
                             child: CupertinoButton(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              color: const Color(0xFF0D0E14),
+                              color: const Color(0xFF7C5CFF).withValues(alpha: 0.28),
                               borderRadius: BorderRadius.circular(16),
                               onPressed: _openEmailHistorySheet,
                               child: Text(
                                 'View all history (${_emailLogs.length})',
                                 style: const TextStyle(
-                                  color: Color(0xFFB6BCD0),
+                                  color: Color(0xFFC4B5FD),
                                   fontSize: 14,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
@@ -4023,18 +4768,25 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                     children: [
                       _totalInfoRow(
                         icon: CupertinoIcons.money_dollar_circle,
+                        iconColor: _total > 0
+                            ? const Color(0xFFE85D3D)
+                            : const Color(0xFFF3F6FC),
                         label: 'Invoice Total',
                         value: EstimateFormatters.formatCurrency(_total),
                       ),
                       _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.checkmark_seal,
+                        iconColor: _paidAmount > 0
+                            ? const Color(0xFF22C55E)
+                            : const Color(0xFFF3F6FC),
                         label: 'Paid',
                         value: EstimateFormatters.formatCurrency(_paidAmount),
                       ),
                       _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.exclamationmark_circle,
+                        iconColor: const Color(0xFFBFC6D4),
                         label: 'Balance Due',
                         value: EstimateFormatters.formatCurrency(_balanceDue),
                       ),
@@ -4048,6 +4800,9 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       Expanded(
                         child: _ActionButtonWide(
                           icon: CupertinoIcons.add,
+                          iconColor: const Color(0xFF8B5CF6),
+                          glowColor: const Color(0xFF8B5CF6),
+                          elevated: true,
                           label: _isAddingPayment ? 'Please wait...' : 'Add Payment',
                           onTap: _isAddingPayment ? null : _addPayment,
                         ),
@@ -4056,6 +4811,9 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                       Expanded(
                         child: _ActionButtonWide(
                           icon: CupertinoIcons.check_mark_circled,
+                          iconColor: const Color(0xFF22C55E),
+                          glowColor: const Color(0xFF22C55E),
+                          elevated: true,
                           label: _balanceDue <= 0 ? 'Paid' : 'Mark as Paid',
                           onTap: _isAddingPayment || _balanceDue <= 0
                               ? null
@@ -4122,14 +4880,14 @@ class _InvoiceDetailsScreenState extends State<InvoiceDetailsScreen> {
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF5B8CFF).withValues(alpha: 0.22),
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.26),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
                 ],
               ),
               child: CupertinoButton(
-                color: const Color(0xFF5B8CFF),
+                color: const Color(0xFF8B5CF6),
                 borderRadius: BorderRadius.circular(18),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 onPressed: _isSaving ? null : _saveChanges,
@@ -4198,7 +4956,7 @@ class _UnitSelectionSheet extends StatelessWidget {
     return SafeArea(
       top: false,
       child: FractionallySizedBox(
-        heightFactor: 0.98,
+        heightFactor: 0.82,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
           child: Column(
@@ -4207,7 +4965,7 @@ class _UnitSelectionSheet extends StatelessWidget {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3A3D49),
+                  color: const Color(0xFF3D4250),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -4218,15 +4976,15 @@ class _UnitSelectionSheet extends StatelessWidget {
                 children: [
                   Icon(
                     CupertinoIcons.cube_box,
-                    color: Color(0xFFB8C1D9),
-                    size: 22,
+                    color: Color(0xFFF3F6FC),
+                    size: 23,
                   ),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Choose Unit',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFFF1F4F8),
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.2,
@@ -4240,6 +4998,7 @@ class _UnitSelectionSheet extends StatelessWidget {
 
               Expanded(
                 child: ListView.separated(
+                  padding: EdgeInsets.zero,
                   itemCount: units.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
@@ -4247,53 +5006,62 @@ class _UnitSelectionSheet extends StatelessWidget {
                     final selected = unit == selectedUnit;
 
                     return Material(
-                      color: selected
-                          ? const Color(0xFF16233F)
-                          : const Color(0xFF101117),
-                      borderRadius: BorderRadius.circular(18),
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(20),
                         onTap: () => Navigator.pop(context, unit),
                         child: Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(15),
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
+                            color: selected
+                                ? const Color(0xFF7C5CFF).withValues(alpha: 0.18)
+                                : const Color(0xFF151922),
+                            borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: selected
-                                  ? const Color(0xFF5B8CFF)
-                                  : const Color(0xFF23252E),
+                                  ? const Color(0xFF8D74FF)
+                                  : const Color(0xFF343A49),
+                              width: 1,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(
+                                  alpha: selected ? 0.22 : 0.14,
+                                ),
+                                blurRadius: selected ? 20 : 14,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 _unitIcon(unit),
-                                color: selected
-                                    ? const Color(0xFF8FB0FF)
-                                    : const Color(0xFF8E93A6),
+                                color: const Color(0xFFF3F6FC),
                                 size: 19,
                               ),
                               const SizedBox(width: 12),
+
                               Expanded(
                                 child: Text(
                                   EstimateFormatters.formatUnit(unit),
-                                  style: TextStyle(
-                                    color: selected
-                                        ? Colors.white
-                                        : const Color(0xFFE7EAF2),
+                                  style: const TextStyle(
+                                    color: Color(0xFFF1F4F8),
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ),
+
                               Icon(
                                 selected
                                     ? CupertinoIcons.checkmark_circle_fill
                                     : CupertinoIcons.chevron_right,
                                 color: selected
-                                    ? const Color(0xFF5B8CFF)
-                                    : const Color(0xFF8E93A6),
-                                size: selected ? 20 : 16,
+                                    ? const Color(0xFFB9A8FF)
+                                    : const Color(0xFF9AA3B7),
+                                size: selected ? 21 : 16,
                               ),
                             ],
                           ),
@@ -4361,7 +5129,7 @@ class _CenteredMiniInput extends StatelessWidget {
             controller: controller,
             keyboardType: keyboardType,
             textAlign: TextAlign.center,
-            cursorColor: const Color(0xFF5B8CFF),
+            cursorColor: const Color(0xFF7C5CFF),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 15,
@@ -4385,6 +5153,47 @@ class _CenteredMiniInput extends StatelessWidget {
   }
 }
 
+class _TextEditorIconButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _TextEditorIconButton({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF242730),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          width: 38,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: const Color(0xFF3A4150),
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CalendarWeekDay extends StatelessWidget {
   final String label;
 
@@ -4394,12 +5203,22 @@ class _CalendarWeekDay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Center(
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
+        child: Container(
+          height: 30,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF20232D),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF343846)),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFB8C1D9),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ),
@@ -4455,7 +5274,7 @@ class _PremiumTextField extends StatelessWidget {
                 fontWeight: FontWeight.w500,
                 height: 1.35,
               ),
-              cursorColor: const Color(0xFF5B8CFF),
+              cursorColor: const Color(0xFF7C5CFF),
               decoration: InputDecoration(
                 isDense: true,
                 hintText: hintText,
@@ -4713,7 +5532,7 @@ class _InlineEmptyItemsState extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Пока нет items. Добавь первую позицию.',
+              'No items yet. Add your first one.',
               style: TextStyle(
                 color: Color(0xFF8E93A6),
                 fontSize: 14,
@@ -4741,23 +5560,31 @@ class _InvoiceItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final description = (item.description ?? '').trim();
+    final itemIcon = WorkioIconMapper.resolveFromTitle(item.title);
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                CupertinoIcons.hammer,
-                color: Color(0xFF8E93A6),
-                size: 18,
+              Icon(
+                itemIcon,
+                color: const Color(0xFFF3F6FC),
+                size: 19,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -4822,29 +5649,10 @@ class _InvoiceItemTile extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          Row(
-            children: [
-              Expanded(
-                child: _MiniInfo(
-                  label: 'Qty',
-                  value: EstimateFormatters.formatQuantity(item.quantity),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniInfo(
-                  label: 'Unit',
-                  value: EstimateFormatters.formatUnit(item.unit),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniInfo(
-                  label: 'Unit Price',
-                  value: EstimateFormatters.formatCurrency(item.unitPrice),
-                ),
-              ),
-            ],
+          _ItemMetricsBar(
+            quantity: EstimateFormatters.formatQuantity(item.quantity),
+            unit: EstimateFormatters.formatUnit(item.unit),
+            unitPrice: EstimateFormatters.formatCurrency(item.unitPrice),
           ),
 
           const SizedBox(height: 10),
@@ -4863,28 +5671,24 @@ class _EmptyPaymentsState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
-      ),
-      child: const Row(
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+      child: Row(
         children: [
           Icon(
             CupertinoIcons.money_dollar_circle,
-            color: Color(0xFF8E93A6),
-            size: 20,
+            color: Color(0xFFF3F6FC),
+            size: 19,
           ),
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Пока нет платежей по этому invoice.',
+              'No payments have been recorded for this invoice yet.',
               style: TextStyle(
-                color: Color(0xFF8E93A6),
+                color: Color(0xFFA1A7B8),
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
               ),
             ),
           ),
@@ -4912,11 +5716,27 @@ class _PaymentTile extends StatelessWidget {
     final notes = (payment.notes ?? '').trim();
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF171B24),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF343A49),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.018),
+            blurRadius: 8,
+            spreadRadius: -4,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4925,8 +5745,8 @@ class _PaymentTile extends StatelessWidget {
             children: [
               const Icon(
                 CupertinoIcons.money_dollar_circle,
-                color: Color(0xFF8E93A6),
-                size: 19,
+                color: Color(0xFF22C55E),
+                size: 20,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -5099,9 +5919,9 @@ class _MiniInfo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F212A)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -5134,6 +5954,107 @@ class _MiniInfo extends StatelessWidget {
   }
 }
 
+class _ItemMetricsBar extends StatelessWidget {
+  final String quantity;
+  final String unit;
+  final String unitPrice;
+
+  const _ItemMetricsBar({
+    required this.quantity,
+    required this.unit,
+    required this.unitPrice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF20232D),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF303442)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ItemMetricCell(
+              label: 'Qty',
+              value: quantity,
+            ),
+          ),
+          _metricDivider(),
+          Expanded(
+            child: _ItemMetricCell(
+              label: 'Unit',
+              value: unit,
+            ),
+          ),
+          _metricDivider(),
+          Expanded(
+            child: _ItemMetricCell(
+              label: 'Unit Price',
+              value: unitPrice,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricDivider() {
+    return Container(
+      width: 1,
+      height: 54,
+      color: const Color(0xFF303442),
+    );
+  }
+}
+
+class _ItemMetricCell extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ItemMetricCell({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 13,
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFFA1A7B8),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LineTotalBar extends StatelessWidget {
   final String value;
 
@@ -5147,15 +6068,15 @@ class _LineTotalBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F212A)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Row(
         children: [
           const Icon(
             CupertinoIcons.money_dollar_circle,
-            color: Color(0xFF8E93A6),
+            color: Color(0xFF22C55E),
             size: 18,
           ),
           const SizedBox(width: 9),
@@ -5185,6 +6106,7 @@ class _LineTotalBar extends StatelessWidget {
 
 class _TotalsActionRow extends StatelessWidget {
   final IconData icon;
+  final Color iconColor;
   final String label;
   final String value;
   final VoidCallback onTap;
@@ -5192,6 +6114,7 @@ class _TotalsActionRow extends StatelessWidget {
 
   const _TotalsActionRow({
     required this.icon,
+    this.iconColor = const Color(0xFF8E93A6),
     required this.label,
     required this.value,
     required this.onTap,
@@ -5221,7 +6144,7 @@ class _TotalsActionRow extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: const Color(0xFF8E93A6),
+                color: iconColor,
                 size: 18,
               ),
               const SizedBox(width: 10),
@@ -5271,15 +6194,15 @@ class _TotalGrandBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF2A2D38)),
+        border: Border.all(color: const Color(0xFF343846)),
       ),
       child: Row(
         children: [
           const Icon(
             CupertinoIcons.money_dollar_circle_fill,
-            color: Color(0xFF5B8CFF),
+            color: Color(0xFF22C55E),
             size: 22,
           ),
           const SizedBox(width: 10),
@@ -5295,7 +6218,7 @@ class _TotalGrandBar extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFFE1E5EF),
               fontSize: 21,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.4,
@@ -5349,55 +6272,87 @@ class _ActionButtonWide extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
+  final Color? iconColor;
+  final Color? glowColor;
+  final bool elevated;
 
   const _ActionButtonWide({
     required this.icon,
     required this.label,
     required this.onTap,
+    this.iconColor,
+    this.glowColor,
+    this.elevated = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDisabled = onTap == null;
 
-    return Material(
-      color: const Color(0xFF101117),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
+    final effectiveIconColor = isDisabled
+        ? const Color(0xFF5E6475)
+        : iconColor ?? const Color(0xFFB6BCD0);
+
+    return Container(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 50,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDisabled
-                  ? const Color(0xFF1A1C24)
-                  : const Color(0xFF23252E),
-            ),
+        boxShadow: elevated && !isDisabled
+            ? [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.36),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.045),
+            blurRadius: 8,
+            spreadRadius: -5,
+            offset: const Offset(0, -2),
+          ),
+        ]
+            : [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            height: 54,
+            decoration: BoxDecoration(
+              color: isDisabled
+                  ? const Color(0xFF1A1D25)
+                  : const Color(0xFF20232D),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
                 color: isDisabled
-                    ? const Color(0xFF5E6475)
-                    : const Color(0xFFB6BCD0),
-                size: 18,
+                    ? const Color(0xFF2A2D38)
+                    : const Color(0xFF3A3E4B),
+                width: 1,
               ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isDisabled
-                      ? const Color(0xFF5E6475)
-                      : Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  color: effectiveIconColor,
+                  size: 19,
                 ),
-              ),
-            ],
+                const SizedBox(width: 9),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isDisabled
+                        ? const Color(0xFF5E6475)
+                        : Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -5413,9 +6368,9 @@ class _EmptyDocumentsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: const Row(
         children: [
@@ -5427,7 +6382,7 @@ class _EmptyDocumentsState extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Пока нет сохранённых PDF документов.',
+              'No saved PDF documents yet.',
               style: TextStyle(
                 color: Color(0xFF8E93A6),
                 fontSize: 14,
@@ -5452,38 +6407,104 @@ class _SavedDocumentTile extends StatelessWidget {
     required this.onDelete,
   });
 
+  Widget _buildTopGradientDivider() {
+    return Container(
+      height: 1,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            Color(0xFF555B6B),
+            Color(0xFF707789),
+            Color(0xFF555B6B),
+            Colors.transparent,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(
+            icon,
+            color: const Color(0xFF8E93A6),
+            size: 15,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFFB6BCD0),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFullDivider() {
+    return Container(
+      height: 1,
+      width: double.infinity,
+      color: const Color(0xFF303442),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF2A2F3B),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF3A4150),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            document.fileName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+          Center(
+            child: Text(
+              document.fileName,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            EstimateFormatters.formatDateTime(document.createdAt),
-            style: const TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+
           const SizedBox(height: 12),
+          _buildTopGradientDivider(),
+          const SizedBox(height: 12),
+
+          _buildInfoRow(
+            CupertinoIcons.calendar,
+            EstimateFormatters.formatDateTime(document.createdAt),
+          ),
+
+          const SizedBox(height: 14),
+          _buildFullDivider(),
+          const SizedBox(height: 14),
+
           Row(
             children: [
               Expanded(
@@ -5523,7 +6544,7 @@ class _DocumentActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF0D0E14),
+      color: const Color(0xFF20232D),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -5532,7 +6553,7 @@ class _DocumentActionButton extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1F212A)),
+            border: Border.all(color: const Color(0xFF303442)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -5565,27 +6586,31 @@ class _EmptyEmailLogsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF2A2F3B),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF3A4150),
+          width: 1,
+        ),
       ),
       child: const Row(
         children: [
           Icon(
             CupertinoIcons.mail,
-            color: Color(0xFF8E93A6),
-            size: 20,
+            color: Color(0xFFB6BCD0),
+            size: 18,
           ),
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Пока нет истории отправок.',
+              'No email history yet. Sent emails and reminders will appear here.',
               style: TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+                color: Color(0xFFB6BCD0),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
               ),
             ),
           ),
@@ -5645,24 +6670,82 @@ class _EmailLogTile extends StatelessWidget {
     }
   }
 
-  Widget _buildTag(String label, Color color) {
+  String _extractInvoiceNumber(String subject) {
+    final match = RegExp(
+      r'INV-\d+(?:-\d+)?',
+      caseSensitive: false,
+    ).firstMatch(subject);
+
+    if (match != null) {
+      return match.group(0)!.trim();
+    }
+
+    return subject.trim();
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(
+            icon,
+            color: const Color(0xFF8E93A6),
+            size: 15,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFFB6BCD0),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopGradientDivider() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: color.withOpacity(0.35),
+      height: 1,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            Color(0xFF555B6B),
+            Color(0xFF707789),
+            Color(0xFF555B6B),
+            Colors.transparent,
+          ],
         ),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.2,
-        ),
+    );
+  }
+
+  Widget _buildFullDivider() {
+    return Container(
+      height: 1,
+      width: double.infinity,
+      color: const Color(0xFF303442),
+    );
+  }
+
+  Widget _buildPlainTag(String label, Color color) {
+    return Text(
+      label,
+      style: TextStyle(
+        color: color,
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.4,
       ),
     );
   }
@@ -5672,69 +6755,80 @@ class _EmailLogTile extends StatelessWidget {
     final statusColor = _statusColor(log.status);
     final templateLabel = _templateLabel(log.templateType);
     final templateColor = _templateColor(log.templateType);
+    final invoiceNumber = _extractInvoiceNumber(log.subject);
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF242730),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            log.recipientEmail,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            log.subject,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFFB6BCD0),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildTag(log.status.toUpperCase(), statusColor),
-              if (templateLabel != null)
-                _buildTag(templateLabel, templateColor),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            EstimateFormatters.formatDateTime(log.sentAt ?? log.createdAt),
-            style: const TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          if ((log.providerName ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Provider: ${log.providerName}',
+          Center(
+            child: Text(
+              invoiceNumber,
+              textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
               ),
             ),
+          ),
+
+          const SizedBox(height: 12),
+          _buildTopGradientDivider(),
+          const SizedBox(height: 12),
+
+          _buildInfoRow(
+            CupertinoIcons.mail,
+            log.recipientEmail,
+          ),
+          const SizedBox(height: 8),
+
+          _buildInfoRow(
+            CupertinoIcons.calendar,
+            EstimateFormatters.formatDateTime(log.sentAt ?? log.createdAt),
+          ),
+
+          if ((log.providerName ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildInfoRow(
+              CupertinoIcons.paperplane,
+              'Provider: ${log.providerName}',
+            ),
           ],
+
+          const SizedBox(height: 12),
+          _buildFullDivider(),
+          const SizedBox(height: 10),
+
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 14,
+              runSpacing: 6,
+              children: [
+                _buildPlainTag(
+                  log.status.toUpperCase(),
+                  statusColor,
+                ),
+                if (templateLabel != null)
+                  _buildPlainTag(
+                    templateLabel,
+                    templateColor,
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -5864,6 +6958,76 @@ class _PaymentMethodChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SoftExpandHintIcon extends StatefulWidget {
+  const _SoftExpandHintIcon();
+
+  @override
+  State<_SoftExpandHintIcon> createState() => _SoftExpandHintIconState();
+}
+
+class _SoftExpandHintIconState extends State<_SoftExpandHintIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOutSine,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, _) {
+        final move = 1.0 + (_animation.value * 1.8);
+
+        return SizedBox(
+          width: 18,
+          height: 18,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Transform.translate(
+                offset: Offset(-move, -move),
+                child: Icon(
+                  Icons.north_west_rounded,
+                  color: const Color(0xFF8E93A6).withValues(alpha: 0.78),
+                  size: 13,
+                ),
+              ),
+              Transform.translate(
+                offset: Offset(move, move),
+                child: Icon(
+                  Icons.south_east_rounded,
+                  color: const Color(0xFF8E93A6).withValues(alpha: 0.78),
+                  size: 13,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

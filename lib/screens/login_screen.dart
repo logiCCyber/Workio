@@ -29,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _regPass = TextEditingController();
   final _regPass2 = TextEditingController();
 
-  // FocusNodes (для анимации фокуса)
+  // FocusNodes
   final _fLoginEmail = FocusNode();
   final _fLoginPass = FocusNode();
 
@@ -61,30 +61,30 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // ====== STYLE ======
-  static const _bgTop = Color(0xFF0B0D12);
-  static const _bgMid = Color(0xFF0A0C10);
-  static const _bgBot = Color(0xFF07080C);
+  // ====== STYLE (matches HTML design) ======
+  static const _bg       = Color(0xFF0A0C10);
+  static const _card     = Color(0xFF171A21);
+  static const _field    = Color(0xFF22262F);
+  static const _fieldHi  = Color(0xFF262B35);
 
-  static const _cardTop = Color(0xFF2F3036);
-  static const _cardBottom = Color(0xFF24252B);
+  static const _accent   = Color(0xFF22C55E); // green-500
+  static const _accentHi = Color(0xFF34D76F);
+  static const _accentLo = Color(0xFF1EA34D);
 
-  static const _green1 = Color(0xFF6CFF8D);
-  static const _green2 = Color(0xFF2E7D32);
+  static const _ink0     = Color(0xFFFFFFFF);
+  static const _ink1     = Color(0xFFA8AEBA);
+  static const _ink2     = Color(0xFF6B7281);
+  static const _ink3     = Color(0xFF4A4F5A);
 
-  static const _textMain = Color(0xFFEDEFF6);
-  static const _textSoft = Color(0xFFB7BCCB);
-
-  void _toastInfo(String t) => AppToast.show(t);          // синий (default)
-  void _toastOk(String t) => AppToast.success(t);         // зеленый
-  void _toastWarn(String t) => AppToast.warning(t);       // оранжевый
-  void _toastErr(String t) => AppToast.error(t);          // красный
+  void _toastInfo(String t) => AppToast.show(t);
+  void _toastOk(String t) => AppToast.success(t);
+  void _toastWarn(String t) => AppToast.warning(t);
+  void _toastErr(String t) => AppToast.error(t);
 
   String _prettyAuthError(Object e) {
     final raw = e.toString();
     final s = raw.toLowerCase();
 
-    // ✅ Network / Supabase connection errors
     if (s.contains('failed host lookup') ||
         s.contains('socketexception') ||
         s.contains('clientexception') ||
@@ -95,7 +95,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return 'Can’t connect to server. Check your internet connection and try again.';
     }
 
-    // ✅ Auth errors
     if (s.contains('invalid login credentials')) {
       return 'Wrong email or password.';
     }
@@ -121,23 +120,19 @@ class _LoginScreenState extends State<LoginScreen> {
       return 'Your session expired. Please sign in again.';
     }
 
-    // ✅ Supabase database/profile errors
     if (s.contains('postgrestexception') ||
         s.contains('permission denied') ||
         s.contains('violates row-level security')) {
       return 'Server profile error. Please try again or contact support.';
     }
 
-    // ✅ If it is clean AuthException message, show it
     if (e is AuthException && e.message.trim().isNotEmpty) {
       return e.message;
     }
 
-    // ✅ Final safe fallback
     return 'Something went wrong. Please try again.';
   }
 
-  // ✅ ВАЖНО: ищем worker по auth_user_id (а не по id)
   Future<Map<String, dynamic>?> _fetchWorkerProfile(String authUserId) async {
     final row = await supabase
         .from('workers')
@@ -173,7 +168,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final role = (profile['role'] as String?) ?? 'worker';
       final accessMode = (profile['access_mode'] as String?) ?? 'active';
 
-      // 🚫 BLOCK
       if (accessMode == 'suspended') {
         await supabase.auth.signOut();
         _toastErr('Your account is suspended. Contact admin.');
@@ -182,13 +176,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // ✅ ADMIN
       if (role == 'admin') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminPanel()));
         return;
       }
 
-      // ✅ WORKER (active OR readonly)
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => WorkerScreen(accessMode: accessMode)),
@@ -216,7 +208,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      // ✅ Разрешаем reset только админам: проверяем email в admin_users
       final adminRow = await supabase
           .from('admin_users')
           .select('email')
@@ -228,7 +219,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // ✅ Шлём письмо на reset (оно откроет workio://reset-password)
       await supabase.auth.resetPasswordForEmail(
         email,
         redirectTo: 'workio://reset-password',
@@ -265,10 +255,9 @@ class _LoginScreenState extends State<LoginScreen> {
         email: email,
         password: pass,
         emailRedirectTo: 'workio://confirmed',
-        data: {'name': name, 'role': 'admin'}, // <-- ВАЖНО
+        data: {'name': name, 'role': 'admin'},
       );
 
-      // если включена email confirmation -> session будет null
       if (res.session == null) {
         _toastInfo('Check your email to confirm, then sign in.');
         if (mounted) setState(() => isRegister = false);
@@ -295,145 +284,181 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bgTop,
+      backgroundColor: _bg,
       body: Stack(
         children: [
-          // BACKGROUND
+          // BACKGROUND — subtle green ambient
           const _AuthBackground(),
+
           // CONTENT
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(26),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E1C22), // solid
-                          borderRadius: BorderRadius.circular(26),
-                          border: Border.all(color: Colors.white.withOpacity(0.10)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.55),
-                              blurRadius: 34,
-                              offset: const Offset(0, 18),
-                            ),
-                          ],
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withOpacity(0.06)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.55),
+                          blurRadius: 60,
+                          spreadRadius: -20,
+                          offset: const Offset(0, 24),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-                          child: Column(
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 30, 28, 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // BRAND LOCKUP — W icon + "orkio" wordmark + tagline
+                          Row(
                             mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              // LOGO (big centered) + TITLE
+                              SvgPicture.asset(
+                                'assets/images/workio.svg',
+                                height: 56,
+                              ),
+                              const SizedBox(width: 4),
                               Column(
-                                children: [
-                                  SvgPicture.asset(
-                                    'assets/images/workio.svg',
-                                    height: 60,
-                                    fit: BoxFit.contain,
-                                  ),
-                                  const SizedBox(height: 6),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
                                   Text(
-                                    isRegister ? 'Create admin' : 'Sign in',
-                                    textAlign: TextAlign.center,
+                                    'orkio',
                                     style: TextStyle(
-                                      color: _textMain.withOpacity(0.92),
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 22,
+                                      color: _ink0,
+                                      fontSize: 38,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -1.2,
+                                      height: 1,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
+                                  SizedBox(height: 4),
+                                  // 👇 МЕНЯЙ ТЭГЛАЙН ТУТ
                                   Text(
-                                    isRegister
-                                        ? 'Admin account (workers are created by admin)'
-                                        : 'Admin / Worker login',
-                                    textAlign: TextAlign.center,
+                                    'WORKFORCE  OPS',
                                     style: TextStyle(
-                                      color: _textSoft.withOpacity(0.75),
+                                      color: _ink2,
+                                      fontSize: 9,
                                       fontWeight: FontWeight.w700,
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 8),
-
-                              Container(
-                                height: 2,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.transparent,
-                                      _green1.withOpacity(0.55),
-                                      Colors.transparent,
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 14),
-
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 260),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder: (child, anim) {
-                                  final inFrom = isRegister ? const Offset(0.08, 0) : const Offset(-0.08, 0);
-                                  final slide = Tween<Offset>(begin: inFrom, end: Offset.zero).animate(anim);
-                                  return FadeTransition(
-                                    opacity: anim,
-                                    child: SlideTransition(position: slide, child: child),
-                                  );
-                                },
-                                child: AnimatedSize(
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOutCubic,
-                                  child: isRegister ? _registerForm() : _loginForm(),
-                                ),
-                              ),
-
-                              const SizedBox(height: 14),
-
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    isRegister ? 'Already have admin?' : 'Need admin account?',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.55),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(999),
-                                    onTap: loading
-                                        ? null
-                                        : () => setState(() => isRegister = !isRegister),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      child: Text(
-                                        isRegister ? 'Sign in' : 'Create admin',
-                                        style: TextStyle(
-                                          color: _green1.withOpacity(0.95),
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 12.5,
-                                        ),
-                                      ),
+                                      letterSpacing: 2.8,
+                                      height: 1,
                                     ),
                                   ),
                                 ],
                               ),
                             ],
                           ),
-                        ),
+
+                          const SizedBox(height: 22),
+
+                          // TITLE
+                          Text(
+                            isRegister ? 'Create admin' : 'Sign in',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: _ink0,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 18,
+                              letterSpacing: -0.6,
+                              height: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            isRegister
+                                ? 'Admin account (workers are created by admin)'
+                                : 'Admin / Worker login',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _ink1.withOpacity(0.85),
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                          ),
+
+                          const SizedBox(height: 18),
+
+                          // GRADIENT DIVIDER (green)
+                          Container(
+                            height: 1,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.transparent,
+                                  _accent.withOpacity(0.55),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // FORM
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 260),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, anim) {
+                              final inFrom = isRegister
+                                  ? const Offset(0.08, 0)
+                                  : const Offset(-0.08, 0);
+                              final slide = Tween<Offset>(begin: inFrom, end: Offset.zero).animate(anim);
+                              return FadeTransition(
+                                opacity: anim,
+                                child: SlideTransition(position: slide, child: child),
+                              );
+                            },
+                            child: AnimatedSize(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              child: isRegister ? _registerForm() : _loginForm(),
+                            ),
+                          ),
+
+                          const SizedBox(height: 18),
+
+                          // FOOTER
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                isRegister ? 'Already have admin?' : 'Need admin account?',
+                                style: TextStyle(
+                                  color: _ink1.withOpacity(0.85),
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(999),
+                                onTap: loading
+                                    ? null
+                                    : () => setState(() => isRegister = !isRegister),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                  child: Text(
+                                    isRegister ? 'Sign in' : 'Create admin',
+                                    style: const TextStyle(
+                                      color: _accent,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -450,7 +475,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       key: const ValueKey('login'),
       children: [
-        _GlassField(
+        _PillField(
           controller: _loginEmail,
           focusNode: _fLoginEmail,
           hint: 'Email',
@@ -461,7 +486,7 @@ class _LoginScreenState extends State<LoginScreen> {
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 12),
-        _GlassField(
+        _PillField(
           controller: _loginPass,
           focusNode: _fLoginPass,
           hint: 'Password',
@@ -471,11 +496,10 @@ class _LoginScreenState extends State<LoginScreen> {
           enabled: !loading,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _login(),
-          trailing: IconButton(
-            onPressed: loading ? null : () => setState(() => showPass = !showPass),
-            icon: Icon(
-              showPass ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-            ),
+          trailing: _EyeButton(
+            visible: showPass,
+            accent: const Color(0xFFF59E0B),
+            onTap: loading ? null : () => setState(() => showPass = !showPass),
           ),
         ),
         const SizedBox(height: 8),
@@ -483,15 +507,17 @@ class _LoginScreenState extends State<LoginScreen> {
           valueListenable: _loginEmail,
           builder: (_, __, ___) {
             final email = _loginEmail.text.trim().toLowerCase();
-            final canReset = !loading && email.contains('@'); // минимальная проверка
+            final canReset = !loading && email.contains('@');
 
             return Align(
               alignment: Alignment.centerRight,
               child: InkWell(
-                onTap: canReset ? _forgotPasswordAdmin : () {
+                onTap: canReset
+                    ? _forgotPasswordAdmin
+                    : () {
                   _toastWarn('Enter admin email above');
                   FocusScope.of(context).requestFocus(_fLoginEmail);
-                }, // ✅ можно нажать всегда
+                },
                 borderRadius: BorderRadius.circular(999),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -499,9 +525,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     canReset ? 'Forgot password? (admin)' : 'Enter email to reset (admin)',
                     style: TextStyle(
                       color: canReset
-                          ? Colors.white.withOpacity(0.60)
-                          : Colors.white.withOpacity(0.30),
-                      fontWeight: FontWeight.w800,
+                          ? _accent.withOpacity(0.9)
+                          : _ink2,
+                      fontWeight: FontWeight.w600,
                       fontSize: 12,
                     ),
                   ),
@@ -510,13 +536,12 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           },
         ),
-        const SizedBox(height: 8),
         const SizedBox(height: 16),
         _PrimaryButton(
           label: loading ? 'Signing in…' : 'Sign in',
           loading: loading,
           onTap: loading ? null : _login,
-          icon: Icons.login_rounded, // ✅ вход
+          icon: Icons.login_rounded,
         ),
       ],
     );
@@ -526,7 +551,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       key: const ValueKey('register'),
       children: [
-        _GlassField(
+        _PillField(
           controller: _regName,
           focusNode: _fRegName,
           hint: 'Name',
@@ -536,7 +561,7 @@ class _LoginScreenState extends State<LoginScreen> {
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 12),
-        _GlassField(
+        _PillField(
           controller: _regEmail,
           focusNode: _fRegEmail,
           hint: 'Email',
@@ -547,7 +572,7 @@ class _LoginScreenState extends State<LoginScreen> {
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 12),
-        _GlassField(
+        _PillField(
           controller: _regPass,
           focusNode: _fRegPass,
           hint: 'Password',
@@ -556,15 +581,14 @@ class _LoginScreenState extends State<LoginScreen> {
           obscureText: !showPass,
           enabled: !loading,
           textInputAction: TextInputAction.next,
-          trailing: IconButton(
-            onPressed: loading ? null : () => setState(() => showPass = !showPass),
-            icon: Icon(
-              showPass ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-            ),
+          trailing: _EyeButton(
+            visible: showPass,
+            accent: const Color(0xFFF59E0B),
+            onTap: loading ? null : () => setState(() => showPass = !showPass),
           ),
         ),
         const SizedBox(height: 12),
-        _GlassField(
+        _PillField(
           controller: _regPass2,
           focusNode: _fRegPass2,
           hint: 'Confirm password',
@@ -574,11 +598,10 @@ class _LoginScreenState extends State<LoginScreen> {
           enabled: !loading,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _registerAdmin(),
-          trailing: IconButton(
-            onPressed: loading ? null : () => setState(() => showPass2 = !showPass2),
-            icon: Icon(
-              showPass2 ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-            ),
+          trailing: _EyeButton(
+            visible: showPass2,
+            accent: const Color(0xFFF59E0B),
+            onTap: loading ? null : () => setState(() => showPass2 = !showPass2),
           ),
         ),
         const SizedBox(height: 16),
@@ -586,14 +609,14 @@ class _LoginScreenState extends State<LoginScreen> {
           label: loading ? 'Creating…' : 'Create admin',
           loading: loading,
           onTap: loading ? null : _registerAdmin,
-          icon: Icons.person_add_alt_1_rounded, // ✅ человек + плюс
+          icon: Icons.person_add_alt_1_rounded,
         ),
         const SizedBox(height: 10),
         Text(
           'Workers are created by admin inside the app.',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.45),
-            fontWeight: FontWeight.w700,
+            color: _ink2,
+            fontWeight: FontWeight.w500,
             fontSize: 11.5,
           ),
         ),
@@ -602,6 +625,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// BACKGROUND
+// ════════════════════════════════════════════════════════════════
+
 class _AuthBackground extends StatelessWidget {
   const _AuthBackground();
 
@@ -609,50 +636,33 @@ class _AuthBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // base dark gradient
-        Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFF07080C),
-                Color(0xFF0A0C10),
-                Color(0xFF0B0D12),
-              ],
+        // base flat dark
+        Container(color: const Color(0xFF0A0C10)),
+
+        // subtle green glow top
+        Positioned(
+          top: -180,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: _GlowBlob(
+              color: const Color(0xFF22C55E),
+              size: 420,
+              opacity: 0.06,
             ),
           ),
         ),
 
-        // mesh blobs (modern)
+        // subtle green glow bottom
         Positioned(
-          top: -160,
-          left: -140,
-          child: _GlowBlob(color: Color(0xFF34D399), size: 360, opacity: 0.12),
-        ),
-        Positioned(
-          top: 80,
-          right: -160,
-          child: _GlowBlob(color: Color(0xFF38BDF8), size: 320, opacity: 0.10),
-        ),
-        Positioned(
-          bottom: -190,
-          right: -160,
-          child: _GlowBlob(color: Color(0xFFA78BFA), size: 420, opacity: 0.12),
-        ),
-
-        // vignette (делает края "дороже")
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0, -0.2),
-                radius: 1.2,
-                colors: [
-                  Colors.transparent,
-                  Color(0xCC000000),
-                ],
-              ),
+          bottom: -220,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: _GlowBlob(
+              color: const Color(0xFF22C55E),
+              size: 460,
+              opacity: 0.03,
             ),
           ),
         ),
@@ -677,7 +687,7 @@ class _GlowBlob extends StatelessWidget {
     return IgnorePointer(
       child: ClipOval(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+          filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
           child: Container(
             width: size,
             height: size,
@@ -689,23 +699,28 @@ class _GlowBlob extends StatelessWidget {
   }
 }
 
-class _GlassField extends StatefulWidget {
+// ════════════════════════════════════════════════════════════════
+// PILL FIELD (matches HTML design)
+// ════════════════════════════════════════════════════════════════
+
+class _PillField extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
 
   final String hint;
   final IconData icon;
 
+  final Color accent; // ✅ focus color per-field
+
   final bool enabled;
   final bool obscureText;
 
-  final Color accent; // ✅ цвет фокуса (бордер/иконка)
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onSubmitted;
   final Widget? trailing;
 
-  const _GlassField({
+  const _PillField({
     required this.controller,
     required this.focusNode,
     required this.hint,
@@ -720,176 +735,162 @@ class _GlassField extends StatefulWidget {
   });
 
   @override
-  State<_GlassField> createState() => _GlassFieldState();
+  State<_PillField> createState() => _PillFieldState();
 }
 
-class _GlassFieldState extends State<_GlassField> with SingleTickerProviderStateMixin {
+class _PillFieldState extends State<_PillField> {
+  static const _field   = Color(0xFF22262F);
+  static const _fieldHi = Color(0xFF262B35);
+
   bool _focused = false;
-  late final AnimationController _pulse;
 
   @override
   void initState() {
     super.initState();
     _focused = widget.focusNode.hasFocus;
-
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-
     widget.focusNode.addListener(_onFocus);
-
-    // если экран открылся уже с фокусом
-    if (_focused && widget.enabled) {
-      _pulse.repeat(reverse: true);
-    }
   }
 
   @override
-  void didUpdateWidget(covariant _GlassField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.focusNode != widget.focusNode) {
-      oldWidget.focusNode.removeListener(_onFocus);
-
-      _focused = widget.focusNode.hasFocus;
+  void didUpdateWidget(covariant _PillField old) {
+    super.didUpdateWidget(old);
+    if (old.focusNode != widget.focusNode) {
+      old.focusNode.removeListener(_onFocus);
       widget.focusNode.addListener(_onFocus);
-
-      if (_focused && widget.enabled) {
-        _pulse.repeat(reverse: true);
-      } else {
-        _pulse.stop();
-        _pulse.value = 0;
-      }
+      _focused = widget.focusNode.hasFocus;
     }
   }
 
   void _onFocus() {
     if (!mounted) return;
-
     final f = widget.focusNode.hasFocus;
-
-    if (f == _focused) return; // чтобы лишний раз не setState
+    if (f == _focused) return;
     setState(() => _focused = f);
-
-    if (f && widget.enabled) {
-      _pulse.repeat(reverse: true);
-    } else {
-      _pulse.stop();
-      _pulse.value = 0;
-    }
   }
 
   @override
   void dispose() {
     widget.focusNode.removeListener(_onFocus);
-    _pulse.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final accent = widget.accent;
-
-// ✅ фон всегда одинаковый (НЕ красим)
-    final bg = Colors.white.withOpacity(0.05);
-
-// ✅ красим только бордер
-    final border = _focused
-        ? accent.withOpacity(0.70)
-        : Colors.white.withOpacity(0.10);
-
-// ✅ красим только иконку
+    final bg = _focused ? _fieldHi : _field;
+    final borderColor = _focused
+        ? accent.withOpacity(0.55)
+        : Colors.transparent;
     final iconColor = _focused
-        ? accent.withOpacity(0.95)
-        : Colors.white.withOpacity(0.55);
+        ? accent
+        : Colors.white.withOpacity(0.50);
 
     return Opacity(
       opacity: widget.enabled ? 1 : 0.55,
-      child: AnimatedScale(
-        scale: _focused ? 1.02 : 1.0,
-        duration: const Duration(milliseconds: 160),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
-        child: AnimatedBuilder(
-          animation: _pulse,
-          builder: (context, _) {
-            final accent = widget.accent;
-
-            // t = 0..1 только когда focused
-            final t = (_focused && widget.enabled) ? _pulse.value : 0.0;
-
-            // ✅ мигающий бордер (как в reset password)
-            final borderColor = _focused
-                ? accent.withOpacity(0.45 + 0.35 * t)  // 0.45 -> 0.80
-                : Colors.white.withOpacity(0.10);
-
-            // ✅ опционально: лёгкое “свечение” вокруг (если НЕ хочешь — просто удали boxShadow ниже)
-            final glowOpacity = _focused ? (0.06 + 0.14 * t) : 0.0;
-
-            // ✅ иконка тоже чуть оживает
-            final iconColor = _focused
-                ? accent.withOpacity(0.85 + 0.15 * t)
-                : Colors.white.withOpacity(0.55);
-
-            final trailingColor = (_focused && widget.enabled)
-                ? accent.withOpacity(0.70 + 0.25 * t) // ✅ 0.70 -> 0.95 (мигает)
-                : Colors.white.withOpacity(0.35);     // ✅ обычный серый
-
-            return Container(
-              height: 52,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: borderColor, width: 1.2),
-              ),
-              child: Row(
-                children: [
-                  Icon(widget.icon, color: iconColor),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: widget.controller,
-                      focusNode: widget.focusNode,
-                      enabled: widget.enabled,
-                      obscureText: widget.obscureText,
-                      keyboardType: widget.keyboardType,
-                      textInputAction: widget.textInputAction,
-                      onSubmitted: widget.onSubmitted,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.92),
-                        fontWeight: FontWeight.w800,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: widget.hint,
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                        border: InputBorder.none,
-                      ),
-                    ),
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: borderColor, width: 1.2),
+          boxShadow: _focused
+              ? [
+            BoxShadow(
+              color: accent.withOpacity(0.10),
+              blurRadius: 0,
+              spreadRadius: 4,
+            ),
+          ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Icon(widget.icon, color: iconColor, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                enabled: widget.enabled,
+                obscureText: widget.obscureText,
+                keyboardType: widget.keyboardType,
+                textInputAction: widget.textInputAction,
+                onSubmitted: widget.onSubmitted,
+                cursorColor: accent,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14.5,
+                ),
+                decoration: InputDecoration(
+                  hintText: widget.hint,
+                  hintStyle: TextStyle(
+                    color: Colors.white.withOpacity(0.38),
+                    fontWeight: FontWeight.w500,
                   ),
-                  if (widget.trailing != null)
-                    IconTheme(
-                      data: IconThemeData(
-                        color: trailingColor, // ✅ тут красим глазок
-                        size: 20,
-                      ),
-                      child: widget.trailing!,
-                    ),
-                ],
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            );
-          },
+            ),
+            if (widget.trailing != null) widget.trailing!,
+          ],
         ),
       ),
     );
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// EYE BUTTON (circle hover, green on active)
+// ════════════════════════════════════════════════════════════════
+
+class _EyeButton extends StatelessWidget {
+  final bool visible;
+  final VoidCallback? onTap;
+  final Color accent;
+
+  const _EyeButton({
+    required this.visible,
+    required this.onTap,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          child: Icon(
+            visible ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+            color: accent.withOpacity(0.85),
+            size: 21,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PRIMARY BUTTON (green pill, gradient, glow)
+// ════════════════════════════════════════════════════════════════
+
 class _PrimaryButton extends StatelessWidget {
   final String label;
   final bool loading;
   final VoidCallback? onTap;
-
   final IconData icon;
 
   const _PrimaryButton({
@@ -901,18 +902,35 @@ class _PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onTap == null;
     return GestureDetector(
       onTap: onTap,
-      child: Opacity(
-        opacity: onTap == null ? 0.55 : 1,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: disabled ? 0.6 : 1,
         child: Container(
-          height: 52,
+          height: 54,
           width: double.infinity,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            color: const Color(0xFF43A047),
-            border: Border.all(color: Colors.white10),
-            boxShadow: const [],
+            borderRadius: BorderRadius.circular(999),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFF34D76F),
+                Color(0xFF22C55E),
+              ],
+            ),
+            boxShadow: disabled
+                ? []
+                : [
+              BoxShadow(
+                color: const Color(0xFF22C55E).withOpacity(0.35),
+                blurRadius: 20,
+                spreadRadius: -8,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Center(
             child: AnimatedSwitcher(
@@ -925,12 +943,19 @@ class _PrimaryButton extends StatelessWidget {
                   SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF0A1A0F),
+                    ),
                   ),
                   SizedBox(width: 10),
                   Text(
                     'Please wait…',
-                    style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
+                    style: TextStyle(
+                      color: Color(0xFF0A1A0F),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
               )
@@ -938,11 +963,15 @@ class _PrimaryButton extends StatelessWidget {
                 key: const ValueKey('idle'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(icon, color: Colors.black),
+                  Icon(icon, color: const Color(0xFF0A1A0F), size: 18),
                   const SizedBox(width: 10),
                   Text(
                     label,
-                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
+                    style: const TextStyle(
+                      color: Color(0xFF0A1A0F),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
               ),

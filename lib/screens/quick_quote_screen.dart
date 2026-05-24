@@ -3908,17 +3908,12 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
 
       _clearQuote();
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const EstimateListScreen()),
-      );
-
-      Navigator.push(
-        context,
+      Navigator.of(context, rootNavigator: true).pushReplacement(
         MaterialPageRoute(
           builder: (_) => EstimateDetailsScreen(estimateId: created.id),
         ),
       );
+
     } catch (_) {
       if (!mounted) return;
       _showSnack('Failed to convert quote to estimate');
@@ -4228,11 +4223,44 @@ class _SwipeGenerateQuoteButton extends StatefulWidget {
   State<_SwipeGenerateQuoteButton> createState() => _SwipeGenerateQuoteButtonState();
 }
 
-class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
+class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton>
+    with TickerProviderStateMixin {
   double _drag = 0;
+  double _fillWidth = 0;
+
+  static const double _knob = 50.0;
+
+  late final AnimationController _glowFade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..addListener(() {
+    setState(() {});
+  })
+    ..addStatusListener((status) {
+      if (status == AnimationStatus.dismissed) {
+        setState(() { _fillWidth = 0; });
+      }
+    });
+
+  double _snapStart = 0;
+
+  late final AnimationController _snapBack = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+  )..addListener(() {
+    final t = Curves.easeOutCubic.transform(_snapBack.value);
+    setState(() => _drag = _snapStart * (1.0 - t));
+  });
 
   static const _orange = Color(0xFF9A5A00);
   static const _track = Color(0xFF171A22);
+
+  @override
+  void dispose() {
+    _glowFade.dispose();
+    _snapBack.dispose();
+    super.dispose();
+  }
 
   void _finish(double maxDrag) {
     final passed = _drag > maxDrag * 0.62;
@@ -4240,15 +4268,26 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
     if (passed && !widget.isLoading) {
       setState(() {
         _drag = maxDrag;
+        _fillWidth = maxDrag + _knob / 2;
       });
-
+      _glowFade.value = 1.0;
       widget.onSubmit();
+      Future.delayed(const Duration(milliseconds: 180), () {
+        if (mounted) _glowFade.reverse();
+      });
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted && !widget.isLoading) {
+          _snapStart = _drag;
+          _snapBack.forward(from: 0.0);
+        }
+      });
       return;
     }
 
-    setState(() {
-      _drag = 0;
-    });
+    // Не дотянул — просто snap back
+    _snapStart = _drag;
+    _snapBack.forward(from: 0.0);
+    _glowFade.reverse();
   }
 
   @override
@@ -4256,12 +4295,10 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.isLoading && !widget.isLoading) {
-      Future.delayed(const Duration(milliseconds: 250), () {
+      Future.delayed(const Duration(milliseconds: 80), () {
         if (!mounted) return;
-
-        setState(() {
-          _drag = 0;
-        });
+        _snapStart = _drag;
+        _snapBack.forward(from: 0);
       });
     }
   }
@@ -4271,7 +4308,7 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
     return LayoutBuilder(
       builder: (context, constraints) {
         const height = 58.0;
-        const knob = 50.0;
+        const knob = _knob;
         final maxDrag = constraints.maxWidth - knob - 8;
 
         return GestureDetector(
@@ -4280,7 +4317,9 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
               : (details) {
             setState(() {
               _drag = (_drag + details.delta.dx).clamp(0.0, maxDrag);
+              _fillWidth = _drag + knob / 2;
             });
+            if (_drag > 0) _glowFade.value = 1.0;
           },
           onHorizontalDragEnd: widget.isLoading ? null : (_) => _finish(maxDrag),
           child: AnimatedContainer(
@@ -4295,12 +4334,12 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
                 ],
               ),
               border: Border.all(
-                color: const Color(0xFF9A5A00).withOpacity(0.35),
+                color: const Color(0xFF2E3140),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF9A5A00).withOpacity(0.12),
-                  blurRadius: 20,
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -4308,21 +4347,24 @@ class _SwipeGenerateQuoteButtonState extends State<_SwipeGenerateQuoteButton> {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Track fill
+                // Track fill (огненный fade)
                 Positioned(
                   left: 4,
                   top: 4,
                   bottom: 4,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 90),
-                    width: _drag > 0 ? _drag + knob / 2 : 0,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF9A5A00).withOpacity(0.3),
-                          const Color(0xFF9A5A00).withOpacity(0.05),
-                        ],
+                  child: Opacity(
+                    opacity: _glowFade.value,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 90),
+                      width: _fillWidth > 0 ? _fillWidth : 0,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFFD97706).withOpacity(0.5),
+                            const Color(0xFF9A5A00).withOpacity(0.15),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -4542,8 +4584,8 @@ class _PromptBoxWithMic extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFF272A32),
-            Color(0xFF20232B),
+            Color(0xFF161820),
+            Color(0xFF111318),
           ],
         ),
         border: Border.all(
@@ -4557,41 +4599,36 @@ class _PromptBoxWithMic extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Workio label ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            child: _WorkioTypingLabel(
+              text: workioText,
+              onTap: onWorkioTap,
+            ),
+          ),
+
+          // ── Divider 1 ──
+          Container(
+            height: 1,
+            color: const Color(0xFF252936),
+          ),
+
+          // ── Prompt text field ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _WorkioTypingLabel(
-                  text: workioText,
-                  onTap: onWorkioTap,
-                ),
-                const SizedBox(height: 10),
-
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    return Transform.translate(
-                      offset: const Offset(-14, 0),
-                      child: Container(
-                        height: 1,
-                        width: constraints.maxWidth + 28,
-                        color: const Color(0xFF252936),
-                      ),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
                 if (isListening) ...[
                   _VoiceListeningPanel(
                     liveText: voiceLiveText,
                   ),
                   const SizedBox(height: 12),
                 ],
-
                 Scrollbar(
                   thumbVisibility: true,
                   thickness: 3,
@@ -4616,10 +4653,7 @@ class _PromptBoxWithMic extends StatelessWidget {
                         fontWeight: FontWeight.w400,
                       ),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.only(
-                        right: 54,
-                        bottom: 34,
-                      ),
+                      contentPadding: EdgeInsets.zero,
                     ),
                   ),
                 ),
@@ -4627,11 +4661,22 @@ class _PromptBoxWithMic extends StatelessWidget {
             ),
           ),
 
-          Positioned(
-            right: 12,
-            bottom: 12,
+          // ── Divider 2 ──
+          Container(
+            height: 1,
+            color: const Color(0xFF252936),
+          ),
+
+          // ── Mic + Clear row ──
+          // ── Mic + Clear row ──
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E2028),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(26)),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 _PromptMicButton(
                   isListening: isListening,

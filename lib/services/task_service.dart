@@ -14,6 +14,57 @@ class TaskService {
 
   static String _s(Object? v) => (v ?? '').toString().trim();
 
+  static String _dateKey(DateTime dt) {
+    final d = dt.toLocal();
+
+    String two(int v) => v.toString().padLeft(2, '0');
+
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  static String _timeOffLabel(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
+
+  static Future<Map<String, dynamic>?> fetchActiveTimeOffForWorkerAuthId(
+      String workerAuthId,
+      ) async {
+    final cleanWorkerAuthId = workerAuthId.trim();
+    if (cleanWorkerAuthId.isEmpty) return null;
+
+    final today = _dateKey(DateTime.now());
+
+    final rows = await _supabase
+        .from('worker_time_off')
+        .select('id, worker_auth_id, type, title, start_date, end_date, status, block_clock_in')
+        .eq('worker_auth_id', cleanWorkerAuthId)
+        .eq('status', 'active')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .order('end_date', ascending: true)
+        .limit(1);
+
+    final list = List<Map<String, dynamic>>.from(rows as List);
+
+    if (list.isEmpty) return null;
+
+    return list.first;
+  }
+
   static String _shortText(String value, {int max = 90}) {
     final text = value.trim();
     if (text.length <= max) return text;
@@ -501,10 +552,48 @@ class TaskService {
         .eq('owner_admin_id', adminId)
         .order('name', ascending: true);
 
-    return (rows as List)
+    final workers = (rows as List)
         .map((e) => Map<String, dynamic>.from(e as Map))
         .where((w) => _s(w['auth_user_id']).isNotEmpty)
         .toList();
+
+    if (workers.isEmpty) return workers;
+
+    final today = _dateKey(DateTime.now());
+
+    final offRows = await _supabase
+        .from('worker_time_off')
+        .select('id, worker_auth_id, type, title, start_date, end_date, status, block_clock_in')
+        .eq('admin_id', adminId)
+        .eq('status', 'active')
+        .lte('start_date', today)
+        .gte('end_date', today);
+
+    final offByAuthId = <String, Map<String, dynamic>>{};
+
+    for (final raw in (offRows as List)) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final authId = _s(row['worker_auth_id']);
+      if (authId.isNotEmpty) {
+        offByAuthId[authId] = row;
+      }
+    }
+
+    return workers.map((w) {
+      final authId = _s(w['auth_user_id']);
+      final off = offByAuthId[authId];
+
+      return {
+        ...w,
+        'time_off_active': off != null,
+        'time_off_id': off?['id'],
+        'time_off_type': off?['type'],
+        'time_off_title': off?['title'],
+        'time_off_start_date': off?['start_date'],
+        'time_off_end_date': off?['end_date'],
+        'time_off_block_clock_in': off?['block_clock_in'] == true,
+      };
+    }).toList();
   }
 
 
@@ -632,6 +721,19 @@ class TaskService {
     }
 
     final cleanDescription = _nullableTrim(description);
+
+    final activeTimeOff = await fetchActiveTimeOffForWorkerAuthId(workerAuthId);
+
+    if (activeTimeOff != null && activeTimeOff['block_clock_in'] == true) {
+      final label = _timeOffLabel(activeTimeOff['type']);
+      final endDate = _s(activeTimeOff['end_date']);
+
+      throw Exception(
+        endDate.isEmpty
+            ? '$label is active. Worker cannot receive new tasks.'
+            : '$label is active until $endDate. Worker cannot receive new tasks.',
+      );
+    }
 
     final payload = {
       'admin_auth_id': adminId,

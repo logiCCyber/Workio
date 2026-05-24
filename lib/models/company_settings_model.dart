@@ -9,6 +9,13 @@ class CompanySettingsModel {
   final String taxLabel;
   final double defaultTaxRate;
   final String currencyCode;
+
+  final String countryCode;
+  final String regionCode;
+  final String timezone;
+  final bool enableSystemHolidays;
+  final bool enableConstructionHoliday;
+
   final String? logoPath;
   final String? logoUrl;
   final DateTime? createdAt;
@@ -25,6 +32,11 @@ class CompanySettingsModel {
     required this.taxLabel,
     required this.defaultTaxRate,
     required this.currencyCode,
+    this.countryCode = 'CA',
+    this.regionCode = 'QC',
+    this.timezone = 'America/Toronto',
+    this.enableSystemHolidays = true,
+    this.enableConstructionHoliday = true,
     this.logoPath,
     this.logoUrl,
     this.createdAt,
@@ -43,6 +55,11 @@ class CompanySettingsModel {
       taxLabel: map['tax_label']?.toString() ?? 'Tax',
       defaultTaxRate: _toDouble(map['default_tax_rate'], fallback: 0.13),
       currencyCode: map['currency_code']?.toString() ?? 'CAD',
+      countryCode: map['country_code']?.toString() ?? 'CA',
+      regionCode: map['region_code']?.toString() ?? 'QC',
+      timezone: map['timezone']?.toString() ?? 'America/Toronto',
+      enableSystemHolidays: map['enable_system_holidays'] != false,
+      enableConstructionHoliday: map['enable_construction_holiday'] != false,
       logoPath: map['logo_path']?.toString(),
       logoUrl: map['logo_url']?.toString(),
       createdAt: map['created_at'] != null
@@ -72,6 +89,11 @@ class CompanySettingsModel {
       'tax_label': taxLabel,
       'default_tax_rate': defaultTaxRate,
       'currency_code': currencyCode,
+      'country_code': countryCode,
+      'region_code': regionCode,
+      'timezone': timezone,
+      'enable_system_holidays': enableSystemHolidays,
+      'enable_construction_holiday': enableConstructionHoliday,
       'logo_path': logoPath,
       'logo_url': logoUrl,
       'created_at': createdAt?.toIso8601String(),
@@ -89,6 +111,11 @@ class CompanySettingsModel {
       'tax_label': taxLabel,
       'default_tax_rate': defaultTaxRate,
       'currency_code': currencyCode,
+      'country_code': countryCode,
+      'region_code': regionCode,
+      'timezone': timezone,
+      'enable_system_holidays': enableSystemHolidays,
+      'enable_construction_holiday': enableConstructionHoliday,
       'logo_path': logoPath,
       'logo_url': logoUrl,
     };
@@ -105,6 +132,11 @@ class CompanySettingsModel {
     String? taxLabel,
     double? defaultTaxRate,
     String? currencyCode,
+    String? countryCode,
+    String? regionCode,
+    String? timezone,
+    bool? enableSystemHolidays,
+    bool? enableConstructionHoliday,
     String? logoPath,
     String? logoUrl,
     DateTime? createdAt,
@@ -121,6 +153,11 @@ class CompanySettingsModel {
       taxLabel: taxLabel ?? this.taxLabel,
       defaultTaxRate: defaultTaxRate ?? this.defaultTaxRate,
       currencyCode: currencyCode ?? this.currencyCode,
+      countryCode: countryCode ?? this.countryCode,
+      regionCode: regionCode ?? this.regionCode,
+      timezone: timezone ?? this.timezone,
+      enableSystemHolidays: enableSystemHolidays ?? this.enableSystemHolidays,
+      enableConstructionHoliday: enableConstructionHoliday ?? this.enableConstructionHoliday,
       logoPath: logoPath ?? this.logoPath,
       logoUrl: logoUrl ?? this.logoUrl,
       createdAt: createdAt ?? this.createdAt,

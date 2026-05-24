@@ -11,6 +11,63 @@ class WorkerService {
     return u;
   }
 
+  String _dateKey(DateTime dt) {
+    final d = dt.toLocal();
+
+    String two(int v) => v.toString().padLeft(2, '0');
+
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  String _timeOffLabel(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
+
+  String _timeOffBlockedMessage(Map<String, dynamic> row) {
+    final label = _timeOffLabel(row['type']);
+    final endDate = (row['end_date'] ?? '').toString();
+
+    if (endDate.isEmpty) {
+      return '$label is active. Shift start is blocked.';
+    }
+
+    return '$label is active until $endDate. Shift start is blocked.';
+  }
+
+  Future<Map<String, dynamic>?> getActiveTimeOff() async {
+    final today = _dateKey(DateTime.now());
+
+    final rows = await _db
+        .from('worker_time_off')
+        .select('id, type, title, reason, start_date, end_date, status, block_clock_in')
+        .eq('worker_auth_id', _user.id)
+        .eq('status', 'active')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .order('end_date', ascending: true)
+        .limit(1);
+
+    final list = List<Map<String, dynamic>>.from(rows as List);
+
+    if (list.isEmpty) return null;
+
+    return list.first;
+  }
+
   Future<String> getCurrentAddress() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
       return 'Location disabled';
@@ -126,6 +183,11 @@ class WorkerService {
     final active = await getActiveShift();
     if (active != null) {
       throw Exception('Shift already active');
+    }
+
+    final activeTimeOff = await getActiveTimeOff();
+    if (activeTimeOff != null && activeTimeOff['block_clock_in'] == true) {
+      throw Exception(_timeOffBlockedMessage(activeTimeOff));
     }
 
     final worker = await _db

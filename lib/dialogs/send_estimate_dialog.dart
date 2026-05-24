@@ -42,7 +42,7 @@ Future<SendEstimateDialogResult?> showSendEstimateDialog({
   return showModalBottomSheet<SendEstimateDialogResult>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF15161C),
+    backgroundColor: const Color(0xFF1A1D25),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -226,7 +226,7 @@ $_companyName
   Future<void> _pickTemplate() async {
     final selected = await showModalBottomSheet<EstimateEmailTemplate>(
       context: context,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -322,9 +322,9 @@ $_companyName
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(children: children),
     );
@@ -348,7 +348,7 @@ $_companyName
             padding: EdgeInsets.only(top: maxLines > 1 ? 4 : 0),
             child: Icon(
               icon,
-              color: const Color(0xFF8E93A6),
+              color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
               size: 18,
             ),
           ),
@@ -371,7 +371,7 @@ $_companyName
                   keyboardType: keyboardType,
                   maxLines: maxLines,
                   minLines: maxLines > 1 ? 5 : 1,
-                  cursorColor: const Color(0xFF5B8CFF),
+                  cursorColor: const Color(0xFF38BDF8),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -416,7 +416,7 @@ $_companyName
             children: [
               Icon(
                 icon,
-                color: const Color(0xFF8E93A6),
+                color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                 size: 18,
               ),
               const SizedBox(width: 12),
@@ -514,7 +514,7 @@ $_companyName
           CupertinoSwitch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF5B8CFF),
+            activeColor: const Color(0xFF38BDF8),
           ),
         ],
       ),
@@ -547,15 +547,15 @@ $_companyName
 
             const SizedBox(height: 18),
 
-            const Row(
+            Row(
               children: [
                 Icon(
                   CupertinoIcons.paperplane_fill,
-                  color: Color(0xFFB8C1D9),
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.92),
                   size: 22,
                 ),
-                SizedBox(width: 10),
-                Expanded(
+                const SizedBox(width: 10),
+                const Expanded(
                   child: Text(
                     'Send Estimate',
                     style: TextStyle(
@@ -580,7 +580,7 @@ $_companyName
                   hintText: 'client@email.com',
                   keyboardType: TextInputType.emailAddress,
                 ),
-                const Divider(color: Color(0xFF23252E), height: 1),
+                const Divider(color: Color(0xFF303442), height: 1),
                 _sendPickerRow(
                   icon: CupertinoIcons.square_stack_3d_up,
                   label: 'Email Template',
@@ -601,7 +601,7 @@ $_companyName
                   controller: _subjectController,
                   hintText: 'Estimate EST-...',
                 ),
-                const Divider(color: Color(0xFF23252E), height: 1),
+                const Divider(color: Color(0xFF303442), height: 1),
                 _sendInputRow(
                   icon: CupertinoIcons.text_alignleft,
                   label: 'Message',
@@ -657,7 +657,7 @@ $_companyName
                     ],
                   ),
                 ),
-                const Divider(color: Color(0xFF23252E), height: 1),
+                const Divider(color: Color(0xFF303442), height: 1),
                 _sendSwitchRow(
                   icon: CupertinoIcons.doc_text,
                   label: 'Use latest saved PDF',
@@ -673,7 +673,7 @@ $_companyName
                     });
                   },
                 ),
-                const Divider(color: Color(0xFF23252E), height: 1),
+                const Divider(color: Color(0xFF303442), height: 1),
                 _sendSwitchRow(
                   icon: CupertinoIcons.arrow_clockwise,
                   label: 'Generate new PDF if needed',
@@ -690,11 +690,21 @@ $_companyName
 
             const SizedBox(height: 18),
 
-            SizedBox(
+            Container(
               width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.30),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
               child: CupertinoButton(
                 padding: const EdgeInsets.symmetric(vertical: 15),
-                color: const Color(0xFF5B8CFF),
+                color: const Color(0xFF38BDF8),
                 borderRadius: BorderRadius.circular(16),
                 onPressed: _submit,
                 child: const Row(
@@ -743,9 +753,9 @@ class _PremiumTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -772,7 +782,7 @@ class _PremiumTextField extends StatelessWidget {
                 fontWeight: FontWeight.w500,
                 height: 1.35,
               ),
-              cursorColor: const Color(0xFF5B8CFF),
+              cursorColor: const Color(0xFF38BDF8),
               decoration: InputDecoration(
                 isDense: true,
                 hintText: hintText,
@@ -809,9 +819,9 @@ class _ChoiceCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -863,9 +873,9 @@ class _SelectionCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF101117),
+          color: const Color(0xFF20232D),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFF23252E)),
+          border: Border.all(color: const Color(0xFF303442)),
         ),
         child: Row(
           children: [
@@ -929,24 +939,60 @@ class _TemplatePickerTile extends StatelessWidget {
     required this.onTap,
   });
 
+  Color _templateAccentColor() {
+    final lower = title.toLowerCase();
+    if (lower.contains('standard')) return const Color(0xFF38BDF8);
+    if (lower.contains('updated')) return const Color(0xFFFFB84D);
+    if (lower.contains('follow')) return const Color(0xFF22C55E);
+    return const Color(0xFF8E93A6);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final accent = _templateAccentColor();
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFF16233F) : const Color(0xFF101117),
+          color: selected ? const Color(0xFF0F2A47) : const Color(0xFF20232D),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected
-                ? const Color(0xFF5B8CFF)
-                : const Color(0xFF23252E),
+                ? const Color(0xFF38BDF8)
+                : const Color(0xFF303442),
+            width: selected ? 1.5 : 1,
           ),
+          boxShadow: selected
+              ? [
+            BoxShadow(
+              color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ]
+              : null,
         ),
         child: Row(
           children: [
+            Container(
+              width: 10,
+              height: 10,
+              margin: const EdgeInsets.only(right: 10, top: 4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: accent,
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.55),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -978,7 +1024,7 @@ class _TemplatePickerTile extends StatelessWidget {
                   ? CupertinoIcons.check_mark_circled_solid
                   : CupertinoIcons.circle,
               color: selected
-                  ? const Color(0xFF5B8CFF)
+                  ? const Color(0xFF38BDF8)
                   : const Color(0xFF5E6475),
               size: 22,
             ),
@@ -1007,9 +1053,9 @@ class _SwitchRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F212A)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Row(
         children: [
@@ -1026,7 +1072,7 @@ class _SwitchRow extends StatelessWidget {
           CupertinoSwitch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF5B8CFF),
+            activeColor: const Color(0xFF38BDF8),
           ),
         ],
       ),

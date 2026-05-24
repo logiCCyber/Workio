@@ -1,8 +1,11 @@
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter/foundation.dart';
 
 import '../dialogs/add_client_dialog.dart';
 import '../dialogs/add_property_dialog.dart';
@@ -17,6 +20,7 @@ import '../services/invoice_service.dart';
 import '../services/property_service.dart';
 import '../utils/estimate_calculator.dart';
 import '../utils/estimate_formatters.dart';
+import '../utils/workio_icon_mapper.dart';
 
 class CreateInvoiceScreen extends StatefulWidget {
   const CreateInvoiceScreen({super.key});
@@ -34,6 +38,11 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+
+  bool _speechReady = false;
+  bool _isListening = false;
+  bool _voiceAppendMode = true;
 
   List<ClientModel> _clients = [];
   List<PropertyModel> _properties = [];
@@ -55,10 +64,12 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   void initState() {
     super.initState();
     _loadInitialData();
+    _initSpeech();
   }
 
   @override
   void dispose() {
+    _speech.stop();
     _titleController.dispose();
     _notesController.dispose();
     _termsController.dispose();
@@ -101,9 +112,191 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   void _showSnack(String message) {
     if (!mounted) return;
 
+    final lower = message.toLowerCase();
+
+    final isSuccess = lower.contains('created') ||
+        lower.contains('saved') ||
+        lower.contains('updated') ||
+        lower.contains('uploaded') ||
+        lower.contains('removed');
+
+    final isError = lower.contains('failed') ||
+        lower.contains('error') ||
+        lower.contains('select') ||
+        lower.contains('enter') ||
+        lower.contains('add at least');
+
+    final icon = isSuccess
+        ? CupertinoIcons.checkmark_circle_fill
+        : isError
+        ? CupertinoIcons.xmark_circle_fill
+        : CupertinoIcons.info_circle_fill;
+
+    final color = isSuccess
+        ? const Color(0xFF22C55E)
+        : isError
+        ? const Color(0xFFFF6B6B)
+        : const Color(0xFFF59E0B);
+
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+        duration: const Duration(seconds: 3),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF22252D),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: color.withValues(alpha: 0.35),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
+  }
+
+  Future<void> _initSpeech() async {
+    final ready = await _speech.initialize(
+      onStatus: (status) {
+        if (!mounted) return;
+
+        if (status == 'done' || status == 'notListening') {
+          setState(() {
+            _isListening = false;
+          });
+        }
+      },
+      onError: (error) {
+        if (!mounted) return;
+
+        setState(() {
+          _isListening = false;
+        });
+
+        _showSnack('Voice input failed: ${error.errorMsg}');
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _speechReady = ready;
+    });
+  }
+
+  void _insertVoiceTextToController(
+      TextEditingController controller,
+      String spokenText, {
+        required bool append,
+      }) {
+    final clean = spokenText.trim();
+    if (clean.isEmpty) return;
+
+    final current = controller.text.trim();
+
+    final next = append
+        ? (current.isEmpty ? clean : '$current $clean').trim()
+        : clean;
+
+    controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+  }
+
+  Future<void> _startVoiceInput({
+    required TextEditingController controller,
+    required bool append,
+    ValueChanged<String>? onLiveText,
+    VoidCallback? onDone,
+  }) async {
+    if (!_speechReady) {
+      _showSnack('Voice input is not available on this device');
+      return;
+    }
+
+    if (_isListening) return;
+
+    setState(() {
+      _voiceAppendMode = append;
+      _isListening = true;
+    });
+
+    await _speech.listen(
+      onResult: (result) {
+        if (!mounted) return;
+
+        final spoken = result.recognizedWords.trim();
+
+        if (spoken.isNotEmpty) {
+          if (onLiveText != null) {
+            onLiveText(spoken);
+          } else if (result.finalResult) {
+            _insertVoiceTextToController(
+              controller,
+              spoken,
+              append: _voiceAppendMode,
+            );
+          }
+        }
+
+        if (result.finalResult) {
+          setState(() {
+            _isListening = false;
+          });
+
+          onDone?.call();
+        }
+      },
+      listenMode: stt.ListenMode.dictation,
+      partialResults: true,
+      cancelOnError: true,
+      listenFor: const Duration(seconds: 45),
+      pauseFor: const Duration(seconds: 5),
+    );
+  }
+
+  Future<void> _stopVoiceInput() async {
+    await _speech.stop();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isListening = false;
+    });
   }
 
   String get _currencyCode {
@@ -255,7 +448,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     final picked = await showModalBottomSheet<DateTime>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF242730),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -281,7 +474,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     final picked = await showModalBottomSheet<DateTime>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF242730),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -310,47 +503,201 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       'void',
     ];
 
-    final selected = await _openWorkioPickerSheet<String>(
-      title: 'Change Status',
-      subtitle: 'Select invoice payment status',
-      icon: CupertinoIcons.checkmark_seal,
-      items: statuses,
-      itemIconBuilder: (status) {
-        switch (status) {
-          case 'draft':
-            return CupertinoIcons.doc_text;
-          case 'sent':
-            return CupertinoIcons.paperplane;
-          case 'partial':
-            return CupertinoIcons.circle_lefthalf_fill;
-          case 'paid':
-            return CupertinoIcons.checkmark_circle_fill;
-          case 'overdue':
-            return CupertinoIcons.exclamationmark_triangle_fill;
-          case 'void':
-            return CupertinoIcons.xmark_circle_fill;
-          default:
-            return CupertinoIcons.circle;
-        }
-      },
-      titleBuilder: _statusLabel,
-      subtitleBuilder: (status) {
-        switch (status) {
-          case 'draft':
-            return 'Invoice is still being prepared';
-          case 'sent':
-            return 'Invoice was sent to the client';
-          case 'partial':
-            return 'Client paid part of the invoice';
-          case 'paid':
-            return 'Invoice is fully paid';
-          case 'overdue':
-            return 'Payment is past due';
-          case 'void':
-            return 'Invoice is cancelled or invalid';
-          default:
-            return '';
-        }
+    String subtitleFor(String status) {
+      switch (status) {
+        case 'draft':
+          return 'Invoice is still being prepared';
+        case 'sent':
+          return 'Invoice was sent to the client';
+        case 'partial':
+          return 'Client paid part of the invoice';
+        case 'paid':
+          return 'Invoice is fully paid';
+        case 'overdue':
+          return 'Payment is past due';
+        case 'void':
+          return 'Invoice is cancelled or invalid';
+        default:
+          return '';
+      }
+    }
+
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF1B1F28),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      builder: (_) {
+        return SafeArea(
+          top: false,
+          child: FractionallySizedBox(
+            heightFactor: 0.72,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              child: Column(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3D4250),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: 3),
+                        child: Icon(
+                          CupertinoIcons.checkmark_seal_fill,
+                          color: Color(0xFFF3F6FC),
+                          size: 23,
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Change Status',
+                              style: TextStyle(
+                                color: Color(0xFFF1F4F8),
+                                fontSize: 23,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Select invoice payment status',
+                              style: TextStyle(
+                                color: Color(0xFFA0A7B8),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Expanded(
+                    child: ListView.separated(
+                      padding: EdgeInsets.zero,
+                      itemCount: statuses.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final status = statuses[index];
+                        final selectedNow = status == _status;
+                        final statusColor = _statusColor(status);
+
+                        return Material(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => Navigator.pop(context, status),
+                            child: Container(
+                              padding: const EdgeInsets.all(15),
+                              decoration: BoxDecoration(
+                                color: selectedNow
+                                    ? statusColor.withValues(alpha: 0.14)
+                                    : const Color(0xFF151922),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: selectedNow
+                                      ? statusColor.withValues(alpha: 0.85)
+                                      : const Color(0xFF343A49),
+                                  width: 1,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.18),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      _statusIcon(status),
+                                      color: statusColor,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 13),
+
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _statusLabel(status),
+                                          style: const TextStyle(
+                                            color: Color(0xFFF1F4F8),
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          subtitleFor(status),
+                                          style: const TextStyle(
+                                            color: Color(0xFFA0A7B8),
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w500,
+                                            height: 1.25,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 8),
+
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      selectedNow
+                                          ? CupertinoIcons.checkmark_circle_fill
+                                          : CupertinoIcons.chevron_right,
+                                      color: selectedNow
+                                          ? statusColor
+                                          : const Color(0xFF9AA3B7),
+                                      size: selectedNow ? 21 : 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
       },
     );
 
@@ -368,6 +715,44 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     ];
 
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  Color _statusColor(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'draft':
+        return const Color(0xFFF3F6FC);
+      case 'sent':
+        return const Color(0xFF0EA5E9);
+      case 'partial':
+        return const Color(0xFFFFB300);
+      case 'paid':
+        return const Color(0xFF22C55E);
+      case 'overdue':
+        return const Color(0xFFE85D3D);
+      case 'void':
+        return const Color(0xFFBFC6D4);
+      default:
+        return const Color(0xFFBFC6D4);
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'draft':
+        return CupertinoIcons.doc_text_fill;
+      case 'sent':
+        return CupertinoIcons.paperplane_fill;
+      case 'partial':
+        return CupertinoIcons.circle_lefthalf_fill;
+      case 'paid':
+        return CupertinoIcons.checkmark_seal_fill;
+      case 'overdue':
+        return CupertinoIcons.exclamationmark_triangle_fill;
+      case 'void':
+        return CupertinoIcons.xmark_circle_fill;
+      default:
+        return CupertinoIcons.circle_fill;
+    }
   }
 
   String _statusLabel(String status) {
@@ -400,6 +785,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       controller: controller,
     );
 
+    await Future.delayed(const Duration(milliseconds: 450));
     controller.dispose();
 
     if (value == null) return;
@@ -420,6 +806,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       controller: controller,
     );
 
+    await Future.delayed(const Duration(milliseconds: 450));
     controller.dispose();
 
     if (value == null) return;
@@ -439,13 +826,13 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     return showModalBottomSheet<double>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF242730),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (context) {
         return Padding(
-              padding: EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             20,
             14,
             20,
@@ -490,19 +877,17 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                 width: double.infinity,
                 child: CupertinoButton(
                   padding: const EdgeInsets.symmetric(vertical: 15),
-                  color: const Color(0xFF5B8CFF),
-                  borderRadius: BorderRadius.circular(16),
-                  onPressed: () async {
+                  color: const Color(0xFF8B5CF6),
+                  borderRadius: BorderRadius.circular(18),
+                  onPressed: () {
                     final parsed = EstimateCalculator.parseNumber(
                       controller.text,
                     );
 
                     FocusManager.instance.primaryFocus?.unfocus();
-                    await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-                    await Future.delayed(const Duration(milliseconds: 250));
+                    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
 
-                    if (!context.mounted) return;
-                    Navigator.pop(context, parsed);
+                    Navigator.of(context).pop(parsed);
                   },
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -579,7 +964,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF242730),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -590,9 +975,21 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               return Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF101117),
+                  color: const Color(0xFF181B23),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF23252E)),
+                  border: Border.all(color: const Color(0xFF303442)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.26),
+                      blurRadius: 18,
+                      offset: const Offset(0, 10),
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.025),
+                      blurRadius: 8,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
                 ),
                 child: Column(children: children),
               );
@@ -623,10 +1020,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                             children: [
                               Padding(
                                 padding: EdgeInsets.only(top: maxLines > 1 ? 2 : 0),
-                                child: Icon(
-                                  icon,
-                                  color: const Color(0xFF8E93A6),
-                                  size: 16,
+                                child: _PremiumPickerLeadingIcon(
+                                  icon: icon,
+                                  tone: _PickerIconTone.softWhite,
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -718,10 +1114,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
-                                    icon,
-                                    color: const Color(0xFF8E93A6),
-                                    size: 16,
+                                  _PremiumPickerLeadingIcon(
+                                    icon: icon,
+                                    tone: _PickerIconTone.softWhite,
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
@@ -770,29 +1165,40 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               required TextInputType keyboardType,
             }) {
               return Container(
-                constraints: const BoxConstraints(minHeight: 78),
+                constraints: const BoxConstraints(minHeight: 84),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0D0E14),
+                  color: const Color(0xFF181B23),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF23252E)),
+                  border: Border.all(color: const Color(0xFF303442)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.02),
+                      blurRadius: 6,
+                      offset: const Offset(0, -1),
+                    ),
+                  ],
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      icon,
-                      color: const Color(0xFF8E93A6),
-                      size: 16,
+                    _PremiumPickerLeadingIcon(
+                      icon: icon,
+                      tone: _PickerIconTone.softWhite,
                     ),
                     const SizedBox(height: 6),
                     Text(
                       label,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        color: Color(0xFF8E93A6),
+                        color: Color(0xFFA1A7B8),
                         fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -800,7 +1206,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                       controller: controller,
                       keyboardType: keyboardType,
                       textAlign: TextAlign.center,
-                      cursorColor: const Color(0xFF5B8CFF),
+                      cursorColor: const Color(0xFF8B5CF6),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -810,9 +1216,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         isDense: true,
                         hintText: hintText,
                         hintStyle: const TextStyle(
-                          color: Color(0xFF697086),
+                          color: Color(0xFF8E93A6),
                           fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                         ),
                         border: InputBorder.none,
                         contentPadding: EdgeInsets.zero,
@@ -837,219 +1243,220 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                   MediaQuery.of(context).viewInsets.bottom + 24,
                 ),
                 child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3A3D49),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    Row(
-                      children: [
-                        Icon(
-                          existingItem == null
-                              ? CupertinoIcons.add_circled
-                              : CupertinoIcons.pencil_circle,
-                          color: const Color(0xFFB8C1D9),
-                          size: 22,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3A3D49),
+                          borderRadius: BorderRadius.circular(999),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            existingItem == null ? 'Add Item' : 'Edit Item',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.2,
+                      ),
+                      const SizedBox(height: 18),
+
+                      Row(
+                        children: [
+                          Icon(
+                            existingItem == null
+                                ? CupertinoIcons.add_circled
+                                : CupertinoIcons.pencil_circle,
+                            color: const Color(0xFFF3F6FC),
+                            size: 30,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              existingItem == null ? 'Add Item' : 'Edit Item',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
 
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
 
-                    panel(
-                      children: [
-                        inputRow(
-                          icon: CupertinoIcons.tag,
-                          label: 'Title',
-                          controller: titleController,
-                          hintText: 'Labor / Materials',
-                        ),
-                        const Divider(color: Color(0xFF23252E), height: 1),
-                        inputRow(
-                          icon: CupertinoIcons.text_alignleft,
-                          label: 'Description',
-                          controller: descriptionController,
-                          hintText: 'Optional description',
-                          maxLines: 3,
-                        ),
-                      ],
-                    ),
+                      panel(
+                        children: [
+                          inputRow(
+                            icon: CupertinoIcons.tag,
+                            label: 'Title',
+                            controller: titleController,
+                            hintText: 'Labor / Materials',
+                          ),
+                          const Divider(color: Color(0xFF303442), height: 1),
+                          inputRow(
+                            icon: CupertinoIcons.text_alignleft,
+                            label: 'Description',
+                            controller: descriptionController,
+                            hintText: 'Optional description',
+                            maxLines: 3,
+                          ),
+                        ],
+                      ),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    panel(
-                      children: [
-                        pickerRow(
-                          icon: CupertinoIcons.cube_box,
-                          label: 'Unit',
-                          value: EstimateFormatters.formatUnit(selectedUnit),
-                          onTap: () async {
-                            FocusManager.instance.primaryFocus?.unfocus();
-                            await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-                            await Future.delayed(const Duration(milliseconds: 250));
+                      panel(
+                        children: [
+                          pickerRow(
+                            icon: CupertinoIcons.cube_box,
+                            label: 'Unit',
+                            value: EstimateFormatters.formatUnit(selectedUnit),
+                            onTap: () async {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+                              await Future.delayed(const Duration(milliseconds: 250));
 
-                            if (!sheetContext.mounted) return;
+                              if (!sheetContext.mounted) return;
 
-                            const units = [
-                              'fixed',
-                              'sqft',
-                              'room',
-                              'wall',
-                              'hour',
-                              'item',
-                              'day',
-                            ];
+                              const units = [
+                                'fixed',
+                                'sqft',
+                                'room',
+                                'wall',
+                                'hour',
+                                'item',
+                                'day',
+                              ];
 
-                            final unit = await showModalBottomSheet<String>(
-                              context: context,
-                              backgroundColor: const Color(0xFF15161C),
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(28),
+                              final unit = await showModalBottomSheet<String>(
+                                context: context,
+                                backgroundColor: const Color(0xFF242730),
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(28),
+                                  ),
                                 ),
+                                builder: (_) {
+                                  return _UnitSelectionSheet(
+                                    units: units,
+                                    selectedUnit: selectedUnit,
+                                  );
+                                },
+                              );
+
+                              if (unit == null) return;
+
+                              setModalState(() {
+                                selectedUnit = unit;
+                              });
+                            },
+                          ),
+                          const Divider(color: Color(0xFF303442), height: 1),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 13,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: centeredInput(
+                                    icon: CupertinoIcons.number,
+                                    label: 'Quantity',
+                                    controller: quantityController,
+                                    hintText: '1',
+                                    keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: centeredInput(
+                                    icon: CupertinoIcons.money_dollar_circle,
+                                    label: 'Unit Price',
+                                    controller: unitPriceController,
+                                    hintText: '0.00',
+                                    keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: CupertinoButton(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          color: const Color(0xFF8B5CF6),
+                          borderRadius: BorderRadius.circular(18),
+                          onPressed: () async {
+                            final title = titleController.text.trim();
+                            if (title.isEmpty) return;
+
+                            final quantity = EstimateCalculator.parseNumber(
+                              quantityController.text,
+                            ).toDouble();
+
+                            final unitPrice = EstimateCalculator.parseNumber(
+                              unitPriceController.text,
+                            ).toDouble();
+
+                            final safeQuantity = quantity <= 0 ? 1.0 : quantity;
+
+                            final item = InvoiceItemModel(
+                              id: existingItem?.id ?? '',
+                              invoiceId: existingItem?.invoiceId ?? '',
+                              title: title,
+                              description: descriptionController.text.trim().isEmpty
+                                  ? null
+                                  : descriptionController.text.trim(),
+                              unit: selectedUnit,
+                              quantity: safeQuantity,
+                              unitPrice: unitPrice,
+                              lineTotal: EstimateCalculator.calculateLineTotal(
+                                quantity: safeQuantity,
+                                unitPrice: unitPrice,
                               ),
-                              builder: (_) {
-                                return _UnitSelectionSheet(
-                                  units: units,
-                                  selectedUnit: selectedUnit,
-                                );
-                              },
+                              sortOrder: index ?? _items.length,
+                              createdAt: existingItem?.createdAt,
                             );
 
-                            if (unit == null) return;
-
-                            setModalState(() {
-                              selectedUnit = unit;
-                            });
+                            await closeItemSheet(sheetContext, item);
                           },
-                        ),
-                        const Divider(color: Color(0xFF23252E), height: 1),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 13,
-                          ),
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Expanded(
-                                child: centeredInput(
-                                  icon: CupertinoIcons.number,
-                                  label: 'Quantity',
-                                  controller: quantityController,
-                                  hintText: '1',
-                                  keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                                ),
+                              Icon(
+                                existingItem == null
+                                    ? CupertinoIcons.plus_circle
+                                    : CupertinoIcons.checkmark_circle,
+                                color: Colors.white,
+                                size: 18,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: centeredInput(
-                                  icon: CupertinoIcons.money_dollar_circle,
-                                  label: 'Unit Price',
-                                  controller: unitPriceController,
-                                  hintText: '0.00',
-                                  keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
+                              const SizedBox(width: 8),
+                              Text(
+                                existingItem == null ? 'Add Item' : 'Save Changes',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 16,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: CupertinoButton(
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        color: const Color(0xFF5B8CFF),
-                        borderRadius: BorderRadius.circular(16),
-                        onPressed: () async {
-                          final title = titleController.text.trim();
-                          if (title.isEmpty) return;
-
-                          final quantity = EstimateCalculator.parseNumber(
-                            quantityController.text,
-                          ).toDouble();
-
-                          final unitPrice = EstimateCalculator.parseNumber(
-                            unitPriceController.text,
-                          ).toDouble();
-
-                          final safeQuantity = quantity <= 0 ? 1.0 : quantity;
-
-                          final item = InvoiceItemModel(
-                            id: existingItem?.id ?? '',
-                            invoiceId: existingItem?.invoiceId ?? '',
-                            title: title,
-                            description: descriptionController.text.trim().isEmpty
-                                ? null
-                                : descriptionController.text.trim(),
-                            unit: selectedUnit,
-                            quantity: safeQuantity,
-                            unitPrice: unitPrice,
-                            lineTotal: EstimateCalculator.calculateLineTotal(
-                              quantity: safeQuantity,
-                              unitPrice: unitPrice,
-                            ),
-                            sortOrder: index ?? _items.length,
-                            createdAt: existingItem?.createdAt,
-                          );
-
-                          await closeItemSheet(sheetContext, item);
-                        },
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              existingItem == null
-                                  ? CupertinoIcons.plus_circle
-                                  : CupertinoIcons.checkmark_circle,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              existingItem == null ? 'Add Item' : 'Save Changes',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             );
           },
         );
@@ -1172,22 +1579,28 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }) async {
     final tempController = TextEditingController(text: controller.text.trim());
     final focusNode = FocusNode();
+    final listeningNotifier = ValueNotifier<bool>(false);
+    final speechPreviewNotifier = ValueNotifier<String>('');
+    String liveVoiceBaseText = '';
 
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: true,
+      enableDrag: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) {
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
           ),
           child: SizedBox(
-            height: MediaQuery.of(sheetContext).size.height * 0.88,
+            height: MediaQuery.of(sheetContext).size.height * 0.84,
             child: SafeArea(
               top: false,
               child: Padding(
@@ -1206,38 +1619,20 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
                     Row(
                       children: [
-                        Icon(
-                          icon,
-                          color: const Color(0xFF8FB0FF),
-                          size: 22,
+                        _PremiumPickerLeadingIcon(
+                          icon: icon,
+                          tone: _PickerIconTone.softWhite,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             title,
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: Color(0xFFF1F4F8),
                               fontSize: 24,
                               fontWeight: FontWeight.w800,
                               letterSpacing: -0.3,
                             ),
-                          ),
-                        ),
-                        CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: () async {
-                            FocusManager.instance.primaryFocus?.unfocus();
-                            await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-                            await Future.delayed(const Duration(milliseconds: 250));
-
-                            if (sheetContext.mounted) {
-                              Navigator.pop(sheetContext);
-                            }
-                          },
-                          child: const Icon(
-                            CupertinoIcons.xmark_circle_fill,
-                            color: Color(0xFF8E93A6),
-                            size: 28,
                           ),
                         ),
                       ],
@@ -1257,16 +1652,138 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
+
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF151922),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: const Color(0xFF343A49),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ValueListenableBuilder<bool>(
+                              valueListenable: listeningNotifier,
+                              builder: (context, isRecording, _) {
+                                return _LargeEditorActionButton(
+                                  icon: isRecording
+                                      ? CupertinoIcons.stop_fill
+                                      : CupertinoIcons.mic_fill,
+                                  color: isRecording
+                                      ? const Color(0xFFFF6B6B)
+                                      : const Color(0xFF8B5CF6),
+                                  onTap: () async {
+                                    if (isRecording) {
+                                      await _stopVoiceInput();
+                                      listeningNotifier.value = false;
+                                      speechPreviewNotifier.value = '';
+                                    } else {
+                                      listeningNotifier.value = true;
+                                      speechPreviewNotifier.value = '';
+                                      liveVoiceBaseText = tempController.text.trim();
+
+                                      await _startVoiceInput(
+                                        controller: tempController,
+                                        append: true,
+                                        onLiveText: (spokenText) {
+                                          final clean = spokenText.trim();
+                                          if (clean.isEmpty) return;
+
+                                          speechPreviewNotifier.value = clean;
+
+                                          final next = liveVoiceBaseText.isEmpty
+                                              ? clean
+                                              : '$liveVoiceBaseText $clean';
+
+                                          tempController.value = TextEditingValue(
+                                            text: next,
+                                            selection: TextSelection.collapsed(
+                                              offset: next.length,
+                                            ),
+                                          );
+                                        },
+                                        onDone: () {
+                                          listeningNotifier.value = false;
+                                          speechPreviewNotifier.value = '';
+                                        },
+                                      );
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 6),
+                            _LargeEditorActionButton(
+                              icon: Icons.select_all_rounded,
+                              color: const Color(0xFFF3F6FC),
+                              onTap: () {
+                                final text = tempController.text;
+                                if (text.isEmpty) return;
+
+                                focusNode.requestFocus();
+                                tempController.selection = TextSelection(
+                                  baseOffset: 0,
+                                  extentOffset: text.length,
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 6),
+                            _LargeEditorActionButton(
+                              icon: CupertinoIcons.doc_on_doc,
+                              color: const Color(0xFFF3F6FC),
+                              onTap: () async {
+                                final text = tempController.text.trim();
+                                if (text.isEmpty) return;
+
+                                await Clipboard.setData(ClipboardData(text: text));
+                                _showSnack('Copied');
+                              },
+                            ),
+                            const SizedBox(width: 6),
+                            _LargeEditorActionButton(
+                              icon: CupertinoIcons.xmark,
+                              color: const Color(0xFFFF6B6B),
+                              onTap: () {
+                                tempController.clear();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
 
                     Expanded(
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF101117),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: const Color(0xFF23252E)),
+                          color: const Color(0xFF151922),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: const Color(0xFF343A49),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.26),
+                              blurRadius: 18,
+                              offset: const Offset(0, 10),
+                            ),
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.025),
+                              blurRadius: 8,
+                              offset: const Offset(0, -2),
+                            ),
+                          ],
                         ),
                         child: TextField(
                           controller: tempController,
@@ -1276,7 +1793,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                           minLines: null,
                           keyboardType: TextInputType.multiline,
                           textAlignVertical: TextAlignVertical.top,
-                          cursorColor: const Color(0xFF5B8CFF),
+                          cursorColor: const Color(0xFF8B5CF6),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1295,6 +1812,71 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                       ),
                     ),
 
+                    ValueListenableBuilder<bool>(
+                      valueListenable: listeningNotifier,
+                      builder: (context, isRecording, _) {
+                        if (!isRecording) return const SizedBox.shrink();
+
+                        return GestureDetector(
+                          onTap: () async {
+                            await _stopVoiceInput();
+                            listeningNotifier.value = false;
+                            speechPreviewNotifier.value = '';
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 12),
+                            padding: const EdgeInsets.fromLTRB(14, 11, 14, 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF181B23),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFF8B5CF6).withValues(alpha: 0.75),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.24),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 7),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      CupertinoIcons.waveform,
+                                      color: Color(0xFF8B5CF6),
+                                      size: 17,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Expanded(
+                                      child: Text(
+                                        'Listening... speak now',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: -0.1,
+                                        ),
+                                      ),
+                                    ),
+                                    const _RecordingPulseDot(),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                const _RecordingActiveBar(),
+                                const SizedBox(height: 8),
+                                _LiveSpeechTypingPreview(
+                                  textListenable: speechPreviewNotifier,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
                     const SizedBox(height: 14),
 
                     Row(
@@ -1302,7 +1884,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         Expanded(
                           child: CupertinoButton(
                             padding: const EdgeInsets.symmetric(vertical: 15),
-                            color: const Color(0xFF20232D),
+                            color: const Color(0xFF2A2D36),
                             borderRadius: BorderRadius.circular(16),
                             onPressed: () async {
                               FocusManager.instance.primaryFocus?.unfocus();
@@ -1316,7 +1898,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                             child: const Text(
                               'Cancel',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: Color(0xFFF3F6FC),
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -1326,7 +1908,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         Expanded(
                           child: CupertinoButton(
                             padding: const EdgeInsets.symmetric(vertical: 15),
-                            color: const Color(0xFF5B8CFF),
+                            color: const Color(0xFF8B5CF6),
                             borderRadius: BorderRadius.circular(16),
                             onPressed: () async {
                               final value = tempController.text.trim();
@@ -1339,12 +1921,23 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                 Navigator.pop(sheetContext, value);
                               }
                             },
-                            child: const Text(
-                              'Save',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.check_mark_circled_solid,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Save',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -1361,6 +1954,8 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
     await Future.delayed(const Duration(milliseconds: 500));
 
+    listeningNotifier.dispose();
+    speechPreviewNotifier.dispose();
     tempController.dispose();
     focusNode.dispose();
 
@@ -1381,10 +1976,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       children: [
         Row(
           children: [
-            Icon(
-              icon,
-              color: const Color(0xFFB8C1D9),
-              size: 22,
+            _PremiumPickerLeadingIcon(
+              icon: icon,
+              tone: _PickerIconTone.softWhite,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1407,9 +2001,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             child: Text(
               subtitle!,
               style: const TextStyle(
-                color: Color(0xFF8E93A6),
+                color: Color(0xFFA1A7B8),
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -1428,9 +2022,21 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.26),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.025),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1438,25 +2044,22 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 16,
+              _PremiumPickerLeadingIcon(
+                icon: icon,
+                tone: _PickerIconTone.softWhite,
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: const TextStyle(
-                  color: Color(0xFF8E93A6),
+                  color: Color(0xFFA1A7B8),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 7),
-
           Padding(
             padding: const EdgeInsets.only(left: 24),
             child: TextField(
@@ -1464,7 +2067,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              cursorColor: const Color(0xFF5B8CFF),
+              cursorColor: const Color(0xFF8B5CF6),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 15,
@@ -1488,18 +2091,55 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     );
   }
 
-  Widget _formPanel({
+  Widget _clientPropertyFormPanel({
     required List<Widget> children,
   }) {
     return Container(
       width: double.infinity,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(
+          color: const Color(0xFF303442),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.26),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.025),
+            blurRadius: 8,
+            spreadRadius: -4,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(children: children),
     );
+  }
+
+  Widget _buildClientPropertySectionCard({
+    required String title,
+    String? subtitle,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    return _buildSectionCard(
+      title: title,
+      subtitle: subtitle,
+      child: child,
+      trailing: trailing,
+    );
+  }
+
+  Widget _formPanel({
+    required List<Widget> children,
+  }) {
+    return _clientPropertyFormPanel(children: children);
   }
 
   Widget _largeTextRow({
@@ -1507,6 +2147,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     required String label,
     required String value,
     required VoidCallback onTap,
+    _PickerIconTone iconTone = _PickerIconTone.neutral,
   }) {
     final cleanValue = value.trim().isEmpty ? 'Tap to add text' : value.trim();
 
@@ -1520,10 +2161,9 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 18,
+              _PremiumPickerLeadingIcon(
+                icon: icon,
+                tone: iconTone,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1572,6 +2212,40 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     );
   }
 
+  Widget _sheetGlowingIcon({
+    required IconData icon,
+    required _PickerIconTone tone,
+    double size = 20,
+  }) {
+    Color iconColor;
+
+    switch (tone) {
+      case _PickerIconTone.clientBlue:
+        iconColor = const Color(0xFF38BDF8);
+        break;
+
+      case _PickerIconTone.softWhite:
+        iconColor = const Color(0xFFF3F6FC);
+        break;
+
+      default:
+        iconColor = const Color(0xFFB8C1D9);
+        break;
+    }
+
+    return SizedBox(
+      width: size + 4,
+      height: size + 4,
+      child: Center(
+        child: Icon(
+          icon,
+          color: iconColor.withValues(alpha: 0.88),
+          size: size,
+        ),
+      ),
+    );
+  }
+
   Future<T?> _openWorkioPickerSheet<T>({
     required String title,
     required String subtitle,
@@ -1581,18 +2255,28 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     String Function(T item)? subtitleBuilder,
     IconData Function(T item)? itemIconBuilder,
   }) {
+    final sheetHeight = items.length <= 1
+        ? 0.42
+        : items.length <= 3
+        ? 0.56
+        : 0.72;
+
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF1B1F28),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
+      clipBehavior: Clip.antiAlias,
       builder: (sheetContext) {
         return SafeArea(
           top: false,
           child: FractionallySizedBox(
-            heightFactor: 0.70,
+            heightFactor: sheetHeight,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
               child: Column(
@@ -1601,87 +2285,111 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     width: 44,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF3A3D49),
+                      color: const Color(0xFF3D4250),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
+
                   const SizedBox(height: 18),
 
-                  Column(
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Icon(
-                            icon,
-                            color: const Color(0xFFB8C1D9),
-                            size: 20,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Icon(
+                          icon,
+                          color: const Color(0xFFF3F6FC),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
                               title,
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
+                                color: Color(0xFFF1F4F8),
+                                fontSize: 24,
                                 fontWeight: FontWeight.w800,
-                                letterSpacing: -0.2,
+                                letterSpacing: -0.3,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 30),
-                        child: Text(
-                          subtitle,
-                          style: const TextStyle(
-                            color: Color(0xFF8E93A6),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                color: Color(0xFFA0A7B8),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
 
                   Expanded(
                     child: ListView.separated(
+                      padding: EdgeInsets.zero,
                       itemCount: items.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
                         final item = items[index];
-                        final itemTitle = titleBuilder(item);
-                        final itemSubtitle = subtitleBuilder?.call(item) ?? '';
+                        final itemTitle = titleBuilder(item).trim();
+                        final itemSubtitle =
+                        (subtitleBuilder?.call(item) ?? '').trim();
                         final itemIcon =
                             itemIconBuilder?.call(item) ?? CupertinoIcons.circle;
 
                         return Material(
-                          color: const Color(0xFF101117),
-                          borderRadius: BorderRadius.circular(18),
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(18),
+                            borderRadius: BorderRadius.circular(20),
                             onTap: () => Navigator.pop(sheetContext, item),
                             child: Container(
-                              padding: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.all(15),
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
+                                color: const Color(0xFF151922),
+                                borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: const Color(0xFF23252E),
+                                  color: const Color(0xFF343A49),
+                                  width: 1,
                                 ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.20),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                  BoxShadow(
+                                    color: Colors.white.withValues(alpha: 0.018),
+                                    blurRadius: 8,
+                                    spreadRadius: -4,
+                                    offset: const Offset(0, -2),
+                                  ),
+                                ],
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(
-                                    itemIcon,
-                                    color: const Color(0xFF8E93A6),
-                                    size: 19,
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      itemIcon,
+                                      color: const Color(0xFFF3F6FC),
+                                      size: 20,
+                                    ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 13),
+
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
@@ -1692,20 +2400,20 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
-                                            color: Colors.white,
+                                            color: Color(0xFFF1F4F8),
                                             fontSize: 15,
                                             fontWeight: FontWeight.w800,
                                             height: 1.25,
                                           ),
                                         ),
-                                        if (itemSubtitle.trim().isNotEmpty) ...[
+                                        if (itemSubtitle.isNotEmpty) ...[
                                           const SizedBox(height: 5),
                                           Text(
                                             itemSubtitle,
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                              color: Color(0xFF8E93A6),
+                                              color: Color(0xFFA0A7B8),
                                               fontSize: 12.5,
                                               fontWeight: FontWeight.w500,
                                               height: 1.3,
@@ -1715,15 +2423,15 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                                       ],
                                     ),
                                   ),
+
                                   const SizedBox(width: 8),
-                                  const SizedBox(
-                                    height: 48,
-                                    child: Center(
-                                      child: Icon(
-                                        CupertinoIcons.chevron_right,
-                                        color: Color(0xFF8E93A6),
-                                        size: 16,
-                                      ),
+
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 3),
+                                    child: Icon(
+                                      CupertinoIcons.chevron_right,
+                                      color: Color(0xFFBFC6D4),
+                                      size: 16,
                                     ),
                                   ),
                                 ],
@@ -1752,14 +2460,31 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
+        color: const Color(0xFF252934),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.38),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.035),
+            blurRadius: 12,
+            spreadRadius: -6,
+            offset: const Offset(0, -3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -1768,27 +2493,31 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     Text(
                       title,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.25,
                       ),
                     ),
                     if ((subtitle ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 5),
                       Text(
                         subtitle!,
                         style: const TextStyle(
-                          color: Color(0xFF8E93A6),
+                          color: Color(0xFFA0A7B8),
                           fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              if (trailing != null) trailing,
+              if (trailing != null) ...[
+                const SizedBox(width: 12),
+                trailing,
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -1804,41 +2533,115 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 20,
-        title: const Text(
-          'Create Invoice',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: _isSaving ? null : _saveInvoice,
-              child: _isSaving
-                  ? const CupertinoActivityIndicator(color: Colors.white)
-                  : const Text(
-                'Save',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(96),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF242730),
+                    borderRadius: BorderRadius.circular(26),
+                    border: Border.all(
+                      color: const Color(0xFF343846),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.38),
+                        blurRadius: 28,
+                        offset: const Offset(0, 16),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.035),
+                        blurRadius: 12,
+                        spreadRadius: -6,
+                        offset: const Offset(0, -3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Back button
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2A2D36),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFF3A3E4B),
+                                width: 1,
+                              ),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white.withOpacity(0.82),
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Title + icon
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Create Invoice',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Color(0xFFF4F6FA),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 20,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Subtotal ${EstimateFormatters.formatCurrency(_subtotal)} • Total ${EstimateFormatters.formatCurrency(_total)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFFA0A7B8),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.receipt_long_rounded,
+                          // receipt_long_rounded
+                        color: Color(0xFF9B7FE8),
+                        size: 24,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ],
+        ),
       ),
       body: _isLoading
           ? const Center(
@@ -1849,19 +2652,21 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
           children: [
-            _buildSectionCard(
+            _buildClientPropertySectionCard(
               title: 'Client & Property',
               subtitle: 'Client and invoice property',
-              child: _formPanel(
+              child: _clientPropertyFormPanel(
                 children: [
                   _PremiumPickerField(
                     label: 'Client',
-                    leadingIcon: CupertinoIcons.person_crop_circle,
+                    leadingIcon: CupertinoIcons.person_fill,
+                    iconTone: _PickerIconTone.clientBlue,
                     value: _selectedClient == null
-                        ? 'Select client'
+                        ? ''
                         : _selectedClient!.fullName,
                     onTap: _selectClient,
                     showClearButton: _selectedClient != null,
+                    showChevron: false,
                     onClear: () {
                       setState(() {
                         _selectedClient = null;
@@ -1872,15 +2677,17 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     emptyIcon: CupertinoIcons.add,
                     onEmptyIconTap: _addNewClient,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const Divider(color: Color(0xFF303442), height: 1),
                   _PremiumPickerField(
                     label: 'Property',
                     leadingIcon: CupertinoIcons.house_fill,
+                    iconTone: _PickerIconTone.propertyOrange,
                     value: _selectedProperty == null
-                        ? 'Select property'
+                        ? ''
                         : _selectedProperty!.fullAddress,
                     onTap: _selectProperty,
                     showClearButton: _selectedProperty != null,
+                    showChevron: false,
                     onClear: () {
                       setState(() {
                         _selectedProperty = null;
@@ -1893,24 +2700,21 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            _buildSectionCard(
+            _buildClientPropertySectionCard(
               title: 'Invoice Header',
               subtitle: 'Status and dates',
-              child: _formPanel(
+              child: _clientPropertyFormPanel(
                 children: [
                   _PremiumPickerField(
                     label: 'Status',
-                    leadingIcon: CupertinoIcons.checkmark_seal,
+                    leadingIcon: _statusIcon(_status),
+                    iconTone: _PickerIconTone.statusGreen,
+                    iconColor: _statusColor(_status),
                     value: _statusLabel(_status),
                     onTap: _pickStatus,
-                    showClearButton: _status != 'draft',
-                    onClear: () {
-                      setState(() {
-                        _status = 'draft';
-                      });
-                    },
+                    showClearButton: false,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const Divider(color: Color(0xFF303442), height: 1),
 
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
@@ -1920,6 +2724,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                           child: _PremiumPickerField(
                             label: 'Issue Date',
                             leadingIcon: CupertinoIcons.calendar,
+                            iconTone: _PickerIconTone.itemBlue,
                             value: _shortDateLabel(_issueDate),
                             valueMaxLines: 1,
                             onTap: _pickIssueDate,
@@ -1930,12 +2735,13 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                         Container(
                           width: 1,
                           height: 58,
-                          color: const Color(0xFF23252E),
+                          color: const Color(0xFF303442),
                         ),
                         Expanded(
                           child: _PremiumPickerField(
                             label: 'Due Date',
-                            leadingIcon: CupertinoIcons.clock,
+                            leadingIcon: CupertinoIcons.calendar_badge_plus,
+                            iconTone: _PickerIconTone.itemBlue,
                             value: _shortDateLabel(_dueDate),
                             valueMaxLines: 1,
                             onTap: _pickDueDate,
@@ -1950,31 +2756,37 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            _buildSectionCard(
+            _buildClientPropertySectionCard(
               title: 'Invoice Info',
               subtitle: 'Main information',
-              child: _formPanel(
+              child: _clientPropertyFormPanel(
                 children: [
                   _PremiumTitleField(
                     controller: _titleController,
                     label: 'Title',
                     hintText: 'Invoice title',
-                    icon: CupertinoIcons.doc_text,
+                    icon: CupertinoIcons.doc_fill,
+                    iconTone: _PickerIconTone.softWhite,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 14),
-            _buildSectionCard(
+            _buildClientPropertySectionCard(
               title: 'Items',
               subtitle: 'Invoice line items',
-              trailing: CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: () => _addOrEditItem(),
-                child: const Icon(
-                  CupertinoIcons.add_circled_solid,
-                  color: Color(0xFF5B8CFF),
-                  size: 24,
+              trailing: GestureDetector(
+                onTap: () => _addOrEditItem(),
+                child: const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Center(
+                    child: Icon(
+                      CupertinoIcons.add_circled_solid,
+                      color: Color(0xFF8B5CF6),
+                      size: 26,
+                    ),
+                  ),
                 ),
               ),
               child: _items.isEmpty
@@ -2000,46 +2812,49 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            _buildSectionCard(
+            _buildClientPropertySectionCard(
               title: 'Notes & Terms',
               subtitle: 'Additional information',
-              child: _formPanel(
+              child: _clientPropertyFormPanel(
                 children: [
                   _largeTextRow(
-                    icon: CupertinoIcons.text_alignleft,
+                    icon: CupertinoIcons.text_bubble_fill,
+                    iconTone: _PickerIconTone.softWhite,
                     label: 'Notes',
                     value: _notesController.text,
                     onTap: () {
                       _openLargeTextEditor(
                         title: 'Edit Notes',
                         controller: _notesController,
-                        icon: CupertinoIcons.text_alignleft,
+                        icon: CupertinoIcons.text_bubble_fill,
                       );
                     },
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const Divider(color: Color(0xFF303442), height: 1),
                   _largeTextRow(
-                    icon: CupertinoIcons.doc_text,
+                    icon: CupertinoIcons.doc_text_fill,
+                    iconTone: _PickerIconTone.softWhite,
                     label: 'Terms',
                     value: _termsController.text,
                     onTap: () {
                       _openLargeTextEditor(
                         title: 'Edit Terms',
                         controller: _termsController,
-                        icon: CupertinoIcons.doc_text,
+                        icon: CupertinoIcons.doc_text_fill,
                       );
                     },
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const Divider(color: Color(0xFF303442), height: 1),
                   _largeTextRow(
-                    icon: CupertinoIcons.creditcard,
+                    icon: CupertinoIcons.creditcard_fill,
+                    iconTone: _PickerIconTone.emptyPurple,
                     label: 'Payment Instructions',
                     value: _paymentInstructionsController.text,
                     onTap: () {
                       _openLargeTextEditor(
                         title: 'Edit Payment Instructions',
                         controller: _paymentInstructionsController,
-                        icon: CupertinoIcons.creditcard,
+                        icon: CupertinoIcons.creditcard_fill,
                       );
                     },
                   ),
@@ -2047,7 +2862,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            _buildSectionCard(
+            _buildClientPropertySectionCard(
               title: 'Totals',
               subtitle: 'Invoice totals',
               child: Column(
@@ -2056,13 +2871,15 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                     children: [
                       _TotalsEditRow(
                         icon: CupertinoIcons.money_dollar_circle,
+                        iconTone: _PickerIconTone.softWhite,
                         label: 'Tax Amount',
                         value: '${EstimateFormatters.formatCurrency(_taxAmount)} ($_currencyCode)',
                         onTap: _showTaxEditor,
                       ),
-                      const Divider(color: Color(0xFF23252E), height: 1),
+                      const Divider(color: Color(0xFF303442), height: 1),
                       _TotalsEditRow(
                         icon: CupertinoIcons.tag,
+                        iconTone: _PickerIconTone.softWhite,
                         label: 'Discount Amount',
                         value: EstimateFormatters.formatCurrency(_discountAmount),
                         onTap: _showDiscountEditor,
@@ -2073,21 +2890,29 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
                   const SizedBox(height: 18),
 
                   _TotalsPanel(
+                    readOnly: true,
                     children: [
                       _TotalsValueRow(
                         icon: CupertinoIcons.sum,
+                        iconTone: _PickerIconTone.propertyOrange,
                         label: 'Subtotal',
                         value: EstimateFormatters.formatCurrency(_subtotal),
                         muted: true,
                       ),
+                      const Divider(color: Color(0xFF303442), height: 1),
+
                       _TotalsValueRow(
                         icon: CupertinoIcons.percent,
+                        iconTone: _PickerIconTone.softWhite,
                         label: 'Tax',
                         value: EstimateFormatters.formatCurrency(_taxAmount),
                         muted: true,
                       ),
+                      const Divider(color: Color(0xFF303442), height: 1),
+
                       _TotalsValueRow(
                         icon: CupertinoIcons.tag,
+                        iconTone: _PickerIconTone.paymentRed,
                         label: 'Discount',
                         value: '- ${EstimateFormatters.formatCurrency(_discountAmount)}',
                         muted: true,
@@ -2105,7 +2930,7 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
             ),
             const SizedBox(height: 18),
             CupertinoButton(
-              color: const Color(0xFF5B8CFF),
+              color: const Color(0xFF8B5CF6),
               borderRadius: BorderRadius.circular(18),
               padding: const EdgeInsets.symmetric(vertical: 16),
               onPressed: _isSaving ? null : _saveInvoice,
@@ -2127,17 +2952,183 @@ class _CreateInvoiceScreenState extends State<CreateInvoiceScreen> {
   }
 }
 
+class _PremiumPickerField extends StatelessWidget {
+  final String label;
+  final IconData leadingIcon;
+  final _PickerIconTone iconTone;
+  final String value;
+  final VoidCallback onTap;
+  final bool showClearButton;
+  final VoidCallback? onClear;
+  final IconData? emptyIcon;
+  final VoidCallback? onEmptyIconTap;
+  final int valueMaxLines;
+  final bool showChevron;
+  final Color? iconColor;
+
+  const _PremiumPickerField({
+    required this.label,
+    required this.leadingIcon,
+    required this.value,
+    required this.onTap,
+    this.iconTone = _PickerIconTone.neutral,
+    this.showClearButton = false,
+    this.onClear,
+    this.emptyIcon,
+    this.onEmptyIconTap,
+    this.valueMaxLines = 2,
+    this.showChevron = true,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = value.trim().isNotEmpty;
+    final isPlaceholder = value.trim().toLowerCase().startsWith('select');
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            14,
+            hasValue ? 12 : 0,
+            14,
+            hasValue ? 12 : 0,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: hasValue ? 58 : 68,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: hasValue
+                      ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          _PremiumPickerLeadingIcon(
+                            icon: leadingIcon,
+                            tone: iconTone,
+                            colorOverride: iconColor,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              color: Color(0xFF8E93A6),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 24),
+                        child: Text(
+                          value,
+                          maxLines: valueMaxLines,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: isPlaceholder
+                                ? const Color(0xFF697086)
+                                : Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                      : Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Transform.scale(
+                        scale: 1.22,
+                        child: _PremiumPickerLeadingIcon(
+                          icon: leadingIcon,
+                          tone: iconTone,
+                          colorOverride: iconColor,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          color: Color(0xFFA1A7B8),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (showClearButton && onClear != null)
+                  GestureDetector(
+                    onTap: onClear,
+                    child: const Icon(
+                      CupertinoIcons.xmark_circle_fill,
+                      color: Color(0xFF8E93A6),
+                      size: 18,
+                    ),
+                  )
+                else if (emptyIcon != null && onEmptyIconTap != null)
+                  GestureDetector(
+                    onTap: onEmptyIconTap,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF20232D),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(
+                          color: const Color(0xFF343846),
+                          width: 1,
+                        ),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.add,
+                        color: Color(0xFF8B5CF6),
+                        size: 20,
+                      ),
+                    ),
+                  )
+                else if (showChevron)
+                    const Icon(
+                      CupertinoIcons.chevron_right,
+                      color: Color(0xFF8E93A6),
+                      size: 18,
+                    ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PremiumTitleField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
   final String hintText;
   final IconData icon;
+  final _PickerIconTone iconTone;
 
   const _PremiumTitleField({
     required this.controller,
     required this.label,
     required this.hintText,
     required this.icon,
+    this.iconTone = _PickerIconTone.neutral,
   });
 
   @override
@@ -2175,10 +3166,9 @@ class _PremiumTitleFieldState extends State<_PremiumTitleField> {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      widget.icon,
-                      color: const Color(0xFF8E93A6),
-                      size: 16,
+                    _PremiumPickerLeadingIcon(
+                      icon: widget.icon,
+                      tone: widget.iconTone,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -2196,23 +3186,23 @@ class _PremiumTitleFieldState extends State<_PremiumTitleField> {
                   padding: const EdgeInsets.only(left: 24),
                   child: TextField(
                     controller: widget.controller,
-                  cursorColor: const Color(0xFF5B8CFF),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: widget.hintText,
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF697086),
+                    cursorColor: const Color(0xFF5B8CFF),
+                    style: const TextStyle(
+                      color: Colors.white,
                       fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: widget.hintText,
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF697086),
+                        fontSize: 15,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                 ),
                 ),
               ],
             ),
@@ -2303,123 +3293,89 @@ class _PremiumTextField extends StatelessWidget {
   }
 }
 
-class _PremiumPickerField extends StatelessWidget {
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-  final VoidCallback? onClear;
-  final bool showClearButton;
-  final IconData? emptyIcon;
-  final VoidCallback? onEmptyIconTap;
-  final IconData? leadingIcon;
-  final bool showChevron;
-  final int valueMaxLines;
+enum _PickerIconTone {
+  neutral,
+  clientBlue,
+  propertyOrange,
+  statusGreen,
+  softWhite,
+  invoiceYellow,
+  itemBlue,
+  emptyPurple,
+  notesYellow,
+  termsTurquoise,
+  paymentRed,
+}
 
-  const _PremiumPickerField({
-    required this.label,
-    required this.value,
-    required this.onTap,
-    this.onClear,
-    this.showClearButton = false,
-    this.emptyIcon,
-    this.onEmptyIconTap,
-    this.leadingIcon,
-    this.showChevron = true,
-    this.valueMaxLines = 2,
+class _PremiumPickerLeadingIcon extends StatelessWidget {
+  final IconData icon;
+  final _PickerIconTone tone;
+  final Color? colorOverride;
+
+  const _PremiumPickerLeadingIcon({
+    required this.icon,
+    required this.tone,
+    this.colorOverride,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isPlaceholder =
-        value.startsWith('Select') || value.trim().isEmpty || value == '—';
+    Color iconColor;
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (leadingIcon != null) ...[
-                          Icon(
-                            leadingIcon,
-                            color: const Color(0xFF8E93A6),
-                            size: 15,
-                          ),
-                          const SizedBox(width: 7),
-                        ],
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            color: Color(0xFF8E93A6),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: EdgeInsets.only(
-                        left: leadingIcon != null ? 22 : 0,
-                      ),
-                      child: Text(
-                        value,
-                        maxLines: valueMaxLines,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: isPlaceholder
-                              ? const Color(0xFF697086)
-                              : Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          height: 1.25,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (showClearButton && onClear != null)
-                GestureDetector(
-                  onTap: onClear,
-                  child: const Icon(
-                    CupertinoIcons.xmark_circle_fill,
-                    color: Color(0xFF8E93A6),
-                    size: 18,
-                  ),
-                )
-              else if (emptyIcon != null && onEmptyIconTap != null)
-                GestureDetector(
-                  onTap: onEmptyIconTap,
-                  child: Icon(
-                    emptyIcon,
-                    color: const Color(0xFF8E93A6),
-                    size: 18,
-                  ),
-                )
-              else if (showChevron)
-                  const Icon(
-                    CupertinoIcons.chevron_down,
-                    color: Color(0xFF8E93A6),
-                    size: 18,
-                  ),
-            ],
-          ),
+    switch (tone) {
+      case _PickerIconTone.clientBlue:
+        iconColor = const Color(0xFF7C5CFF);
+        break;
+
+      case _PickerIconTone.propertyOrange:
+        iconColor = const Color(0xFFFFA726);
+        break;
+
+      case _PickerIconTone.statusGreen:
+        iconColor = const Color(0xFF22C55E);
+        break;
+
+      case _PickerIconTone.softWhite:
+        iconColor = const Color(0xFFF3F6FC);
+        break;
+
+      case _PickerIconTone.invoiceYellow:
+        iconColor = const Color(0xFFFFB300);
+        break;
+
+      case _PickerIconTone.itemBlue:
+        iconColor = const Color(0xFF3B82F6);
+        break;
+
+      case _PickerIconTone.emptyPurple:
+        iconColor = const Color(0xFFA855F7);
+        break;
+
+      case _PickerIconTone.notesYellow:
+        iconColor = const Color(0xFFFFB300);
+        break;
+
+      case _PickerIconTone.termsTurquoise:
+        iconColor = const Color(0xFF22D3EE);
+        break;
+
+      case _PickerIconTone.paymentRed:
+        iconColor = const Color(0xFFFF6B6B);
+        break;
+
+      case _PickerIconTone.neutral:
+        iconColor = const Color(0xFF8E93A6);
+        break;
+    }
+
+    return SizedBox(
+      width: 19,
+      height: 19,
+      child: Center(
+        child: Icon(
+          icon,
+          color: (colorOverride ?? iconColor).withValues(alpha: 0.88),
+          size: 15.5,
         ),
       ),
     );
@@ -2442,6 +3398,7 @@ class _SimpleDateSheet extends StatefulWidget {
 class _SimpleDateSheetState extends State<_SimpleDateSheet> {
   late DateTime selectedDate;
   late DateTime visibleMonth;
+  int _monthDirection = 1;
 
   @override
   void initState() {
@@ -2456,8 +3413,18 @@ class _SimpleDateSheetState extends State<_SimpleDateSheet> {
 
   String _monthLabel(DateTime date) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
 
     return '${months[date.month - 1]} ${date.year}';
@@ -2465,6 +3432,264 @@ class _SimpleDateSheetState extends State<_SimpleDateSheet> {
 
   bool _sameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  void _changeMonth(int delta) {
+    setState(() {
+      _monthDirection = delta >= 0 ? 1 : -1;
+      visibleMonth = DateTime(
+        visibleMonth.year,
+        visibleMonth.month + delta,
+      );
+    });
+  }
+
+  BoxDecoration _sheetPanelDecoration() {
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(22),
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color(0xFF252830),
+          Color(0xFF1D2028),
+          Color(0xFF181B23),
+        ],
+      ),
+      border: Border.all(color: const Color(0xFF343846)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.30),
+          blurRadius: 22,
+          offset: const Offset(0, 12),
+        ),
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.025),
+          blurRadius: 8,
+          offset: const Offset(0, -2),
+        ),
+      ],
+    );
+  }
+
+  Widget _navButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: const Color(0xFF20232D),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF303442)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            color: const Color(0xFFE3E7F2),
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedMonthTitle() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      transitionBuilder: (child, animation) {
+        final offsetTween = Tween<Offset>(
+          begin: Offset(_monthDirection > 0 ? 0.18 : -0.18, 0),
+          end: Offset.zero,
+        );
+
+        return ClipRect(
+          child: FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: offsetTween.animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                ),
+              ),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: Text(
+        _monthLabel(visibleMonth),
+        key: ValueKey('month-${visibleMonth.year}-${visibleMonth.month}'),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _weekdayCell(String text) {
+    return Container(
+      height: 34,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFF20232D),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF343846)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Color(0xFFB8C1D9),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.25,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekdaysRow() {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        children: List.generate(days.length, (index) {
+          return Expanded(
+            child: _weekdayCell(days[index]),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildCalendarGrid({
+    required int leadingEmptyDays,
+    required int daysInMonth,
+  }) {
+    return GridView.builder(
+      key: ValueKey('grid-${visibleMonth.year}-${visibleMonth.month}'),
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: 42,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 7,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+      ),
+      itemBuilder: (context, index) {
+        final dayNumber = index - leadingEmptyDays + 1;
+        final isCurrentMonth = dayNumber >= 1 && dayNumber <= daysInMonth;
+
+        final date = DateTime(
+          visibleMonth.year,
+          visibleMonth.month,
+          dayNumber,
+        );
+
+        final selected = _sameDay(date, selectedDate);
+
+        return GestureDetector(
+          onTap: () {
+            setState(() {
+              selectedDate = date;
+              visibleMonth = DateTime(date.year, date.month);
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: selected
+                  ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF9B6BFF),
+                  Color(0xFF7C4DFF),
+                ],
+              )
+                  : isCurrentMonth
+                  ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF20232D).withValues(alpha: 0.78),
+                  const Color(0xFF181B23).withValues(alpha: 0.62),
+                ],
+              )
+                  : null,
+              color: (!selected && !isCurrentMonth)
+                  ? Colors.transparent
+                  : null,
+              border: Border.all(
+                color: selected
+                    ? const Color(0xFFB99CFF).withValues(alpha: 0.95)
+                    : isCurrentMonth
+                    ? const Color(0xFF343846).withValues(alpha: 0.65)
+                    : Colors.transparent,
+                width: 1,
+              ),
+              boxShadow: selected
+                  ? [
+                BoxShadow(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.34),
+                  blurRadius: 16,
+                  offset: const Offset(0, 5),
+                ),
+              ]
+                  : isCurrentMonth
+                  ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+                  : null,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '${date.day}',
+              style: TextStyle(
+                color: selected
+                    ? Colors.white
+                    : isCurrentMonth
+                    ? const Color(0xFFF2F5FB)
+                    : const Color(0xFF667089),
+                fontSize: 16,
+                fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -2481,7 +3706,7 @@ class _SimpleDateSheetState extends State<_SimpleDateSheet> {
     return SafeArea(
       top: false,
       child: FractionallySizedBox(
-        heightFactor: 0.82,
+        heightFactor: 0.84,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
           child: Column(
@@ -2490,17 +3715,17 @@ class _SimpleDateSheetState extends State<_SimpleDateSheet> {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF3A3D49),
+                  color: const Color(0xFF4B4F5F),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
               const SizedBox(height: 18),
+
               Row(
                 children: [
-                  const Icon(
-                    CupertinoIcons.calendar,
-                    color: Color(0xFFB8C1D9),
-                    size: 22,
+                  const _PremiumPickerLeadingIcon(
+                    icon: CupertinoIcons.calendar,
+                    tone: _PickerIconTone.softWhite,
                   ),
                   const SizedBox(width: 10),
                   Text(
@@ -2508,146 +3733,131 @@ class _SimpleDateSheetState extends State<_SimpleDateSheet> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ],
               ),
+
               const SizedBox(height: 18),
+
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF101117),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF23252E)),
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: _sheetPanelDecoration(),
                 child: Row(
                   children: [
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        setState(() {
-                          visibleMonth = DateTime(
-                            visibleMonth.year,
-                            visibleMonth.month - 1,
-                          );
-                        });
-                      },
-                      child: const Icon(
-                        CupertinoIcons.chevron_left,
-                        color: Color(0xFFB6BCD0),
-                      ),
+                    _navButton(
+                      icon: CupertinoIcons.chevron_left,
+                      onTap: () => _changeMonth(-1),
                     ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Center(
-                        child: Text(
-                          _monthLabel(visibleMonth),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        child: _buildAnimatedMonthTitle(),
                       ),
                     ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        setState(() {
-                          visibleMonth = DateTime(
-                            visibleMonth.year,
-                            visibleMonth.month + 1,
-                          );
-                        });
-                      },
-                      child: const Icon(
-                        CupertinoIcons.chevron_right,
-                        color: Color(0xFFB6BCD0),
-                      ),
+                    const SizedBox(width: 12),
+                    _navButton(
+                      icon: CupertinoIcons.chevron_right,
+                      onTap: () => _changeMonth(1),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(height: 14),
+
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF101117),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF23252E)),
-                  ),
-                  child: GridView.builder(
-                    padding: EdgeInsets.zero,
-                    itemCount: 42,
-                    gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 7,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                    ),
-                    itemBuilder: (context, index) {
-                      final dayNumber = index - leadingEmptyDays + 1;
-                      final isCurrentMonth =
-                          dayNumber >= 1 && dayNumber <= daysInMonth;
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                  decoration: _sheetPanelDecoration(),
+                  child: Column(
+                    children: [
+                      _buildWeekdaysRow(),
+                      Expanded(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          transitionBuilder: (child, animation) {
+                            final offsetTween = Tween<Offset>(
+                              begin: Offset(_monthDirection > 0 ? 0.12 : -0.12, 0),
+                              end: Offset.zero,
+                            );
 
-                      final date = DateTime(
-                        visibleMonth.year,
-                        visibleMonth.month,
-                        dayNumber,
-                      );
-
-                      final selected = _sameDay(date, selectedDate);
-
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedDate = date;
-                          });
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? const Color(0xFF5B8CFF)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '${date.day}',
-                            style: TextStyle(
-                              color: selected
-                                  ? Colors.white
-                                  : isCurrentMonth
-                                  ? Colors.white
-                                  : const Color(0xFF4F5668),
-                              fontWeight:
-                              selected ? FontWeight.w800 : FontWeight.w600,
-                            ),
+                            return ClipRect(
+                              child: FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: offsetTween.animate(
+                                    CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeOutCubic,
+                                    ),
+                                  ),
+                                  child: child,
+                                ),
+                              ),
+                            );
+                          },
+                          child: _buildCalendarGrid(
+                            leadingEmptyDays: leadingEmptyDays,
+                            daysInMonth: daysInMonth,
                           ),
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
               ),
+
               const SizedBox(height: 14),
-              SizedBox(
+
+              Container(
                 width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFF8B5CF6),
+                      Color(0xFF7C4DFF),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.30),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
                 child: CupertinoButton(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  color: const Color(0xFF5B8CFF),
-                  borderRadius: BorderRadius.circular(16),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  borderRadius: BorderRadius.circular(18),
+                  color: Colors.transparent,
                   onPressed: () {
                     Navigator.pop(context, selectedDate);
                   },
-                  child: const Text(
-                    'Apply Date',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        CupertinoIcons.check_mark_circled_solid,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Apply Date',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2707,13 +3917,14 @@ class _UnitSelectionSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
+
               const SizedBox(height: 18),
+
               const Row(
                 children: [
-                  Icon(
-                    CupertinoIcons.cube_box,
-                    color: Color(0xFFB8C1D9),
-                    size: 22,
+                  _PremiumPickerLeadingIcon(
+                    icon: CupertinoIcons.cube_box,
+                    tone: _PickerIconTone.softWhite,
                   ),
                   SizedBox(width: 10),
                   Expanded(
@@ -2729,7 +3940,9 @@ class _UnitSelectionSheet extends StatelessWidget {
                   ),
                 ],
               ),
+
               const SizedBox(height: 16),
+
               Expanded(
                 child: ListView.separated(
                   itemCount: units.length,
@@ -2739,52 +3952,49 @@ class _UnitSelectionSheet extends StatelessWidget {
                     final selected = unit == selectedUnit;
 
                     return Material(
-                      color: selected
-                          ? const Color(0xFF16233F)
-                          : const Color(0xFF101117),
-                      borderRadius: BorderRadius.circular(18),
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(20),
                         onTap: () => Navigator.pop(context, unit),
                         child: Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
+                            color: selected
+                                ? const Color(0xFF2D313C)
+                                : const Color(0xFF181B23),
+                            borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: selected
-                                  ? const Color(0xFF5B8CFF)
-                                  : const Color(0xFF23252E),
+                              color: const Color(0xFF303442),
                             ),
+                            boxShadow: null,
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                _unitIcon(unit),
-                                color: selected
-                                    ? const Color(0xFF8FB0FF)
-                                    : const Color(0xFF8E93A6),
-                                size: 19,
+                              _PremiumPickerLeadingIcon(
+                                icon: _unitIcon(unit),
+                                tone: _PickerIconTone.softWhite,
                               ),
                               const SizedBox(width: 12),
+
                               Expanded(
                                 child: Text(
                                   EstimateFormatters.formatUnit(unit),
-                                  style: TextStyle(
-                                    color: selected
-                                        ? Colors.white
-                                        : const Color(0xFFE7EAF2),
+                                  style: const TextStyle(
+                                    color: Colors.white,
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
                               ),
+
                               Icon(
                                 selected
                                     ? CupertinoIcons.checkmark_circle_fill
                                     : CupertinoIcons.chevron_right,
                                 color: selected
-                                    ? const Color(0xFF5B8CFF)
-                                    : const Color(0xFF8E93A6),
+                                    ? const Color(0xFFE5E7EB)
+                                    : const Color(0xFF9AA3B7),
                                 size: selected ? 20 : 16,
                               ),
                             ],
@@ -2875,7 +4085,7 @@ class _SelectionSheet<T> extends StatelessWidget {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(
-                              color: const Color(0xFF23252E),
+                              color: const Color(0xFF303442),
                             ),
                           ),
                           child: Row(
@@ -2917,27 +4127,47 @@ class _InlineEmptyItemsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.025),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: const Row(
         children: [
-          Icon(
-            CupertinoIcons.square_list,
-            color: Color(0xFF8E93A6),
-            size: 20,
+          _PremiumPickerLeadingIcon(
+            icon: CupertinoIcons.square_list,
+            tone: _PickerIconTone.softWhite,
           ),
-          SizedBox(width: 10),
+          SizedBox(width: 12),
           Expanded(
             child: Text(
               'No items yet. Add your first line item.',
               style: TextStyle(
-                color: Color(0xFF8E93A6),
+                color: Color(0xFFB8BECC),
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+                shadows: [
+                  Shadow(
+                    color: Color(0x66000000),
+                    blurRadius: 7,
+                    offset: Offset(0, 2),
+                  ),
+                ],
               ),
             ),
           ),
@@ -2958,31 +4188,118 @@ class _InvoiceItemTile extends StatelessWidget {
     required this.onDelete,
   });
 
+  Widget _metricCell({
+    required String label,
+    required String value,
+  }) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        child: Column(
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFA0A7B8),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 9),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFF1F4F8),
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metricDivider() {
+    return Container(
+      width: 1,
+      height: 52,
+      color: const Color(0xFF303645),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final description = (item.description ?? '').trim();
+    final itemIcon = WorkioIconMapper.resolveFromTitle(item.title);
+
+    final lineTotal = item.lineTotal > 0
+        ? item.lineTotal
+        : EstimateCalculator.calculateLineTotal(
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    );
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF151922),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF343A49),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.24),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.018),
+            blurRadius: 8,
+            spreadRadius: -4,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  itemIcon,
+                  color: const Color(0xFFF3F6FC),
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 12),
+
               Expanded(
                 child: Text(
                   item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFF1F4F8),
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+
+              const SizedBox(width: 10),
+
               _SmallIconButton(
                 icon: CupertinoIcons.pencil,
                 onTap: onEdit,
@@ -2991,52 +4308,120 @@ class _InvoiceItemTile extends StatelessWidget {
               _SmallIconButton(
                 icon: CupertinoIcons.trash,
                 onTap: onDelete,
-                color: const Color(0xFFE05A5A),
+                color: const Color(0xFFE85D3D),
               ),
             ],
           ),
-          if ((item.description ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              item.description!,
-              style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                height: 1.35,
-              ),
+
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              height: 1,
+              width: double.infinity,
+              color: const Color(0xFF2F3543),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(
+                    CupertinoIcons.info_circle,
+                    color: Color(0xFFA0A7B8),
+                    size: 17,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    description,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFA0A7B8),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniInfo(
+
+          const SizedBox(height: 14),
+
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C2029),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF343A49),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                _metricCell(
                   label: 'Qty',
                   value: EstimateFormatters.formatQuantity(item.quantity),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniInfo(
+                _metricDivider(),
+                _metricCell(
                   label: 'Unit',
                   value: EstimateFormatters.formatUnit(item.unit),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniInfo(
+                _metricDivider(),
+                _metricCell(
                   label: 'Unit Price',
                   value: EstimateFormatters.formatCurrency(item.unitPrice),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-          _MiniInfo(
-            label: 'Line Total',
-            value: EstimateFormatters.formatCurrency(item.lineTotal),
-            emphasized: true,
+
+          const SizedBox(height: 12),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C2029),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: const Color(0xFF343A49),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  CupertinoIcons.money_dollar_circle,
+                  color: Color(0xFF22C55E),
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Line Total',
+                  style: TextStyle(
+                    color: Color(0xFFA0A7B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  EstimateFormatters.formatCurrency(lineTotal),
+                  style: const TextStyle(
+                    color: Color(0xFFF1F4F8),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -3060,7 +4445,7 @@ class _SmallIconButton extends StatelessWidget {
     final effectiveColor = color ?? const Color(0xFFB6BCD0);
 
     return Material(
-      color: const Color(0xFF171922),
+      color: const Color(0xFF20242D),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -3070,7 +4455,7 @@ class _SmallIconButton extends StatelessWidget {
           height: 34,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF23252E)),
+            border: Border.all(color: const Color(0xFF343A49)),
           ),
           child: Icon(
             icon,
@@ -3083,68 +4468,34 @@ class _SmallIconButton extends StatelessWidget {
   }
 }
 
-class _MiniInfo extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool emphasized;
-
-  const _MiniInfo({
-    required this.label,
-    required this.value,
-    this.emphasized = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F212A)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: emphasized ? 15 : 13,
-              fontWeight: emphasized ? FontWeight.w700 : FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _TotalsPanel extends StatelessWidget {
   final List<Widget> children;
+  final bool readOnly;
 
   const _TotalsPanel({
     required this.children,
+    this.readOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: readOnly
+            ? const Color(0xFF242730)
+            : const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: readOnly
+              ? const Color(0xFF343846)
+              : const Color(0xFF303442),
+          width: 1,
+        ),
       ),
       child: Column(children: children),
     );
@@ -3153,12 +4504,14 @@ class _TotalsPanel extends StatelessWidget {
 
 class _TotalsEditRow extends StatelessWidget {
   final IconData icon;
+  final _PickerIconTone iconTone;
   final String label;
   final String value;
   final VoidCallback onTap;
 
   const _TotalsEditRow({
     required this.icon,
+    required this.iconTone,
     required this.label,
     required this.value,
     required this.onTap,
@@ -3175,7 +4528,10 @@ class _TotalsEditRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
           child: Row(
             children: [
-              Icon(icon, color: const Color(0xFF8E93A6), size: 18),
+              _PremiumPickerLeadingIcon(
+                icon: icon,
+                tone: iconTone,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(
@@ -3211,12 +4567,14 @@ class _TotalsEditRow extends StatelessWidget {
 
 class _TotalsValueRow extends StatelessWidget {
   final IconData icon;
+  final _PickerIconTone iconTone;
   final String label;
   final String value;
   final bool muted;
 
   const _TotalsValueRow({
     required this.icon,
+    required this.iconTone,
     required this.label,
     required this.value,
     this.muted = false,
@@ -3228,7 +4586,10 @@ class _TotalsValueRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF8E93A6), size: 18),
+          _PremiumPickerLeadingIcon(
+            icon: icon,
+            tone: iconTone,
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
@@ -3243,9 +4604,9 @@ class _TotalsValueRow extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFFD0D5E2),
               fontSize: 15,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -3266,36 +4627,34 @@ class _TotalsGrandRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF5B8CFF)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.26),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.025),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: const BoxDecoration(
-              color: Color(0xFF8E93A6),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(
-              child: Text(
-                r'$',
-                style: TextStyle(
-                  color: Color(0xFF101117),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
+          const _PremiumPickerLeadingIcon(
+            icon: CupertinoIcons.money_dollar_circle_fill,
+            tone: _PickerIconTone.statusGreen,
           ),
           const SizedBox(width: 12),
           const Expanded(
             child: Text(
               'Total',
               style: TextStyle(
-                color: Colors.white,
+                color: Color(0xFFE1E5EF),
                 fontSize: 15,
                 fontWeight: FontWeight.w900,
               ),
@@ -3304,13 +4663,363 @@ class _TotalsGrandRow extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFFE1E5EF),
               fontSize: 20,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.3,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _VoiceWaveBar extends StatefulWidget {
+  const _VoiceWaveBar();
+
+  @override
+  State<_VoiceWaveBar> createState() => _VoiceWaveBarState();
+}
+
+class _VoiceWaveBarState extends State<_VoiceWaveBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  final List<double> _bars = const [
+    0.25, 0.45, 0.30, 0.65, 0.40, 0.80, 0.35, 0.55,
+    0.28, 0.70, 0.42, 0.95, 0.38, 0.60, 0.32, 0.75,
+    0.44, 0.58, 0.36, 0.82, 0.30, 0.50, 0.26, 0.68,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 42,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(_bars.length, (index) {
+              final wave = math.sin(
+                (_controller.value * math.pi * 2) + index * 0.45,
+              );
+
+              final height = 8 + (_bars[index] * 22 * (0.55 + wave.abs()));
+
+              return Container(
+                width: 3,
+                height: height,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8E93A6),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              );
+            }),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _RecordingActiveBar extends StatefulWidget {
+  const _RecordingActiveBar();
+
+  @override
+  State<_RecordingActiveBar> createState() => _RecordingActiveBarState();
+}
+
+class _RecordingActiveBarState extends State<_RecordingActiveBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 950),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(99),
+      child: SizedBox(
+        height: 4,
+        width: double.infinity,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final trackWidth = constraints.maxWidth;
+            final segmentWidth = trackWidth * 0.38;
+
+            return AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) {
+                final left = (trackWidth + segmentWidth) * _controller.value -
+                    segmentWidth;
+
+                return Stack(
+                  children: [
+                    Container(
+                      height: 4,
+                      width: double.infinity,
+                      color: const Color(0xFF2A2D38),
+                    ),
+                    Positioned(
+                      left: left,
+                      top: 0,
+                      bottom: 0,
+                      width: segmentWidth,
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Color(0xFF8B5CF6),
+                              Color(0xFFA855F7),
+                              Color(0xFF8B5CF6),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _RecordingPulseDot extends StatefulWidget {
+  const _RecordingPulseDot();
+
+  @override
+  State<_RecordingPulseDot> createState() => _RecordingPulseDotState();
+}
+
+class _RecordingPulseDotState extends State<_RecordingPulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_controller),
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: const Color(0xFFFF4D5E),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF4D5E).withValues(alpha: 0.45),
+              blurRadius: 8,
+              offset: const Offset(0, 0),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveSpeechTypingPreview extends StatelessWidget {
+  final ValueListenable<String> textListenable;
+
+  const _LiveSpeechTypingPreview({
+    required this.textListenable,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<String>(
+      valueListenable: textListenable,
+      builder: (context, text, _) {
+        final clean = text.trim();
+
+        if (clean.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.25),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+                child: child,
+              ),
+            );
+          },
+          child: Row(
+            key: ValueKey(clean),
+            children: [
+              const Text(
+                'Typing:',
+                style: TextStyle(
+                  color: Color(0xFFA1A7B8),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  clean,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const _BlinkingTypingCaret(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BlinkingTypingCaret extends StatefulWidget {
+  const _BlinkingTypingCaret();
+
+  @override
+  State<_BlinkingTypingCaret> createState() => _BlinkingTypingCaretState();
+}
+
+class _BlinkingTypingCaretState extends State<_BlinkingTypingCaret>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.25, end: 1).animate(_controller),
+      child: Container(
+        width: 2,
+        height: 14,
+        decoration: BoxDecoration(
+          color: const Color(0xFF8B5CF6),
+          borderRadius: BorderRadius.circular(99),
+        ),
+      ),
+    );
+  }
+}
+
+class _LargeEditorActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _LargeEditorActionButton({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF242730),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          width: 38,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: const Color(0xFF3A4150),
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 18,
+          ),
+        ),
       ),
     );
   }

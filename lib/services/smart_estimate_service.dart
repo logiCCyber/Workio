@@ -1,11 +1,13 @@
 import '../models/ai_estimate_result_model.dart';
 import '../models/ai_parsed_request_model.dart';
+import '../models/ai_generated_text_model.dart';
 import 'estimate_draft_builder_service.dart';
 import 'estimate_history_suggestion_service.dart';
 import 'estimate_prompt_parser_service.dart';
 import 'estimate_question_service.dart';
 import 'estimate_dynamic_service_type_service.dart';
 import 'parse_estimate_mini_service.dart';
+import 'ai_estimate_text_service.dart';
 import '../models/estimate_price_rule_model.dart';
 import '../models/estimate_item_model.dart';
 
@@ -32,6 +34,7 @@ class SmartEstimateService {
     String? ruleUnit,
     bool allowDraftWithExplicitService = false,
     EstimatePriceRuleModel? selectedRule,
+    List<EstimateItemModel> promptMaterials = const [], // ← ДОБАВЬ
   }) async {
     final trimmedPrompt = prompt.trim();
 
@@ -63,11 +66,11 @@ class SmartEstimateService {
       );
 
       final explicitServiceType = _extractExplicitServiceType(trimmedPrompt);
+      final selectedServiceType =
+      selectedRule?.serviceType.trim().toLowerCase();
 
-      final selectedServiceType = selectedRule?.serviceType.trim().toLowerCase();
-
-      final parsedBeforeQuestions =
-      selectedServiceType != null && selectedServiceType.isNotEmpty
+      final parsedBeforeQuestions = selectedServiceType != null &&
+          selectedServiceType.isNotEmpty
           ? mergedParsed.copyWith(
         serviceType: selectedServiceType,
         confidence: mergedParsed.confidence < 0.85
@@ -88,10 +91,9 @@ class SmartEstimateService {
         selectedRule: selectedRule,
       );
 
-      final finalParsed = allowDraftWithExplicitService && explicitServiceType != null
-          ? enriched.copyWith(
-        missingFields: const [],
-      )
+      final finalParsed =
+      allowDraftWithExplicitService && explicitServiceType != null
+          ? enriched.copyWith(missingFields: const [])
           : enriched;
 
       final historyContext = await EstimateHistorySuggestionService.buildContext(
@@ -100,6 +102,9 @@ class SmartEstimateService {
         propertyId: propertyId,
       );
 
+      // Билдер строит items (через PricingEngine) и базовый scope/notes.
+      // Базовый текст всё равно перетрётся через AI text service ниже,
+      // но билдер нужен чтобы получить items с правильными ценами.
       final result = await EstimateDraftBuilderService.build(
         parsed: finalParsed,
         propertyCity: propertyCity,
@@ -131,30 +136,40 @@ class SmartEstimateService {
         selectedRule: selectedRule,
       );
 
-      final resultWithIntentText = _applyIntentBasedScopeAndNotes(
+      // === КРИТИЧНО: добавляем материалы из промпта ДО AI text ===
+      final resultWithPromptMaterials = _attachPromptMaterials(
         result: resultWithRush,
-        prompt: trimmedPrompt,
-        selectedRule: selectedRule,
+        promptMaterials: promptMaterials,
       );
 
-      final resultWithHistory = resultWithIntentText.copyWith(
+      // === Фаза 3: профессиональный AI-текст ===
+      final aiText = await _generateAiText(
+        result: resultWithPromptMaterials,
+        prompt: trimmedPrompt,
+        parsed: finalParsed,
+        selectedRule: selectedRule,
+        propertyCity: propertyCity,
+      );
+
+      final resultWithAiText = _mergeAiText(
+        result: resultWithPromptMaterials,
+        aiText: aiText,
+      );
+
+      final resultWithRealConfidence = _calculateRealConfidence(
+        result: resultWithAiText,
+        parsed: finalParsed,
+      );
+
+      final resultWithHistory = resultWithRealConfidence.copyWith(
         historyContext: historyContext,
       );
-
-      final hasGeneratedDraft =
-          resultWithHistory.canAutoGenerate && resultWithHistory.items.isNotEmpty;
-
-      if (hasGeneratedDraft) {
-        return resultWithHistory;
-      }
 
       return resultWithHistory;
     } catch (_) {
       rethrow;
     }
   }
-
-
 
   static Future<AiEstimateResultModel> regenerateWithAnswers({
     required String prompt,
@@ -164,6 +179,7 @@ class SmartEstimateService {
     String? propertyId,
     String? ruleUnit,
     EstimatePriceRuleModel? selectedRule,
+    List<EstimateItemModel> promptMaterials = const [], // ← ДОБАВЬ
   }) async {
     final trimmedPrompt = prompt.trim();
 
@@ -198,7 +214,8 @@ class SmartEstimateService {
             : mergedParsed.confidence,
       );
 
-      final enriched = await EstimateQuestionService.enrich(parsedBeforeQuestions);
+      final enriched =
+      await EstimateQuestionService.enrich(parsedBeforeQuestions);
       final updated = await EstimateQuestionService.applyAnswers(
         enriched,
         answers,
@@ -242,28 +259,117 @@ class SmartEstimateService {
         selectedRule: selectedRule,
       );
 
-      final resultWithIntentText = _applyIntentBasedScopeAndNotes(
+// === КРИТИЧНО: добавляем материалы из промпта ДО AI text ===
+// Чтобы AI видел полную картину items и не писал "materials not included"
+// когда они на самом деле есть.
+      final resultWithPromptMaterials = _attachPromptMaterials(
         result: resultWithRush,
-        prompt: trimmedPrompt,
-        selectedRule: selectedRule,
+        promptMaterials: promptMaterials,
       );
 
-      final resultWithHistory = resultWithIntentText.copyWith(
+// === Фаза 3: профессиональный AI-текст ===
+      final aiText = await _generateAiText(
+        result: resultWithPromptMaterials,
+        prompt: trimmedPrompt,
+        parsed: updated,
+        selectedRule: selectedRule,
+        propertyCity: propertyCity,
+      );
+
+      final resultWithAiText = _mergeAiText(
+        result: resultWithPromptMaterials, // ← было resultWithRush
+        aiText: aiText,
+      );
+
+      final resultWithRealConfidence = _calculateRealConfidence(
+        result: resultWithAiText,
+        parsed: updated,
+      );
+
+      final resultWithHistory = resultWithRealConfidence.copyWith(
         historyContext: historyContext,
       );
-
-      final hasGeneratedDraft =
-          resultWithHistory.canAutoGenerate && resultWithHistory.items.isNotEmpty;
-
-      if (hasGeneratedDraft) {
-        return resultWithHistory;
-      }
 
       return resultWithHistory;
     } catch (_) {
       rethrow;
     }
   }
+
+  // =====================================================================
+  // Фаза 3: AI Text Generation
+  // =====================================================================
+
+  static Future<AiGeneratedTextModel> _generateAiText({
+    required AiEstimateResultModel result,
+    required String prompt,
+    required AiParsedRequestModel parsed,
+    required EstimatePriceRuleModel? selectedRule,
+    String? propertyCity,
+  }) async {
+    if (result.items.isEmpty || selectedRule == null) {
+      return AiGeneratedTextModel.empty();
+    }
+
+    final intent = _detectActionPricingIntent(prompt);
+    final hasRush = _hasRushSignal(prompt);
+
+    // Materials mode определяется в порядке приоритета:
+// 1. Явный labor_only из парсинга → labor_only
+// 2. В items есть material — значит included (источник правды)
+// 3. parsed.materialsIncluded подтверждает → included
+// 4. Иначе → unknown
+    final hasMaterialItem = result.items.any(_isPromptMaterialItem);
+
+    final materialsMode = parsed.laborOnly == true
+        ? 'labor_only'
+        : hasMaterialItem
+        ? 'included'
+        : parsed.materialsIncluded == true
+        ? 'included'
+        : 'unknown';
+
+    print('🔴 MATERIALS MODE: $materialsMode');
+    print('🔴 hasMaterialItem: $hasMaterialItem');
+    print('🔴 items in result: ${result.items.length}');
+    for (final item in result.items) {
+      print('   - ${item.title} | \$${item.unitPrice}');
+    }
+
+    try {
+      return await AiEstimateTextService.generate(
+        items: result.items,
+        selectedRule: selectedRule,
+        originalPrompt: prompt,
+        intent: intent,
+        hasRush: hasRush,
+        materialsMode: materialsMode,
+        propertyCity: propertyCity,
+      );
+    } catch (_) {
+      // Тихий fallback: AI упал — оставляем то что построил билдер.
+      // Логирование подключим отдельно когда будет нужно.
+      return AiGeneratedTextModel.empty();
+    }
+  }
+
+  static AiEstimateResultModel _mergeAiText({
+    required AiEstimateResultModel result,
+    required AiGeneratedTextModel aiText,
+  }) {
+    if (aiText.isEmpty) return result;
+
+    return result.copyWith(
+      title: aiText.title.isNotEmpty ? aiText.title : result.title,
+      scope: aiText.scopeOfWork.isNotEmpty ? aiText.scopeOfWork : result.scope,
+      notes: aiText.notes.isNotEmpty ? aiText.notes : result.notes,
+      generatedText: aiText,
+    );
+  }
+
+  // =====================================================================
+  // Rush detection
+  // =====================================================================
 
   static String _rushClean(String value) {
     return value
@@ -276,7 +382,6 @@ class SmartEstimateService {
 
   static bool _hasRushSignal(String prompt) {
     final text = _rushClean(prompt);
-
     if (text.isEmpty) return false;
 
     final noRush = RegExp(
@@ -290,47 +395,9 @@ class SmartEstimateService {
     ).hasMatch(text);
   }
 
-  static String? _polishRushEstimateText(String? value) {
-    final text = (value ?? '').trim();
-    if (text.isEmpty) return value;
-
-    var cleaned = text
-        .replaceAll(
-      RegExp(
-        r'Expedited scheduling requested;\s*availability may be limited and subject to additional fees\.?',
-        caseSensitive: false,
-      ),
-      'Expedited scheduling requested. Rush fee is included where applicable.',
-    )
-        .replaceAll(
-      RegExp(
-        r'Requesting may reduce scheduling lead time;\s*additional fees may apply\.?',
-        caseSensitive: false,
-      ),
-      'Expedited scheduling requested. Rush fee is included where applicable.',
-    )
-        .replaceAll(
-      RegExp(
-        r'Request may reduce scheduling lead time;\s*additional fees may apply\.?',
-        caseSensitive: false,
-      ),
-      'Expedited scheduling requested. Rush fee is included where applicable.',
-    )
-        .replaceAll(
-      RegExp(
-        r'Rush service requested;\s*additional fees may apply\.?',
-        caseSensitive: false,
-      ),
-      'Expedited scheduling requested. Rush fee is included where applicable.',
-    );
-
-    cleaned = cleaned
-        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
-        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
-        .trim();
-
-    return cleaned;
-  }
+  // =====================================================================
+  // Conditional diagnostic
+  // =====================================================================
 
   static bool _hasConditionalDiagnosticSignal(String prompt) {
     final text = _rushClean(prompt);
@@ -369,15 +436,11 @@ class SmartEstimateService {
     required EstimatePriceRuleModel? selectedRule,
   }) {
     if (selectedRule == null) return result;
-
     if (!_hasConditionalDiagnosticSignal(prompt)) return result;
     if (!_hasDefiniteActionAfterDiagnostic(prompt)) return result;
 
     final diagnosticFee = selectedRule.diagnosticFixedRate ?? 0;
-
-    // Diagnostic = 0 or empty means free, so do not add separate item.
     if (diagnosticFee <= 0) return result;
-
     if (_alreadyHasDiagnosticItem(result)) return result;
 
     final serviceLabel = selectedRule.displayName?.trim().isNotEmpty == true
@@ -397,17 +460,17 @@ class SmartEstimateService {
       createdAt: null,
     );
 
-    final combined = [
-      diagnosticItem,
-      ...result.items,
-    ];
-
+    final combined = [diagnosticItem, ...result.items];
     final normalized = combined.asMap().entries.map((entry) {
       return entry.value.copyWith(sortOrder: entry.key);
     }).toList();
 
     return result.copyWith(items: normalized);
   }
+
+  // =====================================================================
+  // Main labor item guarantee
+  // =====================================================================
 
   static AiEstimateResultModel _ensureMainLaborItemIfNeeded({
     required AiEstimateResultModel result,
@@ -420,13 +483,8 @@ class SmartEstimateService {
     if (hasMainLabor) return result;
 
     final intent = _detectActionPricingIntent(prompt);
-
     final promptOverride = _extractPromptLaborOverrideRate(prompt);
-    final ruleRate = _rateForAction(
-      rule: selectedRule,
-      intent: intent,
-    );
-
+    final ruleRate = _rateForAction(rule: selectedRule, intent: intent);
     final resolvedRate = promptOverride ?? ruleRate;
 
     if (intent == 'diagnostic' && (resolvedRate == null || resolvedRate <= 0)) {
@@ -439,7 +497,8 @@ class SmartEstimateService {
         ? selectedRule.displayName!.trim()
         : selectedRule.serviceType.trim();
 
-    final quantity = intent == 'diagnostic' ? 1.0 : _extractActionQuantity(prompt) ?? 1.0;
+    final quantity =
+    intent == 'diagnostic' ? 1.0 : _extractActionQuantity(prompt) ?? 1.0;
 
     final title = intent == 'diagnostic'
         ? '$serviceLabel Diagnostic'
@@ -463,14 +522,15 @@ class SmartEstimateService {
     );
 
     return result.copyWith(
-      items: [
-        item,
-        ...result.items,
-      ].asMap().entries.map((entry) {
+      items: [item, ...result.items].asMap().entries.map((entry) {
         return entry.value.copyWith(sortOrder: entry.key);
       }).toList(),
     );
   }
+
+  // =====================================================================
+  // Rush items normalization
+  // =====================================================================
 
   static AiEstimateResultModel _normalizeRushItemTitles({
     required AiEstimateResultModel result,
@@ -484,16 +544,11 @@ class SmartEstimateService {
 
     final items = result.items.map((item) {
       final text = _rushClean('${item.title} ${item.description} ${item.unit}');
-
-      final isRush = RegExp(
-        r'\b(rush|urgent|priority|expedited)\b',
-      ).hasMatch(text);
+      final isRush =
+      RegExp(r'\b(rush|urgent|priority|expedited)\b').hasMatch(text);
 
       if (!isRush) return item;
-
-      return item.copyWith(
-        title: '$serviceLabel Rush Fee',
-      );
+      return item.copyWith(title: '$serviceLabel Rush Fee');
     }).toList();
 
     return result.copyWith(
@@ -503,239 +558,17 @@ class SmartEstimateService {
     );
   }
 
-  static AiEstimateResultModel _applyIntentBasedScopeAndNotes({
-    required AiEstimateResultModel result,
-    required String prompt,
-    required EstimatePriceRuleModel? selectedRule,
-  }) {
-    if (selectedRule == null) return result;
-
-    final intent = _detectActionPricingIntent(prompt);
-
-    final serviceLabel = selectedRule.displayName?.trim().isNotEmpty == true
-        ? selectedRule.displayName!.trim()
-        : selectedRule.serviceType.trim();
-
-    final objectLabel = _cleanServiceObjectLabel(
-      serviceLabel: serviceLabel,
-      selectedRule: selectedRule,
-    );
-
-    final scope = _buildIntentScopeText(
-      intent: intent,
-      objectLabel: objectLabel,
-      prompt: prompt,
-      result: result,
-      selectedRule: selectedRule,
-    );
-
-    final notes = _buildIntentNotesText(
-      intent: intent,
-      objectLabel: objectLabel,
-      prompt: prompt,
-    );
-
-    return result.copyWith(
-      scope: scope,
-      notes: notes,
-    );
-  }
-
-  static String _cleanServiceObjectLabel({
-    required String serviceLabel,
-    required EstimatePriceRuleModel selectedRule,
-  }) {
-    var text = serviceLabel.trim().toLowerCase();
-
-    if (text.isEmpty) {
-      text = selectedRule.serviceType.trim().toLowerCase();
-    }
-
-    text = text
-        .replaceAll(
-      RegExp(
-        r'\b(service|services|installation|install|replacement|replace|repair|diagnostic|diagnostics|inspection|inspect|labor|labour|work|job)\b',
-        caseSensitive: false,
-      ),
-      ' ',
-    )
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    if (text.isEmpty) {
-      text = selectedRule.serviceType.trim().toLowerCase();
-    }
-
-    return text;
-  }
-
-  static double _mainLaborQuantityForScope(AiEstimateResultModel result) {
-    for (final item in result.items) {
-      if (_isMainLaborItem(item)) {
-        return item.quantity <= 0 ? 1.0 : item.quantity;
-      }
-    }
-
-    return 1.0;
-  }
-
-  static String _formatScopeQuantity(double value) {
-    if (value % 1 == 0) return value.toInt().toString();
-    return value.toStringAsFixed(1);
-  }
-
-  static String _pluralizeScopeObject(String value) {
-    final clean = value.trim();
-    if (clean.isEmpty) return clean;
-
-    final parts = clean.split(RegExp(r'\s+'));
-    final last = parts.removeLast();
-
-    String plural;
-
-    if (RegExp(r'[^aeiou]y$', caseSensitive: false).hasMatch(last)) {
-      plural = '${last.substring(0, last.length - 1)}ies';
-    } else if (RegExp(r'(s|x|z|ch|sh)$', caseSensitive: false).hasMatch(last)) {
-      plural = '${last}es';
-    } else {
-      plural = '${last}s';
-    }
-
-    return [...parts, plural].join(' ');
-  }
-
-  static String _scopeObjectText(String objectLabel, double quantity) {
-    if (quantity <= 1) return objectLabel;
-
-    return '${_formatScopeQuantity(quantity)} ${_pluralizeScopeObject(objectLabel)}';
-  }
-
-  static String _scopeUnitText(
-      EstimatePriceRuleModel rule,
-      double quantity,
-      ) {
-    final unit = rule.unit
-        .trim()
-        .toLowerCase()
-        .replaceAll('_', ' ')
-        .replaceAll('-', ' ')
-        .replaceAll(RegExp(r'\s+'), ' ');
-
-    if (unit.isEmpty || unit == 'fixed') return '';
-
-    final cleanQty = quantity <= 0 ? 1.0 : quantity;
-    final unitLabel = cleanQty > 1 ? _pluralizeScopeObject(unit) : unit;
-
-    return '${_formatScopeQuantity(cleanQty)} $unitLabel';
-  }
-
-  static String _buildIntentScopeText({
-    required String intent,
-    required String objectLabel,
-    required String prompt,
-    required AiEstimateResultModel result,
-    required EstimatePriceRuleModel selectedRule,
-  }) {
-    final quantity = _mainLaborQuantityForScope(result);
-    final objectText = _scopeObjectText(objectLabel, quantity);
-    final unitText = _scopeUnitText(selectedRule, quantity);
-    final unitPhrase = unitText.isEmpty ? '' : ' covering $unitText';
-    final parsed = result.parsedRequest;
-
-    final action = <String>[];
-
-    if (intent == 'install') {
-      action.add('Supply and install $objectText$unitPhrase.');
-      action.add('Work includes standard connection, fitting, and functional testing upon completion.');
-    } else if (intent == 'replace') {
-      action.add('Remove existing $objectText and install replacement unit$unitPhrase.');
-      action.add('Includes disconnection, safe removal, installation, and post-work testing.');
-    } else if (intent == 'repair') {
-      action.add('Diagnose and repair $objectText$unitPhrase.');
-      action.add('Scope includes fault identification, repair of the confirmed issue, and operational verification.');
-    } else if (intent == 'diagnostic') {
-      action.add('Perform a diagnostic inspection of $objectText.');
-      action.add('Technician will assess the condition, identify the root cause, and provide a written summary of findings and recommended next steps.');
-    } else {
-      action.add('Perform $objectLabel service$unitPhrase as outlined in this estimate.');
-      action.add('Work includes all standard labor required to complete the job to a professional standard.');
-    }
-
-    if (parsed.laborOnly == true) {
-      action.add('Labor only. Client supplies all required materials unless otherwise specified.');
-    } else if (parsed.materialsIncluded == true) {
-      action.add('Materials are included as itemized in this estimate.');
-    } else {
-      action.add('Materials are not included unless listed as separate line items.');
-    }
-
-    if (_hasRushSignal(prompt)) {
-      action.add('Priority scheduling applied. Rush service fee is reflected in the pricing.');
-    }
-
-    action.add('Work area will be left clean and clear upon job completion.');
-
-    return _cleanGeneratedEstimateText(action.join(' '));
-  }
-
-  static String _buildIntentNotesText({
-    required String intent,
-    required String objectLabel,
-    required String prompt,
-  }) {
-    final notes = <String>[];
-
-    if (intent == 'install') {
-      notes.add('Pricing assumes standard installation conditions with accessible connection points and no pre-existing damage or code deficiencies.');
-      notes.add('Any required upgrades, non-standard configurations, permit fees, or structural modifications will be assessed separately.');
-    } else if (intent == 'replace') {
-      notes.add('Estimate is based on a straightforward like-for-like replacement under normal site conditions.');
-      notes.add('Concealed damage, incompatible fittings, code upgrade requirements, or disposal fees not included in this estimate may be invoiced separately.');
-    } else if (intent == 'repair') {
-      notes.add('Final repair scope is subject to on-site assessment. Price may be adjusted if the issue is more extensive than initially described.');
-      notes.add('Parts, additional labor, or follow-up visits required beyond the confirmed repair will require separate authorization.');
-    } else if (intent == 'diagnostic') {
-      notes.add('Diagnostic fee covers inspection and written assessment only. No repair or replacement work is included unless separately approved.');
-      notes.add('A follow-up estimate will be provided for any recommended corrective work identified during the inspection.');
-    } else {
-      notes.add('Pricing is based on the information provided at the time of estimate. Final invoice may vary if site conditions differ materially from the scope described.');
-      notes.add('Any work outside the defined scope requires written approval prior to commencement.');
-    }
-
-    return _cleanGeneratedEstimateText(notes.join(' '));
-  }
-
-  static String _cleanGeneratedEstimateText(String value) {
-    return value
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .replaceAllMapped(
-      RegExp(r'\s+([,.;:])'),
-          (match) => match.group(1) ?? '',
-    )
-        .replaceAll(RegExp(r'\.\s*\.'), '.')
-        .replaceAll(RegExp(r'\s+\.'), '.')
-        .trim();
-  }
-
   static AiEstimateResultModel _appendRushFeeIfNeeded({
     required AiEstimateResultModel result,
     required String prompt,
     required EstimatePriceRuleModel? selectedRule,
   }) {
-    final polishedResult = result.copyWith(
-      scope: _polishRushEstimateText(result.scope),
-      notes: _polishRushEstimateText(result.notes),
-    );
-
-    if (selectedRule == null) return polishedResult;
-    if (!_hasRushSignal(prompt)) return polishedResult;
-
-    if (!polishedResult.items.any(_isMainLaborItem)) {
-      return polishedResult;
-    }
+    if (selectedRule == null) return result;
+    if (!_hasRushSignal(prompt)) return result;
+    if (!result.items.any(_isMainLaborItem)) return result;
 
     final normalizedRushTitles = _normalizeRushItemTitles(
-      result: polishedResult,
+      result: result,
       selectedRule: selectedRule,
     );
 
@@ -770,10 +603,7 @@ class SmartEstimateService {
     );
 
     final withRush = normalizedRushTitles.copyWith(
-      items: [
-        ...normalizedRushTitles.items,
-        rushItem,
-      ],
+      items: [...normalizedRushTitles.items, rushItem],
     );
 
     return _normalizeRushItemTitles(
@@ -782,41 +612,44 @@ class SmartEstimateService {
     );
   }
 
+  // =====================================================================
+  // Intent detection
+  // =====================================================================
+
   static String _detectActionPricingIntent(String prompt) {
     final text = _rushClean(prompt);
 
-    if (RegExp(
-      r'\b(inspection diagnostic only|diagnostic only|inspection only)\b',
-    ).hasMatch(text)) {
+    if (RegExp(r'\b(inspection diagnostic only|diagnostic only|inspection only)\b')
+        .hasMatch(text)) {
       return 'diagnostic';
     }
 
-    if (RegExp(
-      r'\b(install|installation|mount|setup|connect|ustanovit|ornatish)\b',
-    ).hasMatch(text)) {
+    if (RegExp(r'\b(install|installation|mount|setup|connect|ustanovit|ornatish)\b')
+        .hasMatch(text)) {
       return 'install';
     }
 
-    if (RegExp(
-      r'\b(replace|replacement|swap|change|zamenit|almashtir)\b',
-    ).hasMatch(text)) {
+    if (RegExp(r'\b(replace|replacement|swap|change|zamenit|almashtir)\b')
+        .hasMatch(text)) {
       return 'replace';
     }
 
-    if (RegExp(
-      r'\b(repair|fix|troubleshoot|leak|broken|not working|remont|pochinit|otremontirovat)\b',
-    ).hasMatch(text)) {
+    if (RegExp(r'\b(repair|fix|troubleshoot|leak|broken|not working|remont|pochinit|otremontirovat)\b')
+        .hasMatch(text)) {
       return 'repair';
     }
 
-    if (RegExp(
-      r'\b(inspect|inspection|diagnose|diagnostic|check|verify|proverit|diagnostika)\b',
-    ).hasMatch(text)) {
+    if (RegExp(r'\b(inspect|inspection|diagnose|diagnostic|check|verify|proverit|diagnostika)\b')
+        .hasMatch(text)) {
       return 'diagnostic';
     }
 
     return 'base';
   }
+
+  // =====================================================================
+  // Labor override from prompt (e.g. "rush 200", "labor 150")
+  // =====================================================================
 
   static double? _extractPromptLaborOverrideRate(String prompt) {
     final raw = prompt.trim().toLowerCase();
@@ -829,14 +662,9 @@ class SmartEstimateService {
         .toList();
 
     double? parseMoney(String value) {
-      final clean = value
-          .replaceAll('\$', '')
-          .replaceAll(',', '.')
-          .trim();
-
+      final clean = value.replaceAll('\$', '').replaceAll(',', '.').trim();
       final parsed = double.tryParse(clean);
       if (parsed == null || parsed <= 0) return null;
-
       return parsed;
     }
 
@@ -856,10 +684,8 @@ class SmartEstimateService {
       final labor = hasLaborSignal(clause);
       final material = hasMaterialSignal(clause);
 
-      // If this clause is only about materials, never use it as labor price.
       if (material && !labor) continue;
 
-      // $200 or 200$
       final moneyMatch = RegExp(
         r'(\$\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*\$)',
       ).firstMatch(clause);
@@ -869,7 +695,6 @@ class SmartEstimateService {
         if (value != null) return value;
       }
 
-      // price 200 / rate 200 / labor 200 / za 200 / for 200
       final keywordPriceMatch = RegExp(
         r'\b(price|rate|cost|labor|labour|work|service|za|for)\s*(is|=|:)?\s*(\d+(?:[.,]\d+)?)\b',
       ).firstMatch(clause);
@@ -883,20 +708,27 @@ class SmartEstimateService {
     return null;
   }
 
+  // =====================================================================
+  // Rate selection (action > base > diagnostic)
+  // =====================================================================
+
   static double? _rateForAction({
     required EstimatePriceRuleModel rule,
     required String intent,
   }) {
     if (intent == 'install') {
-      return rule.installFixedRate ?? rule.baseRate;
+      final actionRate = rule.installFixedRate ?? 0;
+      return actionRate > 0 ? actionRate : rule.baseRate;
     }
 
     if (intent == 'replace') {
-      return rule.replaceFixedRate ?? rule.baseRate;
+      final actionRate = rule.replaceFixedRate ?? 0;
+      return actionRate > 0 ? actionRate : rule.baseRate;
     }
 
     if (intent == 'repair') {
-      return rule.repairFixedRate ?? rule.baseRate;
+      final actionRate = rule.repairFixedRate ?? 0;
+      return actionRate > 0 ? actionRate : rule.baseRate;
     }
 
     if (intent == 'diagnostic') {
@@ -926,54 +758,9 @@ class SmartEstimateService {
     return 'Service';
   }
 
-  static List<_ActionQuantityPart> _parseActionQuantityBreakdown({
-    required String prompt,
-    required double fallbackQuantity,
-  }) {
-    final text = _rushClean(prompt);
-    if (text.isEmpty) return const [];
-
-    final cleaned = text
-        .replaceAll(RegExp(r'\bservice_type\s+[a-z0-9\s]+'), ' ')
-        .replaceAll(RegExp(r'\bservice_label\s+[a-z0-9\s]+'), ' ')
-        .replaceAll(RegExp(r'\brequest\s+'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    final parts = cleaned
-        .split(RegExp(r'[.;,\n\r]+|\band\b|\bi\b|\btakje\b|\balso\b'))
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    final result = <_ActionQuantityPart>[];
-
-    for (final part in parts) {
-      final intent = _detectActionPricingIntent(part);
-
-      if (intent == 'base') continue;
-
-      final qty = _extractActionQuantity(part) ?? fallbackQuantity;
-
-      result.add(
-        _ActionQuantityPart(
-          intent: intent,
-          quantity: qty,
-          rawText: part,
-        ),
-      );
-    }
-
-    final hasRealActionMix = result
-        .where((e) => e.intent == 'install' || e.intent == 'replace' || e.intent == 'repair')
-        .map((e) => e.intent)
-        .toSet()
-        .length >= 2;
-
-    if (!hasRealActionMix && result.length < 2) return const [];
-
-    return result;
-  }
+  // =====================================================================
+  // Action quantity extraction
+  // =====================================================================
 
   static double? _extractActionQuantity(String value) {
     final text = _rushClean(value);
@@ -1000,15 +787,16 @@ class SmartEstimateService {
     }
 
     final anyNumber = RegExp(r'\b(\d+(?:[.,]\d+)?)\b').firstMatch(text);
-
     if (anyNumber != null) {
-      return double.tryParse(
-        anyNumber.group(1)!.replaceAll(',', '.'),
-      );
+      return double.tryParse(anyNumber.group(1)!.replaceAll(',', '.'));
     }
 
     return null;
   }
+
+  // =====================================================================
+  // Action pricing application
+  // =====================================================================
 
   static AiEstimateResultModel _applyActionPricingIfNeeded({
     required AiEstimateResultModel result,
@@ -1019,31 +807,22 @@ class SmartEstimateService {
     if (result.items.isEmpty) return result;
 
     final intent = _detectActionPricingIntent(prompt);
-
     final promptOverride = _extractPromptLaborOverrideRate(prompt);
-    final ruleRate = _rateForAction(
-      rule: selectedRule,
-      intent: intent,
-    );
-
+    final ruleRate = _rateForAction(rule: selectedRule, intent: intent);
     final resolvedRate = promptOverride ?? ruleRate;
 
     final laborIndex = result.items.indexWhere(_isMainLaborItem);
     if (laborIndex < 0) return result;
 
-    // Diagnostic / inspection = 0 or empty means free/ignored.
     if (intent == 'diagnostic' && (resolvedRate == null || resolvedRate <= 0)) {
       final filtered = <EstimateItemModel>[
         for (var i = 0; i < result.items.length; i++)
           if (i != laborIndex) result.items[i],
       ];
-
       return result.copyWith(items: filtered);
     }
 
-    if (resolvedRate == null || resolvedRate <= 0) {
-      return result;
-    }
+    if (resolvedRate == null || resolvedRate <= 0) return result;
 
     final items = [...result.items];
     final laborItem = items[laborIndex];
@@ -1078,13 +857,15 @@ class SmartEstimateService {
     return result.copyWith(items: items);
   }
 
+  // =====================================================================
+  // Mini parse helpers
+  // =====================================================================
+
   static Future<AiParsedRequestModel> _applyMiniParseIfNeeded({
     required String prompt,
     required AiParsedRequestModel localParsed,
   }) async {
-    if (!_shouldUseMiniParse(localParsed)) {
-      return localParsed;
-    }
+    if (!_shouldUseMiniParse(localParsed)) return localParsed;
 
     try {
       final mini = await ParseEstimateMiniService.parse(
@@ -1092,10 +873,7 @@ class SmartEstimateService {
         localParsed: localParsed.toMap(),
       );
 
-      return _mergeMiniParse(
-        localParsed: localParsed,
-        mini: mini,
-      );
+      return _mergeMiniParse(localParsed: localParsed, mini: mini);
     } catch (_) {
       return localParsed;
     }
@@ -1140,16 +918,149 @@ class SmartEstimateService {
     ).firstMatch(prompt);
 
     final value = match?.group(1)?.trim().toLowerCase();
+    if (value == null || value.isEmpty) return null;
 
-    if (value == null || value.isEmpty) {
-      return null;
-    }
-
-    return value
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
+  /// Реальная confidence: насколько estimate готов к отправке клиенту.
+  /// Считается из реальных факторов готовности, а не из парсинг-уверенности.
+  static AiEstimateResultModel _calculateRealConfidence({
+    required AiEstimateResultModel result,
+    required AiParsedRequestModel parsed,
+  }) {
+    double score = 0;
 
+    // 1. Items найдены (есть price) — 30%
+    if (result.items.isNotEmpty) {
+      final hasValidPrices = result.items.every((item) => item.lineTotal > 0);
+      score += hasValidPrices ? 0.30 : 0.15;
+    }
+
+    // 2. Materials handling — 20%
+    // Либо явно labor only, либо явно included с ценами, либо unknown но labor стоит
+    final materialsMode = parsed.laborOnly == true
+        ? 'labor_only'
+        : parsed.materialsIncluded == true
+        ? 'included'
+        : 'unknown';
+
+    if (materialsMode == 'labor_only' || materialsMode == 'included') {
+      score += 0.20;
+    } else if (result.items.isNotEmpty) {
+      score += 0.10; // unknown но есть labor — частичный балл
+    }
+
+    // 3. AI text сгенерирован (Фаза 3) — 25%
+    final aiText = result.generatedText;
+    if (aiText != null && !aiText.isEmpty) {
+      final hasRichText = aiText.inclusions.isNotEmpty &&
+          aiText.exclusions.isNotEmpty &&
+          aiText.scopeOfWork.isNotEmpty;
+      score += hasRichText ? 0.25 : 0.10;
+    }
+
+    // 4. Missing fields заполнены — 15%
+    final hasRequiredMissing = result.missingFields.any((f) => f.isRequired);
+    if (!hasRequiredMissing) {
+      score += 0.15;
+    }
+
+    // 5. History context подтверждает — 10%
+    final history = result.historyContext;
+    if (history != null && history.bestSuggestion != null) {
+      final bestScore = history.bestSuggestion!.score;
+      if (bestScore >= 0.85) {
+        score += 0.10;
+      } else if (bestScore >= 0.70) {
+        score += 0.05;
+      }
+    }
+
+    // Зажимаем в [0.0, 1.0]
+    final finalScore = score.clamp(0.0, 1.0);
+
+    return result.copyWith(confidence: finalScore);
+  }
+
+  // =====================================================================
+// Prompt materials handling
+// =====================================================================
+
+  /// Прикрепляет материалы из промпта к items с дедупом.
+  /// Вызывается ДО AI text generation, чтобы AI видел полную картину.
+  static AiEstimateResultModel _attachPromptMaterials({
+    required AiEstimateResultModel result,
+    required List<EstimateItemModel> promptMaterials,
+  }) {
+    if (promptMaterials.isEmpty) return result;
+
+    // Дедуп: если material уже есть в items (по qty + unitPrice + объект) — пропускаем
+    final existingItems = result.items;
+
+    final filteredMaterials = promptMaterials.where((material) {
+      return !existingItems.any((existing) {
+        return _isDuplicateMaterial(existing, material);
+      });
+    }).toList();
+
+    if (filteredMaterials.isEmpty) return result;
+
+    final normalizedMaterials = filteredMaterials.asMap().entries.map((entry) {
+      final index = existingItems.length + entry.key;
+      return entry.value.copyWith(sortOrder: index);
+    }).toList();
+
+    return result.copyWith(
+      items: [...existingItems, ...normalizedMaterials],
+    );
+  }
+
+  /// Item, который похож на материал из промпта.
+  static bool _isPromptMaterialItem(EstimateItemModel item) {
+    final text = _rushClean('${item.title} ${item.description} ${item.unit}');
+
+    // 1. Явный признак материала по словам
+    final hasMaterialWord = RegExp(
+      r'\b(material|materials|part|parts|supply|supplies)\b',
+    ).hasMatch(text);
+
+    if (hasMaterialWord) return true;
+
+    // 2. Признак материала по типу работы — НЕ labor
+    // Если в title нет действия (Installation/Repair/Replacement/Diagnostic/Service/Rush/Prep)
+    // и есть unit "item" или "fixed" — скорее всего это материал из промпта
+    final hasActionWord = RegExp(
+      r'\b(installation|install|repair|replace|replacement|diagnostic|diagnose|inspection|inspect|service|rush|urgent|prep|preparation|labor|labour)\b',
+    ).hasMatch(text);
+
+    if (hasActionWord) return false;
+
+    // 3. Если описание говорит "Parsed from prompt" — это материал из промпта
+    final isFromPrompt = RegExp(
+      r'\bparsed from prompt\b',
+    ).hasMatch(text);
+
+    return isFromPrompt;
+  }
+
+  static bool _isDuplicateMaterial(
+      EstimateItemModel existing,
+      EstimateItemModel material,
+      ) {
+    bool closeMoney(double a, double b) => (a - b).abs() < 0.01;
+
+    if (!closeMoney(existing.quantity, material.quantity)) return false;
+    if (!closeMoney(existing.unitPrice, material.unitPrice)) return false;
+
+    final eText = _rushClean('${existing.title} ${existing.description}');
+    final mText = _rushClean('${material.title} ${material.description}');
+
+    // Если в обоих есть общее слово длиной >= 4 (объект) — считаем дубликатом
+    final eWords = eText.split(' ').where((w) => w.length >= 4).toSet();
+    final mWords = mText.split(' ').where((w) => w.length >= 4).toSet();
+
+    return eWords.intersection(mWords).isNotEmpty;
+  }
 }
 

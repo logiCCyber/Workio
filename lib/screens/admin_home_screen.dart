@@ -23,7 +23,6 @@ import 'company_settings_screen.dart';
 import 'clients_screen.dart';
 import 'properties_screen.dart';
 import 'invoice_list_screen.dart';
-import 'global_search_screen.dart';
 import 'price_rules_screen.dart';
 
 class AdminHomeScreen extends StatelessWidget {
@@ -102,15 +101,6 @@ class AdminHomeScreen extends StatelessWidget {
     _showEstimateSystemSheet(context);
   }
 
-  void _openGlobalSearch(BuildContext context) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const GlobalSearchScreen(),
-      ),
-    );
-  }
-
   void _showEstimateSystemSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -154,134 +144,125 @@ class AdminHomeScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                  const SizedBox(height: 4),
+
                   ListTile(
                     dense: true,
-                    leading: const Icon(CupertinoIcons.search, color: Colors.white70),
-                    title: const Text('Search'),
+                    leading: const Icon(Icons.calculate_rounded, color: Colors.white70),
+                    title: const Text('Estimates'),
                     onTap: () => _openEstimateSystemScreen(
                       context,
-                      const GlobalSearchScreen(),
+                      const EstimateListScreen(),
                     ),
                   ),
+
                   ListTile(
                     dense: true,
-                    leading: const Icon(CupertinoIcons.bolt_fill, color: Colors.white70),
-                    title: const Text('Quick Quote'),
+                    leading: const Icon(Icons.auto_awesome_rounded, color: Colors.white70),
+                    title: const Text('AI Estimate'),
                     onTap: () => _openEstimateSystemScreen(
                       context,
-                      const QuickQuoteScreen(),
+                      const AiEstimateScreen(),
                     ),
                   ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.calculate_rounded, color: Colors.white70),
-                  title: const Text('Estimates'),
-                  onTap: () => _openEstimateSystemScreen(
-                    context,
-                    const EstimateListScreen(),
-                  ),
-                ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.receipt_long_rounded, color: Colors.white70),
-                  title: const Text('Invoices'),
-                  onTap: () => _openEstimateSystemScreen(
-                    context,
-                    const InvoiceListScreen(),
-                  ),
-                ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.content_copy_rounded, color: Colors.white70),
-                  title: const Text('Templates'),
-                  onTap: () => _openEstimateSystemScreen(
-                    context,
-                    const EstimateTemplatesScreen(),
-                  ),
-                ),
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.auto_awesome_rounded, color: Colors.white70),
-                  title: const Text('AI Estimate'),
-                  onTap: () => _openEstimateSystemScreen(
-                    context,
-                    const AiEstimateScreen(),
-                  ),
-                ),
+
                   ListTile(
                     dense: true,
-                    leading: const Icon(CupertinoIcons.slider_horizontal_3, color: Colors.white70),
-                    title: const Text('Price Rules'),
+                    leading: const Icon(Icons.receipt_long_rounded, color: Colors.white70),
+                    title: const Text('Invoices'),
                     onTap: () => _openEstimateSystemScreen(
                       context,
-                      const PriceRulesScreen(),
+                      const InvoiceListScreen(),
                     ),
                   ),
 
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-                  child: Text(
-                    'Mini CRM',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.55),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                    child: Text(
+                      'CRM',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                ),
 
-                Padding(
-                  padding: const EdgeInsets.only(left: 18),
-                  child: ListTile(
-                    dense: true,
-                    leading: const Icon(CupertinoIcons.person_2, color: Colors.white54, size: 18),
-                    title: const Text(
-                      'Clients',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                    onTap: () => _openEstimateSystemScreen(
-                      context,
-                      const ClientsScreen(),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 18),
-                  child: ListTile(
-                    dense: true,
-                    leading: const Icon(CupertinoIcons.location_solid, color: Colors.white54, size: 18),
-                    title: const Text(
-                      'Properties',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                    onTap: () => _openEstimateSystemScreen(
-                      context,
-                      const PropertiesScreen(),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 18),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(CupertinoIcons.person_2, color: Colors.white54, size: 18),
+                      title: const Text(
+                        'Clients',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      onTap: () => _openEstimateSystemScreen(
+                        context,
+                        const ClientsScreen(),
+                      ),
                     ),
                   ),
-                ),
 
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-                  child: Text(
-                    'Business',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.55),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                  Padding(
+                    padding: const EdgeInsets.only(left: 18),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(CupertinoIcons.location_solid, color: Colors.white54, size: 18),
+                      title: const Text(
+                        'Properties',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      onTap: () => _openEstimateSystemScreen(
+                        context,
+                        const PropertiesScreen(),
+                      ),
                     ),
                   ),
-                ),
 
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.business_rounded, color: Colors.white70),
-                  title: const Text('Company Settings'),
-                  onTap: () => _openEstimateSystemScreen(
-                    context,
-                    const CompanySettingsScreen(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                    child: Text(
+                      'Business',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                ),
+
+                  Padding(
+                    padding: const EdgeInsets.only(left: 18),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(CupertinoIcons.slider_horizontal_3, color: Colors.white54, size: 18),
+                      title: const Text(
+                        'Price Rules',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      onTap: () => _openEstimateSystemScreen(
+                        context,
+                        const PriceRulesScreen(),
+                      ),
+                    ),
+                  ),
+
+                  Padding(
+                    padding: const EdgeInsets.only(left: 18),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.business_rounded, color: Colors.white54, size: 18),
+                      title: const Text(
+                        'Company Settings',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      onTap: () => _openEstimateSystemScreen(
+                        context,
+                        const CompanySettingsScreen(),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -2044,6 +2025,9 @@ DateTime? _warningDateFromItem(_WarningItem item) {
   final w = item.workerData ?? <String, dynamic>{};
 
   final candidates = [
+    d['holiday_date'],
+    d['start_date'],
+    d['end_date'],
     d['view_only_at'],
     d['suspended_at'],
     d['start_time'],
@@ -2093,6 +2077,24 @@ class _WarningFooter extends StatelessWidget {
     this.onDetails,
     this.expanded = true,
   });
+
+  String _timeOffLabelForWarningFooter(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
 
   String _workerName() {
     final w = item.workerData ?? <String, dynamic>{};
@@ -2157,6 +2159,28 @@ class _WarningFooter extends StatelessWidget {
         final note = (d['note_text'] ?? item.message ?? '').toString().trim();
         return note.isNotEmpty ? note : 'Note item';
 
+      case 'worker_time_off':
+        final start = (d['start_date'] ?? '').toString();
+        final end = (d['end_date'] ?? '').toString();
+        final label = _timeOffLabelForWarningFooter(d['time_off_type']);
+        if (start.isNotEmpty && end.isNotEmpty) {
+          return '$label • $start to $end';
+        }
+        return label;
+
+      case 'construction_holiday':
+        final start = (d['start_date'] ?? '').toString();
+        final end = (d['end_date'] ?? '').toString();
+        if (start.isNotEmpty && end.isNotEmpty) {
+          return 'Construction holiday • $start to $end';
+        }
+        return 'Construction holiday';
+
+      case 'system_holiday':
+        final date = (d['holiday_date'] ?? d['start_date'] ?? '').toString();
+        if (date.isNotEmpty) return 'Business holiday • $date';
+        return 'Business holiday';
+
       case 'calendar_reminder':
         final note = (d['note_text'] ?? '').toString().trim();
         if (note.isNotEmpty) return note;
@@ -2181,6 +2205,12 @@ class _WarningFooter extends StatelessWidget {
         return Icons.multiple_stop_rounded;
       case 'long_shift':
         return Icons.timer_outlined;
+      case 'worker_time_off':
+        return Icons.beach_access_rounded;
+      case 'construction_holiday':
+        return Icons.construction_rounded;
+      case 'system_holiday':
+        return Icons.event_rounded;
       case 'calendar_note':
         return Icons.notes_rounded;
       case 'calendar_reminder':
@@ -2204,6 +2234,12 @@ class _WarningFooter extends StatelessWidget {
         return 'Urgent';
       case 'long_shift':
         return '8h30+';
+      case 'worker_time_off':
+        return 'Time off';
+      case 'construction_holiday':
+        return 'Holiday';
+      case 'system_holiday':
+        return 'Holiday';
       case 'calendar_reminder':
         return 'Due';
       case 'calendar_note':
@@ -2227,6 +2263,12 @@ class _WarningFooter extends StatelessWidget {
         return const Color(0xFFFF8A00);
       case 'long_shift':
         return const Color(0xFFA78BFA);
+      case 'worker_time_off':
+        return const Color(0xFF05BCCA);
+      case 'construction_holiday':
+        return const Color(0xFF5B8E0C);
+      case 'system_holiday':
+        return const Color(0xFFE815DE);
       case 'calendar_reminder':
         return const Color(0xFF60A5FA);
       case 'calendar_note':
@@ -2434,6 +2476,7 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
   final _db = Supabase.instance.client;
 
   List<_WarningItem> _calendarWarningItems = [];
+  List<_WarningItem> _businessWarningItems = [];
   Timer? _calendarWarningsTimer;
   Timer? _autoCollapseTimer;
 
@@ -2478,7 +2521,108 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
     return [
       ...widget.items,
       ..._calendarWarningItems,
+      ..._businessWarningItems,
     ];
+  }
+
+  DateTime _dateOnly(DateTime d) {
+    final local = d.toLocal();
+    return DateTime(local.year, local.month, local.day);
+  }
+
+  String _dateKeyLocal(DateTime d) {
+    final x = _dateOnly(d);
+
+    String two(int v) => v.toString().padLeft(2, '0');
+
+    return '${x.year}-${two(x.month)}-${two(x.day)}';
+  }
+
+  DateTime? _parseDateOnly(Object? raw) {
+    if (raw == null) return null;
+
+    try {
+      final dt = DateTime.parse(raw.toString()).toLocal();
+      return DateTime(dt.year, dt.month, dt.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int _daysUntilDate(DateTime day) {
+    final today = _dateOnly(DateTime.now());
+    final target = _dateOnly(day);
+    return target.difference(today).inDays;
+  }
+
+  String _daysText(int days) {
+    if (days == 0) return 'today';
+    if (days == 1) return 'tomorrow';
+    if (days < 0) return '${days.abs()} days ago';
+    return 'in $days days';
+  }
+
+  String _timeOffTypeLabel(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
+
+  IconData _timeOffTypeIcon(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return Icons.healing_rounded;
+      case 'personal':
+        return Icons.person_off_rounded;
+      case 'unavailable':
+        return Icons.block_rounded;
+      case 'company_closed':
+        return Icons.business_rounded;
+      case 'vacation':
+      default:
+        return Icons.sunny;
+    }
+  }
+
+  Color _timeOffTypeColor(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return const Color(0xFF38BDF8);
+      case 'personal':
+        return const Color(0xFFF59E0B);
+      case 'unavailable':
+        return const Color(0xFFFB7185);
+      case 'company_closed':
+        return const Color(0xFF60A5FA);
+      case 'vacation':
+      default:
+        return const Color(0xFFA78BFA);
+    }
+  }
+
+  String _safeWarningPart(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
   }
 
   String _fmtReminderAt(Object? iso) {
@@ -2594,8 +2738,361 @@ class _FooterWarningsBarState extends State<_FooterWarningsBar>
     } catch (_) {}
   }
 
+  Future<void> _loadBusinessWarningItems() async {
+    final items = <_WarningItem>[];
+
+    try {
+      final now = _dateOnly(DateTime.now());
+      final todayKey = _dateKeyLocal(now);
+      final soonKey = _dateKeyLocal(now.add(const Duration(days: 30)));
+
+      // =========================
+      // WORKER TIME OFF WARNINGS
+      // =========================
+
+      final offRows = await _db
+          .from('worker_time_off')
+          .select('''
+          id,
+          admin_id,
+          worker_id,
+          worker_auth_id,
+          type,
+          title,
+          reason,
+          start_date,
+          end_date,
+          status,
+          block_clock_in,
+          notify_before_days
+        ''')
+          .eq('admin_id', widget.adminId)
+          .eq('status', 'active')
+          .lte('start_date', soonKey)
+          .gte('end_date', todayKey)
+          .order('start_date', ascending: true);
+
+      final workersRows = await _db
+          .from('workers')
+          .select('id, name, email, avatar_url, auth_user_id')
+          .eq('owner_admin_id', widget.adminId);
+
+      final workersByAuth = <String, Map<String, dynamic>>{};
+      final workersById = <String, Map<String, dynamic>>{};
+
+      for (final raw in List<Map<String, dynamic>>.from(workersRows)) {
+        final w = Map<String, dynamic>.from(raw);
+        final auth = (w['auth_user_id'] ?? '').toString().trim();
+        final id = (w['id'] ?? '').toString().trim();
+
+        if (auth.isNotEmpty) workersByAuth[auth] = w;
+        if (id.isNotEmpty) workersById[id] = w;
+      }
+
+      for (final raw in List<Map<String, dynamic>>.from(offRows)) {
+        final row = Map<String, dynamic>.from(raw);
+
+        final id = (row['id'] ?? '').toString().trim();
+        if (id.isEmpty) continue;
+
+        final start = _parseDateOnly(row['start_date']);
+        final end = _parseDateOnly(row['end_date']);
+
+        if (start == null || end == null) continue;
+
+        final startIn = _daysUntilDate(start);
+        final endIn = _daysUntilDate(end);
+
+        // показываем:
+        // active time off
+        // или upcoming within 3 days
+        final isActive = !now.isBefore(start) && !now.isAfter(end);
+        final isStartingSoon = startIn >= 0 && startIn <= 3;
+
+        if (!isActive && !isStartingSoon) continue;
+
+        final workerAuthId = (row['worker_auth_id'] ?? '').toString().trim();
+        final workerId = (row['worker_id'] ?? '').toString().trim();
+
+        final worker = workersByAuth[workerAuthId] ?? workersById[workerId];
+        final name = (worker?['name'] ?? '').toString().trim();
+        final email = (worker?['email'] ?? '').toString().trim();
+
+        final workerLabel = name.isNotEmpty
+            ? name
+            : (email.isNotEmpty ? email : 'Worker');
+
+        final label = _timeOffTypeLabel(row['type']);
+        final blockClockIn = row['block_clock_in'] == true;
+
+        String title;
+        String message;
+
+        if (isActive && endIn >= 0 && endIn <= 2) {
+          title = '$label ends soon';
+          message = '$workerLabel returns ${_daysText(endIn)}.';
+        } else if (isActive) {
+          title = '$workerLabel is on $label';
+          message = blockClockIn
+              ? 'Clock-in is blocked until ${DateFormat('MMM d').format(end)}.'
+              : 'Time off is active until ${DateFormat('MMM d').format(end)}.';
+        } else {
+          title = '$label starts ${_daysText(startIn)}';
+          message = '$workerLabel will be unavailable until ${DateFormat('MMM d').format(end)}.';
+        }
+
+        items.add(
+          _WarningItem(
+            warningKey: '${widget.adminId}::worker_time_off::$id',
+            icon: _timeOffTypeIcon(row['type']),
+            accent: _timeOffTypeColor(row['type']),
+            title: title,
+            message: message,
+            workerData: worker,
+            details: {
+              'type': 'worker_time_off',
+              'time_off_id': id,
+              'time_off_type': row['type'],
+              'title': row['title'],
+              'reason': row['reason'],
+              'start_date': row['start_date'],
+              'end_date': row['end_date'],
+              'block_clock_in': blockClockIn,
+              'note_text': message,
+            },
+          ),
+        );
+      }
+
+      // =========================
+      // HOLIDAY WARNINGS
+      // =========================
+
+      final settingsRow = await _db
+          .from('company_settings')
+          .select('country_code, region_code, enable_system_holidays, enable_construction_holiday')
+          .eq('admin_auth_id', widget.adminId)
+          .maybeSingle();
+
+      final settings = settingsRow == null
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(settingsRow);
+
+      final countryCode = (settings['country_code'] ?? 'CA')
+          .toString()
+          .trim()
+          .toUpperCase();
+
+      final regionCode = (settings['region_code'] ?? (countryCode == 'US' ? 'PA' : 'QC'))
+          .toString()
+          .trim()
+          .toUpperCase();
+
+      final enableSystemHolidays = settings['enable_system_holidays'] != false;
+      final enableConstructionHoliday = settings['enable_construction_holiday'] != false;
+
+      if (enableSystemHolidays || enableConstructionHoliday) {
+        final holidayRows = await _db
+            .from('system_holiday_rules')
+            .select()
+            .eq('country_code', countryCode)
+            .eq('is_active', true);
+
+        final years = <int>{
+          now.year,
+          now.add(const Duration(days: 45)).year,
+        };
+
+        for (final year in years) {
+          for (final raw in List<Map<String, dynamic>>.from(holidayRows)) {
+            final rule = Map<String, dynamic>.from(raw);
+
+            final ruleRegion = (rule['region_code'] ?? '')
+                .toString()
+                .trim()
+                .toUpperCase();
+
+            if (ruleRegion.isNotEmpty && ruleRegion != regionCode) continue;
+
+            final kind = (rule['kind'] ?? 'system_holiday').toString().trim();
+            final title = (rule['title'] ?? 'Holiday').toString().trim();
+            final ruleType = (rule['rule_type'] ?? '').toString().trim();
+
+            if (kind == 'system_holiday' && !enableSystemHolidays) continue;
+            if (kind == 'construction_holiday' && !enableConstructionHoliday) continue;
+
+            if (ruleType == 'construction_holiday_qc') {
+              final start = _constructionHolidayStartForWarnings(year);
+              final end = start.add(const Duration(days: 13));
+
+              final startIn = _daysUntilDate(start);
+              final active = !now.isBefore(start) && !now.isAfter(end);
+
+              if (!active && (startIn < 0 || startIn > 30)) continue;
+
+              items.add(
+                _WarningItem(
+                  warningKey: '${widget.adminId}::construction_holiday::$year',
+                  icon: Icons.construction_rounded,
+                  accent: const Color(0xFFA78BFA),
+                  title: active
+                      ? 'Construction Holiday is active'
+                      : 'Construction Holiday ${_daysText(startIn)}',
+                  message: active
+                      ? 'Plan jobs carefully. Some crews may be unavailable until ${DateFormat('MMM d').format(end)}.'
+                      : 'Plan jobs, deadlines and invoices before ${DateFormat('MMM d').format(start)}.',
+                  details: {
+                    'type': 'construction_holiday',
+                    'title': title,
+                    'holiday_date': _dateKeyLocal(start),
+                    'start_date': _dateKeyLocal(start),
+                    'end_date': _dateKeyLocal(end),
+                    'note_text': active
+                        ? 'Construction Holiday is active until ${DateFormat('MMM d').format(end)}.'
+                        : 'Construction Holiday starts ${_daysText(startIn)}.',
+                  },
+                ),
+              );
+
+              continue;
+            }
+
+            final holidayDay = _holidayDayFromRuleForWarnings(rule, year);
+            if (holidayDay == null) continue;
+
+            final days = _daysUntilDate(holidayDay);
+
+            // обычные holidays показываем только за 7 дней
+            if (days < 0 || days > 7) continue;
+
+            items.add(
+              _WarningItem(
+                warningKey:
+                '${widget.adminId}::system_holiday::${year}_${_safeWarningPart(title)}',
+                icon: Icons.event_rounded,
+                accent: const Color(0xFF60A5FA),
+                title: '$title ${_daysText(days)}',
+                message: 'Business holiday on ${DateFormat('MMM d, yyyy').format(holidayDay)}.',
+                details: {
+                  'type': 'system_holiday',
+                  'title': title,
+                  'holiday_date': _dateKeyLocal(holidayDay),
+                  'start_date': _dateKeyLocal(holidayDay),
+                  'end_date': _dateKeyLocal(holidayDay),
+                  'note_text': 'Business holiday on ${DateFormat('MMM d, yyyy').format(holidayDay)}.',
+                },
+              ),
+            );
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _businessWarningItems = items;
+      });
+    } catch (_) {}
+  }
+
+  DateTime? _holidayDayFromRuleForWarnings(
+      Map<String, dynamic> rule,
+      int year,
+      ) {
+    final ruleType = (rule['rule_type'] ?? '').toString().trim();
+
+    final month = (rule['month'] as num?)?.toInt();
+    final day = (rule['day'] as num?)?.toInt();
+    final weekday = (rule['weekday'] as num?)?.toInt();
+    final nth = (rule['nth'] as num?)?.toInt();
+
+    if (ruleType == 'fixed_date' && month != null && day != null) {
+      return DateTime(year, month, day);
+    }
+
+    if (ruleType == 'nth_weekday' &&
+        month != null &&
+        weekday != null &&
+        nth != null) {
+      return _nthWeekdayForWarnings(
+        year: year,
+        month: month,
+        weekday: weekday,
+        nth: nth,
+      );
+    }
+
+    if (ruleType == 'last_weekday' && month != null && weekday != null) {
+      return _lastWeekdayForWarnings(
+        year: year,
+        month: month,
+        weekday: weekday,
+      );
+    }
+
+    if (ruleType == 'monday_before_date' && month != null && day != null) {
+      return _mondayBeforeDateForWarnings(
+        year: year,
+        month: month,
+        day: day,
+      );
+    }
+
+    return null;
+  }
+
+  DateTime _nthWeekdayForWarnings({
+    required int year,
+    required int month,
+    required int weekday,
+    required int nth,
+  }) {
+    final first = DateTime(year, month, 1);
+    final offset = (weekday - first.weekday) % 7;
+    return first.add(Duration(days: offset + ((nth - 1) * 7)));
+  }
+
+  DateTime _lastWeekdayForWarnings({
+    required int year,
+    required int month,
+    required int weekday,
+  }) {
+    var d = DateTime(year, month + 1, 0);
+
+    while (d.weekday != weekday) {
+      d = d.subtract(const Duration(days: 1));
+    }
+
+    return d;
+  }
+
+  DateTime _mondayBeforeDateForWarnings({
+    required int year,
+    required int month,
+    required int day,
+  }) {
+    var d = DateTime(year, month, day).subtract(const Duration(days: 1));
+
+    while (d.weekday != DateTime.monday) {
+      d = d.subtract(const Duration(days: 1));
+    }
+
+    return d;
+  }
+
+  DateTime _constructionHolidayStartForWarnings(int year) {
+    final july31 = DateTime(year, 7, 31);
+
+    final lastSunday = july31.subtract(
+      Duration(days: july31.weekday % 7),
+    );
+
+    return lastSunday.subtract(const Duration(days: 7));
+  }
+
   Future<void> _reloadAllWarnings() async {
     await _loadCalendarWarningItems();
+    await _loadBusinessWarningItems();
     await _loadDbStateForKeys(_allItems().map((e) => e.warningKey).toList());
   }
 
@@ -3609,6 +4106,9 @@ class _WorkersListCardState extends State<_WorkersListCard> {
   bool _showRestricted = false;
   bool _switching = false;
 
+  final _db = Supabase.instance.client;
+  Map<String, Map<String, dynamic>> _activeTimeOffByWorkerKey = {};
+
   Future<void> _toggleMode() async {
     if (_switching) return;
 
@@ -3630,6 +4130,74 @@ class _WorkersListCardState extends State<_WorkersListCard> {
     setState(() => _switching = false);
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveTimeOffForWorkers();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WorkersListCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.workers.length != widget.workers.length) {
+      _loadActiveTimeOffForWorkers();
+    }
+  }
+
+  String _s(Object? v) => (v ?? '').toString().trim();
+
+  String _dateKey(DateTime dt) {
+    final d = DateTime(dt.year, dt.month, dt.day);
+
+    String two(int v) => v.toString().padLeft(2, '0');
+
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  String _workerKey(Map<String, dynamic> w) {
+    final authId = _s(w['auth_user_id']);
+    if (authId.isNotEmpty) return authId;
+
+    final id = _s(w['id']);
+    return id;
+  }
+
+  Future<void> _loadActiveTimeOffForWorkers() async {
+    final adminId = _db.auth.currentUser?.id;
+    if (adminId == null) return;
+
+    final today = _dateKey(DateTime.now());
+
+    try {
+      final rows = await _db
+          .from('worker_time_off')
+          .select('id, worker_id, worker_auth_id, type, title, start_date, end_date, status')
+          .eq('admin_id', adminId)
+          .eq('status', 'active')
+          .lte('start_date', today)
+          .gte('end_date', today)
+          .order('start_date', ascending: true);
+
+      final map = <String, Map<String, dynamic>>{};
+
+      for (final raw in List<Map<String, dynamic>>.from(rows as List)) {
+        final row = Map<String, dynamic>.from(raw);
+
+        final authId = _s(row['worker_auth_id']);
+        final workerId = _s(row['worker_id']);
+
+        if (authId.isNotEmpty) map[authId] = row;
+        if (workerId.isNotEmpty) map[workerId] = row;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _activeTimeOffByWorkerKey = map;
+      });
+    } catch (_) {}
+  }
 
   double _num(Object? v) => (v is num) ? v.toDouble() : 0.0;
 
@@ -3744,6 +4312,7 @@ class _WorkersListCardState extends State<_WorkersListCard> {
                     token: _showRestricted ? 'restricted' : 'active',
                     child: _WorkerRow(
                       worker: visibleWorkers[i],
+                      activeTimeOff: _activeTimeOffByWorkerKey[_workerKey(visibleWorkers[i])],
                       mode: _modeOf(visibleWorkers[i]),
                       unpaid: _num(visibleWorkers[i]['unpaid_total']),
                       onTap: () {
@@ -4178,7 +4747,8 @@ class _WorkerReveal extends StatelessWidget {
 
 class _WorkerRow extends StatelessWidget {
   final Map<String, dynamic> worker;
-  final String mode; // active / suspended / view_only
+  final Map<String, dynamic>? activeTimeOff;
+  final String mode;
   final double unpaid;
   final VoidCallback onTap;
 
@@ -4187,6 +4757,7 @@ class _WorkerRow extends StatelessWidget {
     required this.unpaid,
     required this.onTap,
     required this.mode,
+    this.activeTimeOff,
   });
 
   String _statusText() {
@@ -4611,6 +5182,7 @@ class _WorkerRow extends StatelessWidget {
                     ),
                     _WorkerFooter(
                       mode: mode,
+                      activeTimeOff: activeTimeOff,
                       lastWorkedAt: lastWorkedAt,
                       viewOnlyAt: viewOnlyAt,
                       firstWorkAt: firstWorkAt,
@@ -4943,6 +5515,15 @@ class _SummaryFiltersState extends State<_SummaryFilters> {
         e['is_cancelled'] == true);
   }
 
+  bool _isSystemCalendarItem(Map<String, dynamic> item) {
+    final kind = (item['kind'] ?? '').toString().trim().toLowerCase();
+    return kind == 'system_holiday' || kind == 'construction_holiday';
+  }
+
+  bool _selectedDayHasHoliday() {
+    return _selectedDayMarks().any(_isSystemCalendarItem);
+  }
+
   bool _selectedDayAllDone() {
     final items = _selectedDayMarks();
     if (items.isEmpty) return false;
@@ -4950,12 +5531,224 @@ class _SummaryFiltersState extends State<_SummaryFilters> {
   }
 
   Color? _selectedDayBadgeColor() {
+    if (_selectedDayHasHoliday()) return const Color(0xFFA78BFA);
     if (_selectedDayHasNote()) return const Color(0xFFFB7185);
     if (_selectedDayHasPending()) return const Color(0xFF60A5FA);
     if (_selectedDayHasTriggered()) return const Color(0xFFF59E0B);
     if (_selectedDayHasCancelled()) return const Color(0xFF9CA3AF);
     if (_selectedDayAllDone()) return const Color(0xFF34D399);
     return null;
+  }
+
+  DateTime _nthWeekdayOfMonth({
+    required int year,
+    required int month,
+    required int weekday,
+    required int nth,
+  }) {
+    final first = DateTime(year, month, 1);
+    final offset = (weekday - first.weekday) % 7;
+    return first.add(Duration(days: offset + ((nth - 1) * 7)));
+  }
+
+  DateTime _lastWeekdayOfMonth({
+    required int year,
+    required int month,
+    required int weekday,
+  }) {
+    var d = DateTime(year, month + 1, 0);
+
+    while (d.weekday != weekday) {
+      d = d.subtract(const Duration(days: 1));
+    }
+
+    return d;
+  }
+
+  DateTime _mondayBeforeDate({
+    required int year,
+    required int month,
+    required int day,
+  }) {
+    var d = DateTime(year, month, day).subtract(const Duration(days: 1));
+
+    while (d.weekday != DateTime.monday) {
+      d = d.subtract(const Duration(days: 1));
+    }
+
+    return d;
+  }
+
+  DateTime _constructionHolidayStart(int year) {
+    final july31 = DateTime(year, 7, 31);
+
+    final lastSunday = july31.subtract(
+      Duration(days: july31.weekday % 7),
+    );
+
+    return lastSunday.subtract(const Duration(days: 7));
+  }
+
+  bool _isInsideMonth(DateTime day, DateTime from, DateTime to) {
+    final d = DateTime(day.year, day.month, day.day);
+    return !d.isBefore(from) && d.isBefore(to);
+  }
+
+  void _addSystemHolidayMark({
+    required Map<String, List<Map<String, dynamic>>> map,
+    required DateTime day,
+    required String title,
+    required String kind,
+    String note = '',
+  }) {
+    final key = _dayKey(day);
+
+    map.putIfAbsent(key, () => []);
+
+    final alreadyExists = map[key]!.any((e) =>
+    (e['kind'] ?? '').toString() == kind &&
+        (e['title'] ?? '').toString() == title);
+
+    if (alreadyExists) return;
+
+    map[key]!.add({
+      'id': 'system_${kind}_${key}_${title.toLowerCase().replaceAll(' ', '_')}',
+      'entry_date': key,
+      'kind': kind,
+      'title': title,
+      'note_text': note,
+      'is_done': false,
+      'is_cancelled': false,
+      'is_sent': false,
+      'read_only': true,
+      'source': 'system',
+    });
+  }
+
+  Future<Map<String, dynamic>> _loadCompanyCalendarSettings(String adminId) async {
+    final row = await _db
+        .from('company_settings')
+        .select('country_code, region_code, enable_system_holidays, enable_construction_holiday')
+        .eq('admin_auth_id', adminId)
+        .maybeSingle();
+
+    final map = row == null ? <String, dynamic>{} : Map<String, dynamic>.from(row);
+
+    final country = (map['country_code'] ?? 'CA').toString().trim().toUpperCase();
+    final region = (map['region_code'] ?? (country == 'US' ? 'PA' : 'QC'))
+        .toString()
+        .trim()
+        .toUpperCase();
+
+    return {
+      'country_code': country.isEmpty ? 'CA' : country,
+      'region_code': region.isEmpty ? (country == 'US' ? 'PA' : 'QC') : region,
+      'enable_system_holidays': map['enable_system_holidays'] != false,
+      'enable_construction_holiday': map['enable_construction_holiday'] != false,
+    };
+  }
+
+  Future<void> _mergeSystemHolidaysIntoMonth({
+    required Map<String, List<Map<String, dynamic>>> map,
+    required String countryCode,
+    required String regionCode,
+    required bool enableSystemHolidays,
+    required bool enableConstructionHoliday,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (!enableSystemHolidays && !enableConstructionHoliday) return;
+
+    final rows = await _db
+        .from('system_holiday_rules')
+        .select()
+        .eq('country_code', countryCode)
+        .eq('is_active', true);
+
+    final year = from.year;
+
+    for (final raw in List<Map<String, dynamic>>.from(rows)) {
+      final rule = Map<String, dynamic>.from(raw);
+
+      final ruleRegion = (rule['region_code'] ?? '').toString().trim().toUpperCase();
+      if (ruleRegion.isNotEmpty && ruleRegion != regionCode) continue;
+
+      final kind = (rule['kind'] ?? 'system_holiday').toString().trim();
+      final ruleType = (rule['rule_type'] ?? '').toString().trim();
+      final title = (rule['title'] ?? 'Holiday').toString().trim();
+
+      if (kind == 'system_holiday' && !enableSystemHolidays) continue;
+      if (kind == 'construction_holiday' && !enableConstructionHoliday) continue;
+
+      final month = (rule['month'] as num?)?.toInt();
+      final day = (rule['day'] as num?)?.toInt();
+      final weekday = (rule['weekday'] as num?)?.toInt();
+      final nth = (rule['nth'] as num?)?.toInt();
+
+      DateTime? holidayDay;
+
+      if (ruleType == 'fixed_date' && month != null && day != null) {
+        holidayDay = DateTime(year, month, day);
+      }
+
+      if (ruleType == 'nth_weekday' &&
+          month != null &&
+          weekday != null &&
+          nth != null) {
+        holidayDay = _nthWeekdayOfMonth(
+          year: year,
+          month: month,
+          weekday: weekday,
+          nth: nth,
+        );
+      }
+
+      if (ruleType == 'last_weekday' && month != null && weekday != null) {
+        holidayDay = _lastWeekdayOfMonth(
+          year: year,
+          month: month,
+          weekday: weekday,
+        );
+      }
+
+      if (ruleType == 'monday_before_date' && month != null && day != null) {
+        holidayDay = _mondayBeforeDate(
+          year: year,
+          month: month,
+          day: day,
+        );
+      }
+
+      if (ruleType == 'construction_holiday_qc') {
+        final start = _constructionHolidayStart(year);
+
+        for (var i = 0; i < 14; i++) {
+          final d = start.add(Duration(days: i));
+
+          if (_isInsideMonth(d, from, to)) {
+            _addSystemHolidayMark(
+              map: map,
+              day: d,
+              title: title,
+              kind: kind,
+              note: 'Quebec construction vacation period.',
+            );
+          }
+        }
+
+        continue;
+      }
+
+      if (holidayDay == null) continue;
+      if (!_isInsideMonth(holidayDay, from, to)) continue;
+
+      _addSystemHolidayMark(
+        map: map,
+        day: holidayDay,
+        title: title,
+        kind: kind,
+      );
+    }
   }
 
   Future<void> _loadMonthItems() async {
@@ -4967,6 +5760,8 @@ class _SummaryFiltersState extends State<_SummaryFilters> {
     try {
       final from = DateTime(_calendarMonth.year, _calendarMonth.month, 1);
       final to = DateTime(_calendarMonth.year, _calendarMonth.month + 1, 1);
+
+      final settings = await _loadCompanyCalendarSettings(adminId);
 
       final rows = await _db
           .from('admin_calendar_items')
@@ -4984,6 +5779,16 @@ class _SummaryFiltersState extends State<_SummaryFilters> {
         map.putIfAbsent(key, () => []);
         map[key]!.add(row);
       }
+
+      await _mergeSystemHolidaysIntoMonth(
+        map: map,
+        countryCode: settings['country_code'].toString(),
+        regionCode: settings['region_code'].toString(),
+        enableSystemHolidays: settings['enable_system_holidays'] == true,
+        enableConstructionHoliday: settings['enable_construction_holiday'] == true,
+        from: from,
+        to: to,
+      );
 
       if (!mounted) return;
 
@@ -6180,7 +6985,9 @@ class _SummaryFiltersState extends State<_SummaryFilters> {
 
     if (!mounted) return;
     setState(() {
-      _selectedDayItems = _itemsByDay[key] ?? [];
+      _selectedDayItems = (_itemsByDay[key] ?? [])
+          .where((item) => !_isSystemCalendarItem(item))
+          .toList();
     });
   }
 
@@ -6658,6 +7465,15 @@ class _InlineCalendarState extends State<_InlineCalendar> {
     return DateFormat('yyyy-MM-dd').format(x);
   }
 
+  bool _hasSystemHoliday(DateTime d) {
+    final items = widget.markedDays[_dayKey(d)] ?? const [];
+
+    return items.any((e) {
+      final kind = (e['kind'] ?? '').toString().trim().toLowerCase();
+      return kind == 'system_holiday' || kind == 'construction_holiday';
+    });
+  }
+
   bool _hasNote(DateTime d) {
     final items = widget.markedDays[_dayKey(d)] ?? const [];
     return items.any((e) => (e['kind'] ?? '').toString() == 'note');
@@ -6713,6 +7529,7 @@ class _InlineCalendarState extends State<_InlineCalendar> {
       );
     }
 
+    if (_hasSystemHoliday(d)) addDot(const Color(0xFFA78BFA));
     if (_hasNote(d)) addDot(const Color(0xFFFB7185));
     if (_hasPendingReminder(d)) addDot(const Color(0xFF60A5FA));
     if (_hasTriggeredReminder(d)) addDot(const Color(0xFFF59E0B));
@@ -7982,6 +8799,8 @@ class _CalendarLegendInline extends StatelessWidget {
             _LegendPlainItem(color: Color(0xFF9CA3AF), text: 'Cancelled'),
             SizedBox(width: 14),
             _LegendPlainItem(color: Color(0xFF34D399), text: 'Done'),
+            SizedBox(width: 14),
+            _LegendPlainItem(color: Color(0xFFA78BFA), text: 'Holiday'),
           ],
         ),
       ],
@@ -8531,6 +9350,7 @@ class _ShiftPulseIconState extends State<_ShiftPulseIcon>
 
 class _WorkerFooter extends StatelessWidget {
   final String mode;
+  final Map<String, dynamic>? activeTimeOff;
   final Object? lastWorkedAt;
   final Object? viewOnlyAt;
   final Object? firstWorkAt;
@@ -8540,6 +9360,7 @@ class _WorkerFooter extends StatelessWidget {
   const _WorkerFooter({
     required this.mode,
     required this.lastWorkedAt,
+    this.activeTimeOff,
     this.viewOnlyAt,
     this.firstWorkAt,
     this.suspendedAt,
@@ -8568,9 +9389,50 @@ class _WorkerFooter extends StatelessWidget {
     }
   }
 
+  String _timeOffLabel() {
+    final type = (activeTimeOff?['type'] ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
+
+  IconData _timeOffIcon() {
+    final type = (activeTimeOff?['type'] ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return Icons.healing_rounded;
+      case 'personal':
+        return Icons.person_off_rounded;
+      case 'unavailable':
+        return Icons.block_rounded;
+      case 'company_closed':
+        return Icons.business_rounded;
+      case 'vacation':
+      default:
+        return Icons.sunny;
+    }
+  }
+
+  Color _timeOffColor() {
+    return Colors.white.withOpacity(0.55);
+  }
+
   IconData _leftIcon() {
     if (mode == 'suspended') return Icons.info_outline_rounded;
     if (mode == 'view_only') return Icons.visibility_rounded;
+    if (activeTimeOff != null) return _timeOffIcon();
     if (onShift) return Icons.play_circle_fill_rounded;
     return Icons.history_rounded;
   }
@@ -8578,6 +9440,7 @@ class _WorkerFooter extends StatelessWidget {
   String _leftText() {
     if (mode == 'suspended') return 'Worked';
     if (mode == 'view_only') return 'View only since';
+    if (activeTimeOff != null) return _timeOffLabel();
     if (onShift) return 'ON SHIFT';
     return 'Last work';
   }
@@ -8591,15 +9454,24 @@ class _WorkerFooter extends StatelessWidget {
       return _fmtShort(viewOnlyAt);
     }
 
+    if (activeTimeOff != null) {
+      return _fmtShort(activeTimeOff?['start_date']);
+    }
+
     if (onShift) return '';
 
     return _fmtShort(lastWorkedAt);
   }
 
   Color _leftColor() {
+    if (activeTimeOff != null && mode == 'active') {
+      return Colors.white.withOpacity(0.55);
+    }
+
     if (onShift) return AppPalette.green;
     if (mode == 'view_only') return AppPalette.orange.withOpacity(0.88);
     if (mode == 'suspended') return AppPalette.red.withOpacity(0.86);
+
     return Colors.white.withOpacity(0.55);
   }
 

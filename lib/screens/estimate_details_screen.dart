@@ -23,6 +23,7 @@ import '../services/invoice_service.dart';
 import '../utils/estimate_calculator.dart';
 import '../utils/estimate_formatters.dart';
 import '../utils/company_logo_helper.dart';
+import '../utils/workio_icon_mapper.dart';
 
 import '../dialogs/send_estimate_dialog.dart';
 
@@ -47,6 +48,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _showAllItems = false;
   bool _isDuplicating = false;
   bool _isPreviewingPdf = false;
   bool _isArchiving = false;
@@ -188,7 +190,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -246,7 +248,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -307,12 +309,12 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     final estimate = _estimate;
 
     if (estimate == null) {
-      _showSnack('Estimate не найден');
+      _showSnack('Estimate not found');
       return;
     }
 
     if (estimate.id.trim().isEmpty) {
-      _showSnack('Сначала сохрани estimate');
+      _showSnack('Save the estimate first');
       return;
     }
 
@@ -337,7 +339,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
       if (!mounted) return;
 
-      _showSnack('Invoice ${invoice.invoiceNumber} создан');
+      _showSnack('Invoice ${invoice.invoiceNumber} created');
 
       await Navigator.push(
         context,
@@ -347,7 +349,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при создании invoice');
+      _showSnack('Error creating invoice');
     } finally {
       if (!mounted) return;
 
@@ -367,9 +369,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F1117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF232734)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Row(
         crossAxisAlignment:
@@ -380,9 +382,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF8E95A9),
+                color: Color(0xFF8E93A6),
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -441,7 +443,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       useSafeArea: true,
       isDismissible: false,
       enableDrag: false,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -479,7 +481,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                         children: [
                           Icon(
                             icon,
-                            color: const Color(0xFF8FB0FF),
+                            color: const Color(0xFF7DD3FC).withValues(alpha: 0.95),
                             size: 22,
                           ),
                           const SizedBox(width: 10),
@@ -521,16 +523,77 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+
+                      // Toolbar: Select All, Copy, Clear
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF20232D),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: const Color(0xFF343A49),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _TextEditorIconButton(
+                                icon: Icons.select_all_rounded,
+                                color: const Color(0xFFF3F6FC),
+                                onTap: () {
+                                  final text = tempController.text;
+                                  if (text.isEmpty) return;
+
+                                  editorFocusNode.requestFocus();
+                                  tempController.selection = TextSelection(
+                                    baseOffset: 0,
+                                    extentOffset: text.length,
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 6),
+                              _TextEditorIconButton(
+                                icon: CupertinoIcons.doc_on_doc,
+                                color: const Color(0xFFF3F6FC),
+                                onTap: () async {
+                                  final text = tempController.text.trim();
+                                  if (text.isEmpty) return;
+
+                                  await Clipboard.setData(ClipboardData(text: text));
+                                  if (!mounted) return;
+                                  _showSnack('Copied');
+                                },
+                              ),
+                              const SizedBox(width: 6),
+                              _TextEditorIconButton(
+                                icon: CupertinoIcons.xmark,
+                                color: const Color(0xFFFF6B6B),
+                                onTap: () {
+                                  tempController.clear();
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
 
                       Expanded(
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF101117),
+                            color: const Color(0xFF20232D),
                             borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: const Color(0xFF23252E)),
+                            border: Border.all(
+                              color: const Color(0xFF303442),
+                              width: 1,
+                            ),
                           ),
                           child: TextField(
                             controller: tempController,
@@ -540,7 +603,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                             minLines: null,
                             keyboardType: TextInputType.multiline,
                             textAlignVertical: TextAlignVertical.top,
-                            cursorColor: const Color(0xFF5B8CFF),
+                            cursorColor: const Color(0xFF38BDF8),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
@@ -584,18 +647,29 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           Expanded(
                             child: CupertinoButton(
                               padding: const EdgeInsets.symmetric(vertical: 15),
-                              color: const Color(0xFF5B8CFF),
+                              color: const Color(0xFF7C5CFF),
                               borderRadius: BorderRadius.circular(16),
                               onPressed: () async {
                                 final value = tempController.text.trim();
                                 await closeSheet(sheetContext, value: value);
                               },
-                              child: const Text(
-                                'Save',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.checkmark_circle_fill,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Save',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -631,8 +705,11 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     required String label,
     required String value,
     required VoidCallback onTap,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
-    final cleanValue = value.trim().isEmpty ? '—' : value.trim();
+    final trimmed = value.trim();
+    final isEmpty = trimmed.isEmpty;
+    final cleanValue = isEmpty ? 'Tap to add...' : trimmed;
 
     return Material(
       color: Colors.transparent,
@@ -649,7 +726,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                 child: Icon(
                   icon,
                   size: 18,
-                  color: const Color(0xFF9AA3B2),
+                  color: iconColor.withValues(alpha: 0.92),
                 ),
               ),
               const SizedBox(width: 12),
@@ -668,11 +745,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           ),
                         ),
                         const Spacer(),
-                        const Icon(
-                          CupertinoIcons.arrow_up_left_arrow_down_right,
-                          color: Color(0xFF8E93A6),
-                          size: 15,
-                        ),
+                        const _SoftExpandHintIcon(),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -687,10 +760,17 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           padding: const EdgeInsets.only(right: 10),
                           child: Text(
                             cleanValue,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: isEmpty
+                                  ? const Color(0xFF697086)
+                                  : Colors.white,
                               fontSize: 16,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: isEmpty
+                                  ? FontWeight.w500
+                                  : FontWeight.w700,
+                              fontStyle: isEmpty
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
                               height: 1.45,
                               letterSpacing: -0.1,
                             ),
@@ -806,8 +886,111 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
   void _showSnack(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+    final clean = message.trim();
+    if (clean.isEmpty) return;
+
+    final lower = clean.toLowerCase();
+
+    final isError =
+        lower.contains('failed') ||
+            lower.contains('error') ||
+            lower.contains('not found') ||
+            lower.contains('cannot');
+
+    final isSuccess =
+        lower.contains('saved') ||
+            lower.contains('updated') ||
+            lower.contains('added') ||
+            lower.contains('deleted') ||
+            lower.contains('sent') ||
+            lower.contains('copied') ||
+            lower.contains('archived') ||
+            lower.contains('created') ||
+            lower.contains('approved');
+
+    final Color accent = isError
+        ? const Color(0xFFFF5C5C)
+        : isSuccess
+        ? const Color(0xFF33C27F)
+        : const Color(0xFF38BDF8);
+
+    final IconData icon = isError
+        ? CupertinoIcons.xmark_circle_fill
+        : isSuccess
+        ? CupertinoIcons.checkmark_circle_fill
+        : CupertinoIcons.info_circle_fill;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+
+    messenger.showSnackBar(
+      SnackBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+        padding: EdgeInsets.zero,
+        duration: const Duration(milliseconds: 2400),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: const Color(0xFF242730),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: accent.withValues(alpha: 0.45),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
+              ),
+              BoxShadow(
+                color: accent.withValues(alpha: 0.12),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: accent,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  clean,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: messenger.hideCurrentSnackBar,
+                child: const Padding(
+                  padding: EdgeInsets.all(3),
+                  child: Icon(
+                    CupertinoIcons.xmark,
+                    color: Color(0xFF8E93A6),
+                    size: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -863,7 +1046,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     return showModalBottomSheet<DateTime>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF101117),
+      backgroundColor: const Color(0xFF20232D),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
@@ -900,7 +1083,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const Divider(color: Color(0xFF303442), height: 1),
                   const SizedBox(height: 10),
                   Expanded(
                     child: GridView.builder(
@@ -927,6 +1110,8 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
                         final isSelected = _isSameDate(date, selectedDate);
 
+                        final isToday = _isSameDate(date, DateTime.now());
+
                         return GestureDetector(
                           onTap: () {
                             setModalState(() {
@@ -942,13 +1127,28 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                             duration: const Duration(milliseconds: 140),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xFF5B8CFF)
+                                  ? const Color(0xFF38BDF8)
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(14),
                               border: isSelected
                                   ? Border.all(
-                                color: const Color(0xFF83A6FF),
+                                color: const Color(0xFF7DD3FC),
+                                width: 1.5,
                               )
+                                  : isToday && isCurrentMonth
+                                  ? Border.all(
+                                color: const Color(0xFF38BDF8).withValues(alpha: 0.55),
+                                width: 1.2,
+                              )
+                                  : null,
+                              boxShadow: isSelected
+                                  ? [
+                                BoxShadow(
+                                  color: const Color(0xFF38BDF8).withValues(alpha: 0.45),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
                                   : null,
                             ),
                             alignment: Alignment.center,
@@ -957,11 +1157,13 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                               style: TextStyle(
                                 color: isSelected
                                     ? Colors.white
+                                    : isToday && isCurrentMonth
+                                    ? const Color(0xFF38BDF8)
                                     : isCurrentMonth
                                     ? Colors.white
                                     : const Color(0xFF4F5668),
                                 fontSize: 16,
-                                fontWeight: isSelected
+                                fontWeight: isSelected || (isToday && isCurrentMonth)
                                     ? FontWeight.w800
                                     : FontWeight.w600,
                               ),
@@ -995,9 +1197,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             CupertinoIcons.calendar,
-                            color: Color(0xFFB8C1D9),
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.92),
                             size: 22,
                           ),
                           const SizedBox(width: 10),
@@ -1015,41 +1217,6 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 16),
-
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0D0E14),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF23252E)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Selected date',
-                              style: TextStyle(
-                                color: Color(0xFF8E93A6),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              _workioShortDate(selectedDate),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 28,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
                       const SizedBox(height: 14),
 
                       Expanded(
@@ -1057,9 +1224,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0D0E14),
+                            color: const Color(0xFF20232D),
                             borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: const Color(0xFF23252E)),
+                            border: Border.all(color: const Color(0xFF303442)),
                           ),
                           child: Column(
                             children: [
@@ -1081,15 +1248,15 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                                       width: 42,
                                       height: 42,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF15161C),
+                                        color: const Color(0xFF20232D),
                                         borderRadius: BorderRadius.circular(14),
                                         border: Border.all(
-                                          color: const Color(0xFF23252E),
+                                          color: const Color(0xFF303442),
                                         ),
                                       ),
-                                      child: const Icon(
+                                      child: Icon(
                                         CupertinoIcons.chevron_left,
-                                        color: Color(0xFFB6BCD0),
+                                        color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                                         size: 18,
                                       ),
                                     ),
@@ -1122,15 +1289,15 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                                       width: 42,
                                       height: 42,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF15161C),
+                                        color: const Color(0xFF20232D),
                                         borderRadius: BorderRadius.circular(14),
                                         border: Border.all(
-                                          color: const Color(0xFF23252E),
+                                          color: const Color(0xFF303442),
                                         ),
                                       ),
-                                      child: const Icon(
+                                      child: Icon(
                                         CupertinoIcons.chevron_right,
-                                        color: Color(0xFFB6BCD0),
+                                        color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                                         size: 18,
                                       ),
                                     ),
@@ -1180,34 +1347,55 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: CupertinoButton(
-                              padding: const EdgeInsets.symmetric(vertical: 15),
-                              color: const Color(0xFF20232D),
-                              borderRadius: BorderRadius.circular(16),
-                              onPressed: () => Navigator.pop(sheetContext),
-                              child: const Text(
-                                'Cancel',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: const Color(0xFF303442),
+                                  width: 1,
+                                ),
+                              ),
+                              child: CupertinoButton(
+                                padding: const EdgeInsets.symmetric(vertical: 15),
+                                color: const Color(0xFF20232D),
+                                borderRadius: BorderRadius.circular(16),
+                                onPressed: () => Navigator.pop(sheetContext),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(
+                                    color: Color(0xFFB6BCD0),
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: CupertinoButton(
-                              padding: const EdgeInsets.symmetric(vertical: 15),
-                              color: const Color(0xFF5B8CFF),
-                              borderRadius: BorderRadius.circular(16),
-                              onPressed: () {
-                                Navigator.pop(sheetContext, selectedDate);
-                              },
-                              child: const Text(
-                                'OK',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.30),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: CupertinoButton(
+                                padding: const EdgeInsets.symmetric(vertical: 15),
+                                color: const Color(0xFF38BDF8),
+                                borderRadius: BorderRadius.circular(16),
+                                onPressed: () {
+                                  Navigator.pop(sheetContext, selectedDate);
+                                },
+                                child: const Text(
+                                  'OK',
+                                  style: TextStyle(
+                                    color: Color(0xFF1A1D25),
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1396,7 +1584,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
     final selected = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1417,16 +1605,16 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       CupertinoIcons.tag_fill,
-                      color: Colors.white,
+                      color: _statusColorForUI(_status).withValues(alpha: 0.92),
                       size: 18,
                     ),
-                    SizedBox(width: 8),
-                    Text(
+                    const SizedBox(width: 8),
+                    const Text(
                       'Change Status',
                       style: TextStyle(
                         color: Colors.white,
@@ -1447,7 +1635,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Divider(color: Color(0xFF262832), height: 1),
+                const Divider(color: Color(0xFF343846), height: 1),
                 Expanded(
                   child: ListView.separated(
                     padding: const EdgeInsets.all(16),
@@ -1457,8 +1645,10 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       final status = statuses[index];
                       final selectedNow = status == _status;
 
+                      final statusColor = _statusColorForUI(status);
+
                       return Material(
-                        color: const Color(0xFF101117),
+                        color: const Color(0xFF20232D),
                         borderRadius: BorderRadius.circular(18),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(18),
@@ -1469,17 +1659,16 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                               borderRadius: BorderRadius.circular(18),
                               border: Border.all(
                                 color: selectedNow
-                                    ? const Color(0xFF5B8CFF)
-                                    : const Color(0xFF23252E),
+                                    ? statusColor
+                                    : const Color(0xFF303442),
+                                width: selectedNow ? 1.5 : 1,
                               ),
                             ),
                             child: Row(
                               children: [
                                 Icon(
                                   _statusIcon(status),
-                                  color: selectedNow
-                                      ? const Color(0xFF5B8CFF)
-                                      : const Color(0xFFB6BCD0),
+                                  color: statusColor,
                                   size: 18,
                                 ),
                                 const SizedBox(width: 12),
@@ -1494,9 +1683,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                                   ),
                                 ),
                                 if (selectedNow)
-                                  const Icon(
+                                  Icon(
                                     CupertinoIcons.checkmark_circle_fill,
-                                    color: Color(0xFF5B8CFF),
+                                    color: statusColor,
                                     size: 18,
                                   ),
                               ],
@@ -1531,7 +1720,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     final result = await showModalBottomSheet<_DiscountResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1560,6 +1749,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
                   _sheetHeader(
                     icon: CupertinoIcons.tag,
+                    iconColor: const Color(0xFFFFB84D),
                     title: 'Discount',
                     subtitle: 'Set fixed or percentage discount',
                   ),
@@ -1605,11 +1795,21 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
                   const SizedBox(height: 18),
 
-                  SizedBox(
+                  Container(
                     width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.30),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
                     child: CupertinoButton(
                       padding: const EdgeInsets.symmetric(vertical: 15),
-                      color: const Color(0xFF5B8CFF),
+                      color: const Color(0xFF38BDF8),
                       borderRadius: BorderRadius.circular(16),
                       onPressed: () {
                         final value = EstimateCalculator.parseNumber(
@@ -1670,7 +1870,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     final value = await showModalBottomSheet<double>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1697,6 +1897,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
               _sheetHeader(
                 icon: CupertinoIcons.chart_pie,
+                iconColor: const Color(0xFF38BDF8),
                 title: 'Tax Rate',
                 subtitle: 'Set the tax percentage for this estimate',
               ),
@@ -1712,11 +1913,21 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
               const SizedBox(height: 18),
 
-              SizedBox(
+              Container(
                 width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.30),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
                 child: CupertinoButton(
                   padding: const EdgeInsets.symmetric(vertical: 15),
-                  color: const Color(0xFF5B8CFF),
+                  color: const Color(0xFF38BDF8),
                   borderRadius: BorderRadius.circular(16),
                   onPressed: () {
                     final percent = EstimateCalculator.parseNumber(
@@ -1788,7 +1999,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     final result = await showModalBottomSheet<EstimateItemModel>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1801,9 +2012,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
               return Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF101117),
+                  color: const Color(0xFF20232D),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF23252E)),
+                  border: Border.all(color: const Color(0xFF303442)),
                 ),
                 child: Column(children: children),
               );
@@ -1828,7 +2039,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       padding: EdgeInsets.only(top: maxLines > 1 ? 4 : 0),
                       child: Icon(
                         icon,
-                        color: const Color(0xFF8E93A6),
+                        color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                         size: 18,
                       ),
                     ),
@@ -1851,7 +2062,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                             keyboardType: keyboardType,
                             maxLines: maxLines,
                             minLines: maxLines > 1 ? 3 : 1,
-                            cursorColor: const Color(0xFF5B8CFF),
+                            cursorColor: const Color(0xFF38BDF8),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 15,
@@ -1898,7 +2109,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       children: [
                         Icon(
                           icon,
-                          color: const Color(0xFF8E93A6),
+                          color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                           size: 18,
                         ),
                         const SizedBox(width: 12),
@@ -1966,7 +2177,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           existingItem == null
                               ? CupertinoIcons.add_circled
                               : CupertinoIcons.pencil_circle,
-                          color: const Color(0xFFB8C1D9),
+                          color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                           size: 22,
                         ),
                         const SizedBox(width: 10),
@@ -1994,7 +2205,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           controller: titleController,
                           hintText: 'Service item title',
                         ),
-                        const Divider(color: Color(0xFF23252E), height: 1),
+                        const Divider(color: Color(0xFF303442), height: 1),
                         inputRow(
                           icon: CupertinoIcons.text_alignleft,
                           label: 'Description',
@@ -2026,7 +2237,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
                             final unit = await showModalBottomSheet<String>(
                               context: context,
-                              backgroundColor: const Color(0xFF15161C),
+                              backgroundColor: const Color(0xFF1A1D25),
                               shape: const RoundedRectangleBorder(
                                 borderRadius: BorderRadius.vertical(
                                   top: Radius.circular(28),
@@ -2047,7 +2258,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                             });
                           },
                         ),
-                        const Divider(color: Color(0xFF23252E), height: 1),
+                        const Divider(color: Color(0xFF303442), height: 1),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                           child: Row(
@@ -2055,6 +2266,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                               Expanded(
                                 child: _CenteredMiniInput(
                                   icon: CupertinoIcons.number,
+                                  iconColor: const Color(0xFF38BDF8),
                                   label: 'Quantity',
                                   controller: quantityController,
                                   hintText: '1',
@@ -2067,6 +2279,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                               Expanded(
                                 child: _CenteredMiniInput(
                                   icon: CupertinoIcons.money_dollar_circle,
+                                  iconColor: const Color(0xFF22C55E),
                                   label: 'Unit Price',
                                   controller: unitPriceController,
                                   hintText: '0.00',
@@ -2083,11 +2296,21 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
 
                     const SizedBox(height: 18),
 
-                    SizedBox(
+                    Container(
                       width: double.infinity,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.30),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
                       child: CupertinoButton(
                         padding: const EdgeInsets.symmetric(vertical: 15),
-                        color: const Color(0xFF5B8CFF),
+                        color: const Color(0xFF38BDF8),
                         borderRadius: BorderRadius.circular(16),
                         onPressed: () async {
                           final title = titleController.text.trim();
@@ -2537,9 +2760,16 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       width: 100,
       height: 75,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       alignment: Alignment.center,
       child: ClipRRect(
@@ -2564,7 +2794,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
   IconData _statusIcon(String status) {
     switch (status.trim().toLowerCase()) {
       case 'draft':
-        return CupertinoIcons.doc_text;
+        return CupertinoIcons.doc_text_fill;
       case 'sent':
         return CupertinoIcons.paperplane_fill;
       case 'approved':
@@ -2578,12 +2808,30 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     }
   }
 
+  Color _statusColorForUI(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'draft':
+        return const Color(0xFFF3F6FC); // white
+      case 'sent':
+        return const Color(0xFF38BDF8); // sky blue
+      case 'approved':
+        return const Color(0xFF16A34A); // green
+      case 'rejected':
+        return const Color(0xFFD94A4A); // soft red
+      case 'archived':
+        return const Color(0xFF8E93A6); // gray
+      default:
+        return const Color(0xFF8E93A6);
+    }
+  }
+
   Widget _summaryDivider() {
-    return const Divider(
-      color: Color(0xFF23252E),
+    return Container(
       height: 1,
+      color: const Color(0xFF343845),
     );
   }
+
 
   Widget _summaryPickerRow({
     required IconData icon,
@@ -2591,6 +2839,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     required String value,
     required VoidCallback onTap,
     int maxLines = 2,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     final isPlaceholder = value.startsWith('Select');
 
@@ -2602,12 +2851,14 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 18,
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: _summaryGlowIcon(
+                  icon,
+                  iconColor,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -2652,55 +2903,105 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     );
   }
 
+  Widget _summaryGlowIcon(
+      IconData icon,
+      Color color, {
+        double size = 18,
+      }) {
+    return Icon(
+      icon,
+      color: color.withValues(alpha: 0.92),
+      size: size,
+    );
+  }
+
   Widget _summaryTitleRow() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          const Icon(
-            CupertinoIcons.doc_text,
-            color: Color(0xFF8E93A6),
-            size: 18,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
+          Padding(
+            padding: const EdgeInsets.only(right: 34),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Title',
-                  style: TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                _summaryGlowIcon(
+                  CupertinoIcons.doc_text_fill,
+                  const Color(0xFFF3F6FC),
                 ),
-                const SizedBox(height: 5),
-                TextField(
-                  controller: _titleController,
-                  maxLines: 2,
-                  minLines: 1,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
-                  ),
-                  cursorColor: const Color(0xFF5B8CFF),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: 'Service Estimate • City',
-                    hintStyle: TextStyle(
-                      color: Color(0xFF697086),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Title',
+                        style: TextStyle(
+                          color: Color(0xFF8E93A6),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      TextField(
+                        controller: _titleController,
+                        maxLines: 2,
+                        minLines: 1,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
+                        ),
+                        cursorColor: const Color(0xFF38BDF8),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: 'Service Estimate • City',
+                          hintStyle: TextStyle(
+                            color: Color(0xFF697086),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
+            ),
+          ),
+
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _titleController,
+                builder: (context, value, _) {
+                  if (value.text.trim().isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      _titleController.clear();
+                      setState(() {});
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: Color(0xFF8E93A6),
+                        size: 18,
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -2713,6 +3014,8 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     required String label,
     required String value,
     required VoidCallback onTap,
+    Color? iconColor,
+    bool showChevron = true,
   }) {
     return Material(
       color: Colors.transparent,
@@ -2726,7 +3029,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
             children: [
               Icon(
                 icon,
-                color: const Color(0xFF8E93A6),
+                color: iconColor ?? const Color(0xFF8E93A6),
                 size: 17,
               ),
               const SizedBox(width: 10),
@@ -2756,11 +3059,12 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   ],
                 ),
               ),
-              const Icon(
-                CupertinoIcons.chevron_down,
-                color: Color(0xFF8E93A6),
-                size: 15,
-              ),
+              if (showChevron)
+                const Icon(
+                  CupertinoIcons.chevron_down,
+                  color: Color(0xFF8E93A6),
+                  size: 15,
+                ),
             ],
           ),
         ),
@@ -2772,6 +3076,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     required IconData icon,
     required String label,
     required String value,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
@@ -2779,7 +3084,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
         children: [
           Icon(
             icon,
-            color: const Color(0xFF8E93A6),
+            color: iconColor.withValues(alpha: 0.92),
             size: 18,
           ),
           const SizedBox(width: 10),
@@ -2811,6 +3116,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     required String label,
     required String value,
     int maxLines = 2,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     final isPlaceholder = value.trim().isEmpty || value.trim().toLowerCase() == 'not set';
 
@@ -2819,10 +3125,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
+          _summaryGlowIcon(
             icon,
-            color: const Color(0xFF8E93A6),
-            size: 18,
+            iconColor,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -2869,9 +3174,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2926,9 +3231,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2957,12 +3262,15 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     );
   }
 
-  Widget _summaryPanel({required List<Widget> children}) {
+  Widget _summaryPanel({
+    required List<Widget> children,
+    Color backgroundColor = const Color(0xFF1A1D25),
+  }) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         children: children,
@@ -2974,13 +3282,14 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     required IconData icon,
     required String title,
     String? subtitle,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(
+        _summaryGlowIcon(
           icon,
-          color: const Color(0xFFB8C1D9),
+          iconColor,
           size: 22,
         ),
         const SizedBox(width: 10),
@@ -3025,16 +3334,15 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Row(
         children: [
-          Icon(
+          _summaryGlowIcon(
             icon,
-            color: const Color(0xFF8E93A6),
-            size: 18,
+            const Color(0xFFF3F6FC),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -3055,7 +3363,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  cursorColor: const Color(0xFF5B8CFF),
+                  cursorColor: const Color(0xFF38BDF8),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -3093,7 +3401,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: const Color(0xFF1A1D25),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -3117,11 +3425,15 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   const SizedBox(height: 18),
 
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        icon,
-                        color: const Color(0xFFB8C1D9),
-                        size: 22,
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Icon(
+                          icon,
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.92),
+                          size: 22,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -3166,7 +3478,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                             itemIconBuilder?.call(item) ?? CupertinoIcons.circle;
 
                         return Material(
-                          color: const Color(0xFF101117),
+                          color: const Color(0xFF20232D),
                           borderRadius: BorderRadius.circular(18),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(18),
@@ -3176,7 +3488,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(18),
                                 border: Border.all(
-                                  color: const Color(0xFF23252E),
+                                  color: const Color(0xFF303442),
                                 ),
                               ),
                               child: Row(
@@ -3252,9 +3564,25 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
+        color: const Color(0xFF242730),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.38),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.035),
+            blurRadius: 12,
+            spreadRadius: -6,
+            offset: const Offset(0, -3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3268,7 +3596,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                     Text(
                       title,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFFF4F6FA),
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.2,
@@ -3279,9 +3607,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       Text(
                         subtitle!,
                         style: const TextStyle(
-                          color: Color(0xFF8E93A6),
+                          color: Color(0xFFA1A7B8),
                           fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -3338,14 +3666,23 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
               height: 66,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF17181F), // темнее чем на скрине
+                color: const Color(0xFF242730),
                 borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: const Color(0xFF252832)),
+                border: Border.all(
+                  color: const Color(0xFF343846),
+                  width: 1,
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.28),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
+                    color: Colors.black.withValues(alpha: 0.38),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.035),
+                    blurRadius: 12,
+                    spreadRadius: -6,
+                    offset: const Offset(0, -3),
                   ),
                 ],
               ),
@@ -3359,9 +3696,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF20222B),
+                        color: const Color(0xFF2A2D36),
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: const Color(0xFF2B2E38)),
+                        border: Border.all(color: const Color(0xFF3A3E4B)),
                       ),
                       child: const Icon(
                         CupertinoIcons.chevron_left,
@@ -3370,77 +3707,90 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       ),
                     ),
                   ),
+
                   const SizedBox(width: 10),
-                  const Expanded(
-                    child: Text(
-                      'Estimate Details',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
+
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Estimate Details',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Subtotal ${EstimateFormatters.formatCurrency(totals.subtotal)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFFA0A7B8),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Order: Duplicate → Archive → Delete
+                  Tooltip(
+                    message: 'Duplicate',
+                    child: CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minSize: 40,
+                      onPressed: _isDuplicating ? null : _duplicateEstimate,
+                      child: _isDuplicating
+                          ? const CupertinoActivityIndicator(color: Colors.white)
+                          : const Icon(
+                        CupertinoIcons.square_fill_on_square_fill,
+                        color: Color(0xFFB6BCD0),
+                        size: 22,
                       ),
                     ),
                   ),
 
-                  IconButton(
-                    onPressed: _isArchiving ? null : _archiveEstimate,
-                    icon: _isArchiving
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : const Icon(
-                      CupertinoIcons.archivebox,
-                      color: Color(0xFFB6BCD0),
-                      size: 21,
+                  Tooltip(
+                    message: 'Archive',
+                    child: CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minSize: 40,
+                      onPressed: _isArchiving ? null : _archiveEstimate,
+                      child: _isArchiving
+                          ? const CupertinoActivityIndicator(color: Colors.white)
+                          : const Icon(
+                        CupertinoIcons.archivebox_fill,
+                        color: Color(0xFFB6BCD0),
+                        size: 21,
+                      ),
                     ),
-                    tooltip: 'Archive',
                   ),
 
                   if (_status == 'draft')
-                    IconButton(
-                      onPressed: _isDeleting ? null : _deleteEstimatePermanently,
-                      icon: _isDeleting
-                          ? const CupertinoActivityIndicator(color: Colors.white)
-                          : const Icon(
-                        CupertinoIcons.trash,
-                        color: Color(0xFFFF7B7B),
-                        size: 21,
-                      ),
-                      tooltip: 'Delete',
-                    ),
-
-                  IconButton(
-                    onPressed: _isDuplicating ? null : _duplicateEstimate,
-                    icon: _isDuplicating
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : const Icon(
-                      CupertinoIcons.doc_on_doc,
-                      color: Color(0xFFB6BCD0),
-                      size: 21,
-                    ),
-                    tooltip: 'Duplicate',
-                  ),
-
-                  const SizedBox(width: 4),
-
-                  CupertinoButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minSize: 38,
-                    color: const Color(0xFF5B8CFF),
-                    borderRadius: BorderRadius.circular(14),
-                    onPressed: _isSaving ? null : _saveChanges,
-                    child: _isSaving
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : const Text(
-                      'Save',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
+                    Tooltip(
+                      message: 'Delete',
+                      child: CupertinoButton(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        minSize: 40,
+                        onPressed: _isDeleting ? null : _deleteEstimatePermanently,
+                        child: _isDeleting
+                            ? const CupertinoActivityIndicator(color: Colors.white)
+                            : const Icon(
+                          CupertinoIcons.trash_fill,
+                          color: Color(0xFFD94A4A),
+                          size: 21,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -3459,9 +3809,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         CupertinoIcons.number,
-                        color: Color(0xFF8E93A6),
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.92),
                         size: 14,
                       ),
                       const SizedBox(width: 6),
@@ -3475,11 +3825,12 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   _summaryPanel(
                     children: [
                       _summaryPickerRow(
-                        icon: CupertinoIcons.person,
+                        icon: CupertinoIcons.person_fill,
+                        iconColor: const Color(0xFF38BDF8),
                         label: 'Client',
                         value: _selectedClient == null
                             ? 'Select client'
@@ -3489,6 +3840,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       _summaryDivider(),
                       _summaryPickerRow(
                         icon: CupertinoIcons.location_solid,
+                        iconColor: const Color(0xFFE85D3D),
                         label: 'Property',
                         value: _selectedProperty == null
                             ? 'Select property'
@@ -3503,6 +3855,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           Expanded(
                             child: _summaryCompactPicker(
                               icon: _statusIcon(_status),
+                              iconColor: _statusColorForUI(_status),
                               label: 'Status',
                               value: EstimateFormatters.formatStatus(_status),
                               onTap: _pickStatus,
@@ -3511,14 +3864,28 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                           Container(
                             width: 1,
                             height: 62,
-                            color: const Color(0xFF23252E),
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Color(0xFF343846),
+                                  Color(0xFF4A5060),
+                                  Color(0xFF343846),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
                           ),
                           Expanded(
                             child: _summaryCompactPicker(
                               icon: CupertinoIcons.calendar,
+                              iconColor: const Color(0xFF38BDF8),
                               label: 'Valid Until',
                               value: EstimateFormatters.formatDate(_validUntil),
                               onTap: _pickValidUntil,
+                              showChevron: false,
                             ),
                           ),
                         ],
@@ -3533,9 +3900,11 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
               title: 'Company Info',
               subtitle: 'These details are currently used in the PDF',
               child: _summaryPanel(
+                backgroundColor: const Color(0xFF20232D),
                 children: [
                   _summaryInfoRow(
                     icon: CupertinoIcons.building_2_fill,
+                    iconColor: const Color(0xFFFFB84D),
                     label: 'Company',
                     value: (_companySettings?.companyName.trim().isNotEmpty ?? false)
                         ? _companySettings!.companyName
@@ -3544,7 +3913,8 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   ),
                   _summaryDivider(),
                   _summaryInfoRow(
-                    icon: CupertinoIcons.mail_solid,
+                    icon: CupertinoIcons.envelope_fill,
+                    iconColor: const Color(0xFFF3F6FC),
                     label: 'Email',
                     value: (_companySettings?.companyEmail?.trim().isNotEmpty ?? false)
                         ? _companySettings!.companyEmail!
@@ -3554,6 +3924,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   _summaryDivider(),
                   _summaryInfoRow(
                     icon: CupertinoIcons.phone_fill,
+                    iconColor: const Color(0xFF38BDF8),
                     label: 'Phone',
                     value: (_companySettings?.companyPhone?.trim().isNotEmpty ?? false)
                         ? _companySettings!.companyPhone!
@@ -3569,7 +3940,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
               subtitle: 'Work description and additional notes',
               child: Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF101117),
+                  color: const Color(0xFF20232D),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.06),
@@ -3578,13 +3949,14 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                 child: Column(
                   children: [
                     _buildScopeNotesRow(
-                      icon: CupertinoIcons.doc_text,
+                      icon: CupertinoIcons.doc_text_fill,
+                      iconColor: const Color(0xFFF3F6FC),
                       label: 'Scope',
                       value: _scopeController.text.trim(),
                       onTap: () => _openLargeTextEditor(
                         title: 'Edit Scope',
                         controller: _scopeController,
-                        icon: CupertinoIcons.doc_text,
+                        icon: CupertinoIcons.doc_text_fill,
                       ),
                     ),
                     Container(
@@ -3593,13 +3965,14 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       color: Colors.white.withValues(alpha: 0.06),
                     ),
                     _buildScopeNotesRow(
-                      icon: CupertinoIcons.text_alignleft,
+                      icon: CupertinoIcons.text_bubble_fill,
+                      iconColor: const Color(0xFFF3F6FC),
                       label: 'Notes',
                       value: _notesController.text.trim(),
                       onTap: () => _openLargeTextEditor(
                         title: 'Edit Notes',
                         controller: _notesController,
-                        icon: CupertinoIcons.text_alignleft,
+                        icon: CupertinoIcons.text_bubble_fill,
                       ),
                     ),
                   ],
@@ -3615,32 +3988,90 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                 onPressed: () => _addOrEditItem(),
                 child: const Icon(
                   CupertinoIcons.add_circled_solid,
-                  color: Color(0xFF5B8CFF),
-                  size: 24,
+                  color: Color(0xFF38BDF8),
+                  size: 26,
                 ),
               ),
               child: _items.isEmpty
                   ? const _InlineEmptyItemsState()
                   : Column(
-                children: List.generate(_items.length, (index) {
-                  final item = _items[index];
+                children: [
+                  ...List.generate(
+                    _showAllItems
+                        ? _items.length
+                        : (_items.length > 2 ? 2 : _items.length),
+                        (index) {
+                      final item = _items[index];
+                      final visibleCount = _showAllItems
+                          ? _items.length
+                          : (_items.length > 2 ? 2 : _items.length);
 
-                  return Padding(
-                    padding: EdgeInsets.only(
-                      bottom: index == _items.length - 1 ? 0 : 10,
-                    ),
-                    child: _EstimateItemTile(
-                      item: item,
-                      onEdit: () => _addOrEditItem(
-                        existingItem: item,
-                        index: index,
-                      ),
-                      onDelete: () => _removeItem(index),
-                    ),
-                  );
-                }),
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: index == visibleCount - 1 ? 0 : 10,
+                        ),
+                        child: _EstimateItemTile(
+                          item: item,
+                          onEdit: () => _addOrEditItem(
+                            existingItem: item,
+                            index: index,
+                          ),
+                          onDelete: () => _removeItem(index),
+                        ),
+                      );
+                    },
+                  ),
+
+                ],
               ),
             ),
+            if (_items.length > 2) ...[
+              const SizedBox(height: 10),
+              Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _showAllItems = !_showAllItems;
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF20232D),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF303442)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _showAllItems
+                              ? CupertinoIcons.chevron_up
+                              : CupertinoIcons.chevron_down,
+                          color: const Color(0xFF38BDF8),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _showAllItems
+                              ? 'Show less'
+                              : 'Show all (${_items.length})',
+                          style: const TextStyle(
+                            color: Color(0xFF38BDF8),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             _buildSectionCard(
               title: 'Totals',
@@ -3651,6 +4082,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                     children: [
                       _TotalsActionRow(
                         icon: CupertinoIcons.percent,
+                        iconColor: const Color(0xFF38BDF8),
                         label: 'Tax Rate',
                         value: '${(_taxRate * 100).toStringAsFixed(2)}%',
                         onTap: _showTaxEditor,
@@ -3659,6 +4091,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                       _summaryDivider(),
                       _TotalsActionRow(
                         icon: CupertinoIcons.tag,
+                        iconColor: const Color(0xFFFFB84D),
                         label: 'Discount',
                         value: _discountValue <= 0
                             ? 'None'
@@ -3677,22 +4110,26 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                         icon: CupertinoIcons.sum,
                         label: 'Subtotal',
                         value: EstimateFormatters.formatCurrency(totals.subtotal),
+                        iconColor: const Color(0xFFB6BCD0),
                       ),
                       _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.percent,
                         label: 'Tax',
                         value: EstimateFormatters.formatCurrency(totals.tax),
+                        iconColor: const Color(0xFF38BDF8),
                       ),
                       _totalInfoRow(
                         icon: CupertinoIcons.tag,
                         label: 'Discount',
                         value: '- ${EstimateFormatters.formatCurrency(totals.discount)}',
+                        iconColor: const Color(0xFFFFB84D),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   _TotalGrandBar(
+                    label: 'Total',
                     value: EstimateFormatters.formatCurrency(totals.total),
                   ),
                 ],
@@ -3745,29 +4182,57 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                     title: 'Invoice',
                     subtitle: 'Convert approved estimate into invoice',
                     child: _estimate?.isApproved == true
-                        ? _ActionButtonWide(
-                      icon: CupertinoIcons.doc_on_clipboard,
-                      label: _isConvertingToInvoice
-                          ? 'Converting...'
-                          : 'Convert to Invoice',
-                      onTap: _isConvertingToInvoice ? null : _convertToInvoice,
+                        ? Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: _ActionButtonWide(
+                        icon: CupertinoIcons.doc_on_clipboard,
+                        label: _isConvertingToInvoice
+                            ? 'Converting...'
+                            : 'Convert to Invoice',
+                        onTap: _isConvertingToInvoice ? null : _convertToInvoice,
+                      ),
                     )
                         : Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0D0E14),
+                        color: const Color(0xFF20232D),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF23252E)),
+                        border: Border.all(color: const Color(0xFF303442)),
                       ),
-                      child: const Text(
-                        'Available after estimate is approved.',
-                        style: TextStyle(
-                          color: Color(0xFFB8BCC8),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          height: 1.4,
-                        ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 1),
+                            child: Icon(
+                              CupertinoIcons.info_circle,
+                              color: Color(0xFF8E93A6),
+                              size: 17,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Available after estimate is approved.',
+                              style: TextStyle(
+                                color: Color(0xFFB8BCC8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -3777,10 +4242,22 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   _actionGroup(
                     title: 'Client',
                     subtitle: 'Send estimate by email',
-                    child: _ActionButtonWide(
-                      icon: CupertinoIcons.paperplane,
-                      label: _isSendingEmail ? 'Sending...' : 'Send Estimate',
-                      onTap: _isSendingEmail ? null : _sendEstimate,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: _ActionButtonWide(
+                        icon: CupertinoIcons.paperplane,
+                        label: _isSendingEmail ? 'Sending...' : 'Send Estimate',
+                        onTap: _isSendingEmail ? null : _sendEstimate,
+                      ),
                     ),
                   ),
                 ],
@@ -3836,7 +4313,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                             width: double.infinity,
                             child: CupertinoButton(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              color: const Color(0xFF0D0E14),
+                              color: const Color(0xFF20232D),
                               borderRadius: BorderRadius.circular(16),
                               onPressed: _openSavedDocumentsSheet,
                               child: Text(
@@ -3895,7 +4372,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                             width: double.infinity,
                             child: CupertinoButton(
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              color: const Color(0xFF0D0E14),
+                              color: const Color(0xFF20232D),
                               borderRadius: BorderRadius.circular(16),
                               onPressed: _openEmailHistorySheet,
                               child: Text(
@@ -3916,19 +4393,42 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
               ),
             ),
             const SizedBox(height: 18),
-            CupertinoButton(
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(18),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              onPressed: _isSaving ? null : _saveChanges,
-              child: _isSaving
-                  ? const CupertinoActivityIndicator(color: Colors.white)
-                  : const Text(
-                'Save Changes',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.26),
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: CupertinoButton(
+                color: const Color(0xFF38BDF8),
+                borderRadius: BorderRadius.circular(18),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                onPressed: _isSaving ? null : _saveChanges,
+                child: _isSaving
+                    ? const CupertinoActivityIndicator(color: Colors.white)
+                    : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      CupertinoIcons.checkmark_circle_fill,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Save Changes',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -3939,7 +4439,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
   }
 }
 
-class _PremiumTextField extends StatefulWidget {
+class _PremiumTextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final String hintText;
@@ -3955,63 +4455,12 @@ class _PremiumTextField extends StatefulWidget {
   });
 
   @override
-  State<_PremiumTextField> createState() => _PremiumTextFieldState();
-}
-
-class _PremiumTextFieldState extends State<_PremiumTextField> {
-  late final FocusNode _focusNode;
-
-  bool get _showClearButton =>
-      widget.maxLines == 1 &&
-          _focusNode.hasFocus &&
-          widget.controller.text.trim().isNotEmpty;
-
-  @override
-  void initState() {
-    super.initState();
-    _focusNode = FocusNode();
-    _focusNode.addListener(_refresh);
-    widget.controller.addListener(_refresh);
-  }
-
-  @override
-  void didUpdateWidget(covariant _PremiumTextField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_refresh);
-      widget.controller.addListener(_refresh);
-    }
-  }
-
-  void _refresh() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  void _clearText() {
-    widget.controller.clear();
-    _focusNode.requestFocus();
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_refresh);
-    _focusNode.removeListener(_refresh);
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final isSingleLine = widget.maxLines == 1;
-
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -4019,7 +4468,7 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.label,
+              label,
               style: const TextStyle(
                 color: Color(0xFF8E93A6),
                 fontSize: 12,
@@ -4027,49 +4476,29 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
               ),
             ),
             const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment:
-              isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    keyboardType: widget.keyboardType,
-                    maxLines: widget.maxLines,
-                    minLines: isSingleLine ? 1 : widget.maxLines,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.35,
-                    ),
-                    cursorColor: const Color(0xFF5B8CFF),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: widget.hintText,
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF697086),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
+            TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              maxLines: maxLines,
+              minLines: maxLines == 1 ? 1 : maxLines,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+              cursorColor: const Color(0xFF38BDF8),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: hintText,
+                hintStyle: const TextStyle(
+                  color: Color(0xFF697086),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
                 ),
-                if (_showClearButton) ...[
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: _clearText,
-                    child: const Icon(
-                      CupertinoIcons.xmark_circle_fill,
-                      color: Color(0xFF8E93A6),
-                      size: 18,
-                    ),
-                  ),
-                ],
-              ],
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
           ],
         ),
@@ -4082,19 +4511,24 @@ class _PremiumPickerField extends StatelessWidget {
   final String label;
   final String value;
   final VoidCallback onTap;
+  final VoidCallback? onClear;
+  final bool showClearButton;
 
   const _PremiumPickerField({
     required this.label,
     required this.value,
     required this.onTap,
+    this.onClear,
+    this.showClearButton = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isPlaceholder = value.startsWith('Select');
+    final isPlaceholder =
+        value.startsWith('Select') || value.trim().isEmpty || value == '—';
 
     return Material(
-      color: const Color(0xFF101117),
+      color: const Color(0xFF20232D),
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -4103,7 +4537,7 @@ class _PremiumPickerField extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFF23252E)),
+            border: Border.all(color: const Color(0xFF303442)),
           ),
           child: Row(
             children: [
@@ -4125,7 +4559,9 @@ class _PremiumPickerField extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: isPlaceholder ? const Color(0xFF697086) : Colors.white,
+                        color: isPlaceholder
+                            ? const Color(0xFF697086)
+                            : Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
                         height: 1.25,
@@ -4135,11 +4571,21 @@ class _PremiumPickerField extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Icon(
-                CupertinoIcons.chevron_down,
-                color: Color(0xFF8E93A6),
-                size: 18,
-              ),
+              if (showClearButton && onClear != null)
+                GestureDetector(
+                  onTap: onClear,
+                  child: const Icon(
+                    CupertinoIcons.xmark_circle_fill,
+                    color: Color(0xFF8E93A6),
+                    size: 18,
+                  ),
+                )
+              else
+                const Icon(
+                  CupertinoIcons.chevron_down,
+                  color: Color(0xFF8E93A6),
+                  size: 18,
+                ),
             ],
           ),
         ),
@@ -4186,7 +4632,7 @@ class _SelectionSheet<T> extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            const Divider(color: Color(0xFF262832), height: 1),
+            const Divider(color: Color(0xFF303442), height: 1),
             Expanded(
               child: items.isEmpty
                   ? const Center(
@@ -4207,7 +4653,7 @@ class _SelectionSheet<T> extends StatelessWidget {
                   final item = items[index];
 
                   return Material(
-                    color: const Color(0xFF101117),
+                    color: const Color(0xFF20232D),
                     borderRadius: BorderRadius.circular(18),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(18),
@@ -4217,7 +4663,7 @@ class _SelectionSheet<T> extends StatelessWidget {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: const Color(0xFF23252E),
+                            color: const Color(0xFF303442),
                           ),
                         ),
                         child: Text(
@@ -4250,9 +4696,9 @@ class _InlineEmptyItemsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: const Row(
         children: [
@@ -4264,7 +4710,7 @@ class _InlineEmptyItemsState extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-                'No items yet. Add your first line item.',
+              'No items yet. Add your first line item.',
               style: TextStyle(
                 color: Color(0xFF8E93A6),
                 fontSize: 14,
@@ -4291,22 +4737,32 @@ class _EstimateItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final description = (item.description ?? '').trim();
+    final itemIcon = WorkioIconMapper.resolveFromTitle(item.title);
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF181B23),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
-                CupertinoIcons.hammer_fill,
-                color: Color(0xFF8E93A6),
-                size: 18,
+              Icon(
+                itemIcon,
+                color: const Color(0xFFF3F6FC),
+                size: 19,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -4316,46 +4772,31 @@ class _EstimateItemTile extends StatelessWidget {
                     color: Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: -0.1,
+                    height: 1.25,
                   ),
                 ),
               ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 32,
-                  minHeight: 32,
-                ),
-                onPressed: onEdit,
-                icon: const Icon(
-                  CupertinoIcons.pencil,
-                  color: Color(0xFFB6BCD0),
-                  size: 17,
-                ),
+              const SizedBox(width: 8),
+              _SmallIconButton(
+                icon: CupertinoIcons.pencil,
+                onTap: onEdit,
               ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 32,
-                  minHeight: 32,
-                ),
-                onPressed: onDelete,
-                icon: const Icon(
-                  CupertinoIcons.trash,
-                  color: Color(0xFFFF6B6B),
-                  size: 17,
-                ),
+              const SizedBox(width: 8),
+              _SmallIconButton(
+                icon: CupertinoIcons.trash,
+                onTap: onDelete,
+                color: const Color(0xFFFF6B6B),
               ),
             ],
           ),
+
           const SizedBox(height: 10),
           const Divider(
-            color: Color(0xFF23252E),
+            color: Color(0xFF303442),
             height: 1,
           ),
-          if ((item.description ?? '').trim().isNotEmpty) ...[
+
+          if (description.isNotEmpty) ...[
             const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4371,7 +4812,7 @@ class _EstimateItemTile extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    item.description!,
+                    description,
                     style: const TextStyle(
                       color: Color(0xFF8E93A6),
                       fontSize: 13,
@@ -4383,32 +4824,17 @@ class _EstimateItemTile extends StatelessWidget {
               ],
             ),
           ],
+
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniInfo(
-                  label: 'Qty',
-                  value: EstimateFormatters.formatQuantity(item.quantity),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniInfo(
-                  label: 'Unit',
-                  value: EstimateFormatters.formatUnit(item.unit),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _MiniInfo(
-                  label: 'Unit Price',
-                  value: EstimateFormatters.formatCurrency(item.unitPrice),
-                ),
-              ),
-            ],
+
+          _ItemMetricsBar(
+            quantity: EstimateFormatters.formatQuantity(item.quantity),
+            unit: EstimateFormatters.formatUnit(item.unit),
+            unitPrice: EstimateFormatters.formatCurrency(item.unitPrice),
           ),
+
           const SizedBox(height: 10),
+
           _LineTotalBar(
             value: EstimateFormatters.formatCurrency(item.lineTotal),
           ),
@@ -4434,7 +4860,7 @@ class _SmallIconButton extends StatelessWidget {
     final effectiveColor = color ?? const Color(0xFFB6BCD0);
 
     return Material(
-      color: const Color(0xFF171922),
+      color: const Color(0xFF1A1D25),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -4444,7 +4870,7 @@ class _SmallIconButton extends StatelessWidget {
           height: 34,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF23252E)),
+            border: Border.all(color: const Color(0xFF303442)),
           ),
           child: Icon(
             icon,
@@ -4473,9 +4899,9 @@ class _MiniInfo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F212A)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -4509,9 +4935,11 @@ class _MiniInfo extends StatelessWidget {
 }
 
 class _TotalGrandBar extends StatelessWidget {
+  final String label;
   final String value;
 
   const _TotalGrandBar({
+    required this.label,
     required this.value,
   });
 
@@ -4519,25 +4947,25 @@ class _TotalGrandBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF5B8CFF).withValues(alpha: 0.45)),
+        color: const Color(0xFF181B23),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF343846)),
       ),
       child: Row(
         children: [
           const Icon(
             CupertinoIcons.money_dollar_circle_fill,
-            color: Color(0xFF8E93A6),
+            color: Color(0xFF22C55E),
             size: 22,
           ),
           const SizedBox(width: 10),
-          const Text(
-            'Total',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15,
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFB6BCD0),
+              fontSize: 14,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -4545,10 +4973,10 @@ class _TotalGrandBar extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
+              color: Color(0xFFE1E5EF),
+              fontSize: 21,
               fontWeight: FontWeight.w900,
-              letterSpacing: -0.3,
+              letterSpacing: -0.4,
             ),
           ),
         ],
@@ -4570,36 +4998,34 @@ class _LineTotalBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF1F212A)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Row(
         children: [
           const Icon(
             CupertinoIcons.money_dollar_circle,
-            color: Color(0xFF8E93A6),
-            size: 20,
+            color: Color(0xFF22C55E),
+            size: 18,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 9),
           const Text(
             'Line Total',
             style: TextStyle(
               color: Color(0xFF8E93A6),
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
           ),
           const Spacer(),
           Text(
             value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
+              letterSpacing: -0.1,
             ),
           ),
         ],
@@ -4609,14 +5035,16 @@ class _LineTotalBar extends StatelessWidget {
 }
 
 class _TotalsActionRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
   final String label;
   final String value;
   final VoidCallback onTap;
-  final IconData icon;
   final bool compact;
 
   const _TotalsActionRow({
     required this.icon,
+    this.iconColor = const Color(0xFFF3F6FC),
     required this.label,
     required this.value,
     required this.onTap,
@@ -4626,7 +5054,7 @@ class _TotalsActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF101117),
+      color: compact ? Colors.transparent : const Color(0xFF20232D),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -4640,39 +5068,39 @@ class _TotalsActionRow extends StatelessWidget {
               ? null
               : BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF23252E)),
+            border: Border.all(color: const Color(0xFF303442)),
           ),
           child: Row(
             children: [
               Icon(
                 icon,
-                color: const Color(0xFF8E93A6),
+                color: iconColor.withValues(alpha: 0.92),
                 size: 18,
               ),
-              const SizedBox(width: 10),
               const SizedBox(width: 10),
               Text(
                 label,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const Spacer(),
               Text(
                 value,
                 style: const TextStyle(
-                  color: Color(0xFF8E93A6),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFE7EAF2),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.1,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               const Icon(
                 CupertinoIcons.chevron_right,
                 color: Color(0xFF8E93A6),
-                size: 16,
+                size: 14,
               ),
             ],
           ),
@@ -4736,7 +5164,7 @@ class _ActionButtonWide extends StatelessWidget {
     final isDisabled = onTap == null;
 
     return Material(
-      color: const Color(0xFF101117),
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -4744,11 +5172,14 @@ class _ActionButtonWide extends StatelessWidget {
         child: Container(
           height: 50,
           decoration: BoxDecoration(
+            color: isDisabled
+                ? const Color(0xFF1A1D25)
+                : const Color(0xFF20232D),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isDisabled
-                  ? const Color(0xFF1A1C24)
-                  : const Color(0xFF23252E),
+                  ? const Color(0xFF303442)
+                  : const Color(0xFF303442),
             ),
           ),
           child: Row(
@@ -4794,7 +5225,7 @@ class _ChoiceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? const Color(0xFF5B8CFF) : const Color(0xFF101117),
+      color: selected ? const Color(0xFF38BDF8) : const Color(0xFF20232D),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -4804,8 +5235,20 @@ class _ChoiceButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: selected ? const Color(0xFF5B8CFF) : const Color(0xFF23252E),
+              color: selected
+                  ? const Color(0xFF38BDF8)
+                  : const Color(0xFF303442),
+              width: selected ? 1.5 : 1,
             ),
+            boxShadow: selected
+                ? [
+              BoxShadow(
+                color: const Color(0xFF38BDF8).withValues(alpha: 0.30),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ]
+                : null,
           ),
           child: Center(
             child: Text(
@@ -4849,9 +5292,9 @@ class _UnitDropdownField extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4869,7 +5312,7 @@ class _UnitDropdownField extends StatelessWidget {
             child: DropdownButton<String>(
               value: value,
               isExpanded: true,
-              dropdownColor: const Color(0xFF15161C),
+              dropdownColor: const Color(0xFF1A1D25),
               icon: const Icon(
                 CupertinoIcons.chevron_down,
                 color: Color(0xFF8E93A6),
@@ -4920,9 +5363,9 @@ class _EmptyDocumentsState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: const Row(
         children: [
@@ -4959,42 +5402,108 @@ class _SavedDocumentTile extends StatelessWidget {
     required this.onDelete,
   });
 
+  Widget _buildTopGradientDivider() {
+    return Container(
+      height: 1,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            Color(0xFF555B6B),
+            Color(0xFF707789),
+            Color(0xFF555B6B),
+            Colors.transparent,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(
+            icon,
+            color: const Color(0xFF8E93A6),
+            size: 15,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFFB6BCD0),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFullDivider() {
+    return Container(
+      height: 1,
+      width: double.infinity,
+      color: const Color(0xFF303442),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF2A2F3B),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF3A4150),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            document.fileName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+          Center(
+            child: Text(
+              document.fileName,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            EstimateFormatters.formatDateTime(document.createdAt),
-            style: const TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+
           const SizedBox(height: 12),
+          _buildTopGradientDivider(),
+          const SizedBox(height: 12),
+
+          _buildInfoRow(
+            CupertinoIcons.calendar,
+            EstimateFormatters.formatDateTime(document.createdAt),
+          ),
+
+          const SizedBox(height: 14),
+          _buildFullDivider(),
+          const SizedBox(height: 14),
+
           Row(
             children: [
               Expanded(
-                child: _HistoryActionButton(
+                child: _DocumentActionButton(
                   icon: CupertinoIcons.eye,
                   label: 'Open',
                   onTap: onOpen,
@@ -5002,7 +5511,7 @@ class _SavedDocumentTile extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _HistoryActionButton(
+                child: _DocumentActionButton(
                   icon: CupertinoIcons.trash,
                   label: 'Delete',
                   onTap: onDelete,
@@ -5016,12 +5525,12 @@ class _SavedDocumentTile extends StatelessWidget {
   }
 }
 
-class _HistoryActionButton extends StatelessWidget {
+class _DocumentActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  const _HistoryActionButton({
+  const _DocumentActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -5030,7 +5539,7 @@ class _HistoryActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF0D0E14),
+      color: const Color(0xFF20232D),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -5039,14 +5548,14 @@ class _HistoryActionButton extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF1F212A)),
+            border: Border.all(color: const Color(0xFF303442)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
-                color: const Color(0xFFB6BCD0),
+                color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                 size: 16,
               ),
               const SizedBox(width: 8),
@@ -5080,9 +5589,9 @@ class _PreviewInfoRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Row(
         children: [
@@ -5118,27 +5627,31 @@ class _EmptyEmailLogsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF2A2F3B),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF3A4150),
+          width: 1,
+        ),
       ),
       child: const Row(
         children: [
           Icon(
             CupertinoIcons.mail,
-            color: Color(0xFF8E93A6),
-            size: 20,
+            color: Color(0xFFB6BCD0),
+            size: 18,
           ),
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'No email history yet.',
+              'No email history yet. Sent estimates and follow-ups will appear here.',
               style: TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+                color: Color(0xFFB6BCD0),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
               ),
             ),
           ),
@@ -5162,7 +5675,7 @@ class _EmailLogTile extends StatelessWidget {
       case 'failed':
         return const Color(0xFFE05A5A);
       case 'pending':
-        return const Color(0xFF4A90E2);
+        return const Color(0xFF38BDF8);
       default:
         return const Color(0xFF8F96AB);
     }
@@ -5184,34 +5697,92 @@ class _EmailLogTile extends StatelessWidget {
   Color _templateColor(String? value) {
     switch ((value ?? '').trim().toLowerCase()) {
       case 'standard':
-        return const Color(0xFF5B8CFF);
+        return const Color(0xFF38BDF8);
       case 'updated':
         return const Color(0xFFFFB84D);
       case 'follow_up':
-        return const Color(0xFFB07CFF);
+        return const Color(0xFF7DD3FC);
       default:
         return const Color(0xFF8F96AB);
     }
   }
 
-  Widget _buildTag(String label, Color color) {
+  String _extractEstimateNumber(String subject) {
+    final match = RegExp(
+      r'EST-\d+(?:-\d+)?',
+      caseSensitive: false,
+    ).firstMatch(subject);
+
+    if (match != null) {
+      return match.group(0)!.trim();
+    }
+
+    return subject.trim();
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(
+            icon,
+            color: const Color(0xFF8E93A6),
+            size: 15,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFFB6BCD0),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopGradientDivider() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: color.withOpacity(0.35),
+      height: 1,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            Color(0xFF555B6B),
+            Color(0xFF707789),
+            Color(0xFF555B6B),
+            Colors.transparent,
+          ],
         ),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.2,
-        ),
+    );
+  }
+
+  Widget _buildFullDivider() {
+    return Container(
+      height: 1,
+      width: double.infinity,
+      color: const Color(0xFF303442),
+    );
+  }
+
+  Widget _buildPlainTag(String label, Color color) {
+    return Text(
+      label,
+      style: TextStyle(
+        color: color,
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.4,
       ),
     );
   }
@@ -5221,70 +5792,80 @@ class _EmailLogTile extends StatelessWidget {
     final statusColor = _statusColor(log.status);
     final templateLabel = _templateLabel(log.templateType);
     final templateColor = _templateColor(log.templateType);
+    final estimateNumber = _extractEstimateNumber(log.subject);
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+        color: const Color(0xFF242730),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            log.recipientEmail,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            log.subject,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFFB6BCD0),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildTag(log.status.toUpperCase(), statusColor),
-              if (templateLabel != null)
-                _buildTag(templateLabel, templateColor),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            EstimateFormatters.formatDateTime(log.sentAt ?? log.createdAt),
-            style: const TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          if ((log.providerName ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Provider: ${log.providerName}',
+          Center(
+            child: Text(
+              estimateNumber,
+              textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.2,
               ),
             ),
+          ),
+
+          const SizedBox(height: 12),
+          _buildTopGradientDivider(),
+          const SizedBox(height: 12),
+
+          _buildInfoRow(
+            CupertinoIcons.mail,
+            log.recipientEmail,
+          ),
+          const SizedBox(height: 8),
+
+          _buildInfoRow(
+            CupertinoIcons.calendar,
+            EstimateFormatters.formatDateTime(log.sentAt ?? log.createdAt),
+          ),
+
+          if ((log.providerName ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildInfoRow(
+              CupertinoIcons.paperplane,
+              'Provider: ${log.providerName}',
+            ),
           ],
+
+          const SizedBox(height: 12),
+          _buildFullDivider(),
+          const SizedBox(height: 10),
+
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 14,
+              runSpacing: 6,
+              children: [
+                _buildPlainTag(
+                  log.status.toUpperCase(),
+                  statusColor,
+                ),
+                if (templateLabel != null)
+                  _buildPlainTag(
+                    templateLabel,
+                    templateColor,
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -5342,15 +5923,15 @@ class _UnitSelectionSheet extends StatelessWidget {
 
               const SizedBox(height: 18),
 
-              const Row(
+              Row(
                 children: [
                   Icon(
                     CupertinoIcons.cube_box,
-                    color: Color(0xFFB8C1D9),
+                    color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                     size: 22,
                   ),
-                  SizedBox(width: 10),
-                  Expanded(
+                  const SizedBox(width: 10),
+                  const Expanded(
                     child: Text(
                       'Choose Unit',
                       style: TextStyle(
@@ -5374,56 +5955,71 @@ class _UnitSelectionSheet extends StatelessWidget {
                     final unit = units[index];
                     final selected = unit == selectedUnit;
 
-                    return Material(
-                      color: selected
-                          ? const Color(0xFF16233F)
-                          : const Color(0xFF101117),
-                      borderRadius: BorderRadius.circular(18),
-                      child: InkWell(
+                    return Container(
+                      decoration: selected
+                          ? BoxDecoration(
                         borderRadius: BorderRadius.circular(18),
-                        onTap: () => Navigator.pop(context, unit),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: selected
-                                  ? const Color(0xFF5B8CFF)
-                                  : const Color(0xFF23252E),
-                            ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _unitIcon(unit),
+                        ],
+                      )
+                          : null,
+                      child: Material(
+                        color: selected
+                            ? const Color(0xFF0F2A47)
+                            : const Color(0xFF20232D),
+                        borderRadius: BorderRadius.circular(18),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () => Navigator.pop(context, unit),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
                                 color: selected
-                                    ? const Color(0xFF8FB0FF)
-                                    : const Color(0xFF8E93A6),
-                                size: 19,
+                                    ? const Color(0xFF38BDF8)
+                                    : const Color(0xFF303442),
+                                width: selected ? 1.5 : 1,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  EstimateFormatters.formatUnit(unit),
-                                  style: TextStyle(
-                                    color: selected
-                                        ? Colors.white
-                                        : const Color(0xFFE7EAF2),
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _unitIcon(unit),
+                                  color: selected
+                                      ? const Color(0xFF7DD3FC)
+                                      : const Color(0xFFF3F6FC).withValues(alpha: 0.92),
+                                  size: 19,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    EstimateFormatters.formatUnit(unit),
+                                    style: TextStyle(
+                                      color: selected
+                                          ? Colors.white
+                                          : const Color(0xFFE7EAF2),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Icon(
-                                selected
-                                    ? CupertinoIcons.checkmark_circle_fill
-                                    : CupertinoIcons.chevron_right,
-                                color: selected
-                                    ? const Color(0xFF5B8CFF)
-                                    : const Color(0xFF8E93A6),
-                                size: selected ? 20 : 16,
-                              ),
-                            ],
+                                Icon(
+                                  selected
+                                      ? CupertinoIcons.checkmark_circle_fill
+                                      : CupertinoIcons.chevron_right,
+                                  color: selected
+                                      ? const Color(0xFF38BDF8)
+                                      : const Color(0xFF8E93A6),
+                                  size: selected ? 20 : 16,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -5445,6 +6041,7 @@ class _CenteredMiniInput extends StatelessWidget {
   final TextEditingController controller;
   final String hintText;
   final TextInputType keyboardType;
+  final Color iconColor;
 
   const _CenteredMiniInput({
     required this.icon,
@@ -5452,6 +6049,7 @@ class _CenteredMiniInput extends StatelessWidget {
     required this.controller,
     required this.hintText,
     required this.keyboardType,
+    this.iconColor = const Color(0xFFF3F6FC),
   });
 
   @override
@@ -5462,16 +6060,16 @@ class _CenteredMiniInput extends StatelessWidget {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0E14),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             icon,
-            color: const Color(0xFF8E93A6),
+            color: iconColor.withValues(alpha: 0.92),
             size: 16,
           ),
           const SizedBox(height: 6),
@@ -5489,7 +6087,7 @@ class _CenteredMiniInput extends StatelessWidget {
             controller: controller,
             keyboardType: keyboardType,
             textAlign: TextAlign.center,
-            cursorColor: const Color(0xFF5B8CFF),
+            cursorColor: const Color(0xFF38BDF8),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 15,
@@ -5522,12 +6120,22 @@ class _CalendarWeekDay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Center(
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
+        child: Container(
+          height: 30,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: const Color(0xFF20232D),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF343846)),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFB8C1D9),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ),
@@ -5535,6 +6143,306 @@ class _CalendarWeekDay extends StatelessWidget {
   }
 }
 
+
+// ============================================================
+//   NEW STYLE WIDGETS (from invoice premium design, turquoise palette)
+// ============================================================
+
+class _TextEditorIconButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _TextEditorIconButton({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFF242730),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          width: 38,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: const Color(0xFF3A4150),
+              width: 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 18,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ItemMetricsBar extends StatelessWidget {
+  final String quantity;
+  final String unit;
+  final String unitPrice;
+
+  const _ItemMetricsBar({
+    required this.quantity,
+    required this.unit,
+    required this.unitPrice,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF20232D),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF303442)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ItemMetricCell(
+              label: 'Qty',
+              value: quantity,
+            ),
+          ),
+          _metricDivider(),
+          Expanded(
+            child: _ItemMetricCell(
+              label: 'Unit',
+              value: unit,
+            ),
+          ),
+          _metricDivider(),
+          Expanded(
+            child: _ItemMetricCell(
+              label: 'Unit Price',
+              value: unitPrice,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricDivider() {
+    return Container(
+      width: 1,
+      height: 54,
+      color: const Color(0xFF303442),
+    );
+  }
+}
+
+class _ItemMetricCell extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ItemMetricCell({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 13,
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFFA1A7B8),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SoftExpandHintIcon extends StatefulWidget {
+  const _SoftExpandHintIcon();
+
+  @override
+  State<_SoftExpandHintIcon> createState() => _SoftExpandHintIconState();
+}
+
+class _SoftExpandHintIconState extends State<_SoftExpandHintIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOutSine,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, _) {
+        final move = 1.0 + (_animation.value * 1.8);
+
+        return SizedBox(
+          width: 18,
+          height: 18,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Transform.translate(
+                offset: Offset(-move, -move),
+                child: Icon(
+                  Icons.north_west_rounded,
+                  color: const Color(0xFF8E93A6).withValues(alpha: 0.78),
+                  size: 13,
+                ),
+              ),
+              Transform.translate(
+                offset: Offset(move, move),
+                child: Icon(
+                  Icons.south_east_rounded,
+                  color: const Color(0xFF8E93A6).withValues(alpha: 0.78),
+                  size: 13,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _GradientDivider extends StatelessWidget {
+  final double height;
+  final EdgeInsetsGeometry? margin;
+
+  const _GradientDivider({
+    this.height = 1,
+    this.margin,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      margin: margin,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [
+            Colors.transparent,
+            Color(0xFF555B6B),
+            Color(0xFF707789),
+            Color(0xFF555B6B),
+            Colors.transparent,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AppBarActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final bool isLoading;
+  final VoidCallback? onPressed;
+  final String tooltip;
+
+  const _AppBarActionButton({
+    required this.icon,
+    required this.iconColor,
+    required this.isLoading,
+    required this.onPressed,
+    required this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: const Color(0xFF1A1D25),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF303442),
+                width: 1,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: isLoading
+                ? const CupertinoActivityIndicator(
+              color: Colors.white,
+              radius: 9,
+            )
+                : Icon(
+              icon,
+              color: iconColor.withValues(alpha: 0.92),
+              size: 19,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 class _AddEditEstimateItemPage extends StatefulWidget {
   final String estimateId;
   final EstimateItemModel? existingItem;
@@ -5644,9 +6552,9 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: const Color(0xFF20232D),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
+        border: Border.all(color: const Color(0xFF303442)),
       ),
       child: Column(
         children: children,
@@ -5672,7 +6580,7 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
             padding: EdgeInsets.only(top: maxLines > 1 ? 4 : 0),
             child: Icon(
               icon,
-              color: const Color(0xFF8E93A6),
+              color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
               size: 18,
             ),
           ),
@@ -5695,7 +6603,7 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
                   keyboardType: keyboardType,
                   maxLines: maxLines,
                   minLines: maxLines > 1 ? 3 : 1,
-                  cursorColor: const Color(0xFF5B8CFF),
+                  cursorColor: const Color(0xFF38BDF8),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -5739,7 +6647,7 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
             children: [
               Icon(
                 icon,
-                color: const Color(0xFF8E93A6),
+                color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
                 size: 18,
               ),
               const SizedBox(width: 12),
@@ -5785,36 +6693,114 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: Text(
-          widget.existingItem == null ? 'Add Item' : 'Edit Item',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: _submit,
-              child: const Text(
-                'Save',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(92),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+            child: Container(
+              height: 66,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF242730),
+                borderRadius: BorderRadius.circular(26),
+                border: Border.all(
+                  color: const Color(0xFF343846),
+                  width: 1,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.38),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.035),
+                    blurRadius: 12,
+                    spreadRadius: -6,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Back button
+                  Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          CupertinoIcons.chevron_left,
+                          color: Color(0xFFE7EAF2),
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 4),
+
+                  Expanded(
+                    child: Text(
+                      widget.existingItem == null ? 'Add Item' : 'Edit Item',
+                      style: const TextStyle(
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ),
+
+                  // Save button with glow
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.30),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      color: const Color(0xFF38BDF8),
+                      borderRadius: BorderRadius.circular(14),
+                      onPressed: _submit,
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            CupertinoIcons.checkmark_circle_fill,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Save',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
       body: SafeArea(
         top: false,
@@ -5824,9 +6810,25 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: const Color(0xFF15161C),
+                color: const Color(0xFF242730),
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFF262832)),
+                border: Border.all(
+                  color: const Color(0xFF343846),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.38),
+                    blurRadius: 28,
+                    offset: const Offset(0, 16),
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.035),
+                    blurRadius: 12,
+                    spreadRadius: -6,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
               ),
               child: Column(
                 children: [
@@ -5838,7 +6840,7 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
                         controller: _titleController,
                         hintText: 'Service item title',
                       ),
-                      const Divider(color: Color(0xFF23252E), height: 1),
+                      const Divider(color: Color(0xFF303442), height: 1),
                       _itemInputRow(
                         icon: CupertinoIcons.text_alignleft,
                         label: 'Description',
@@ -5870,7 +6872,7 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
 
                           final unit = await showModalBottomSheet<String>(
                             context: context,
-                            backgroundColor: const Color(0xFF15161C),
+                            backgroundColor: const Color(0xFF1A1D25),
                             shape: const RoundedRectangleBorder(
                               borderRadius: BorderRadius.vertical(
                                 top: Radius.circular(28),
@@ -5907,7 +6909,7 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
                           decimal: true,
                         ),
                       ),
-                      const Divider(color: Color(0xFF23252E), height: 1),
+                      const Divider(color: Color(0xFF303442), height: 1),
                       _itemInputRow(
                         icon: CupertinoIcons.money_dollar_circle,
                         label: 'Unit Price',
@@ -5926,7 +6928,7 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
                     width: double.infinity,
                     child: CupertinoButton(
                       padding: const EdgeInsets.symmetric(vertical: 15),
-                      color: const Color(0xFF5B8CFF),
+                      color: const Color(0xFF38BDF8),
                       borderRadius: BorderRadius.circular(16),
                       onPressed: _submit,
                       child: Row(

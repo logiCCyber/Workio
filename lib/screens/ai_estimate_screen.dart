@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/ai_generated_text_model.dart';
+
 
 import 'dart:async';
 
@@ -645,47 +647,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       _activePromptRule = suggestion.rule;
       _promptSuggestions = [];
     });
-  }
-
-  List<String> _buildPromptChips(EstimatePriceRuleModel? rule) {
-    if (rule == null) return const [];
-
-    final chips = <String>[];
-    final seen = <String>{};
-
-    void addChip(String rawValue) {
-      final value = rawValue.trim();
-      if (value.isEmpty) return;
-
-      final normalized = value
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim();
-
-      if (normalized.isEmpty) return;
-      if (seen.contains(normalized)) return;
-      if (_promptHasAny([value])) return;
-
-      seen.add(normalized);
-      chips.add(value);
-    }
-
-    for (final keyword in rule.aiKeywords) {
-      addChip(keyword);
-    }
-
-    for (final question in rule.aiFollowupQuestions) {
-      final options = question['options'];
-
-      if (options is! List) continue;
-
-      for (final option in options) {
-        addChip(option.toString());
-      }
-    }
-
-    return chips.take(8).toList();
   }
 
   String _conditionalClean(String value) {
@@ -1857,8 +1818,9 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   }
 
   Future<AiEstimateResultModel?> _generateSingleAiEstimateJob(
-      String jobPrompt,
-      ) async {
+      String jobPrompt, {
+        List<EstimateItemModel> promptMaterials = const [],
+      }) async {
     final selectedRule = await _resolveAiRuleForPrompt(jobPrompt);
 
     if (selectedRule == null) {
@@ -1881,6 +1843,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       propertyId: _selectedProperty?.id,
       ruleUnit: selectedRule.unit,
       selectedRule: selectedRule,
+      promptMaterials: promptMaterials, // ← НОВОЕ
     );
   }
 
@@ -1925,8 +1888,9 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   }
 
   Future<AiEstimateResultModel?> _generateSingleAiInspectionJob(
-      String jobPrompt,
-      ) async {
+      String jobPrompt, {
+        List<EstimateItemModel> promptMaterials = const [],
+      }) async {
     final selectedRule = await _resolveAiInspectionRuleForPrompt(jobPrompt);
 
     if (selectedRule == null) return null;
@@ -1948,6 +1912,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       ruleUnit: selectedRule.unit,
       selectedRule: selectedRule,
       allowDraftWithExplicitService: true,
+      promptMaterials: promptMaterials, // ← НОВОЕ
     );
 
     return _resultHasPositiveTotal(result) ? result : null;
@@ -2041,10 +2006,15 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         .fold<double>(0, (sum, value) => sum + value) /
         results.length;
 
+    // === Фаза 3: склеиваем AI-сгенерированный текст из всех jobs ===
+    final mergedGeneratedText = _mergeGeneratedTexts(results);
+
     return AiEstimateResultModel(
       title: results.length > 1
           ? 'Multi-Service Estimate'
-          : results.first.title,
+          : (mergedGeneratedText?.title.isNotEmpty == true
+          ? mergedGeneratedText!.title
+          : results.first.title),
       scope: richScope.trim().isEmpty ? null : richScope.trim(),
       notes: richNotes.trim().isEmpty ? null : richNotes.trim(),
       items: items,
@@ -2052,6 +2022,67 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
       assumptions: results.expand((result) => result.assumptions).toList(),
       missingFields: results.expand((result) => result.missingFields).toList(),
       confidence: confidence,
+      generatedText: mergedGeneratedText,
+    );
+  }
+
+  /// Склеивает AI-генерации из нескольких jobs в один общий блок.
+  /// Inclusions/exclusions/assumptions объединяются с дедупом.
+  AiGeneratedTextModel? _mergeGeneratedTexts(
+      List<AiEstimateResultModel> results,
+      ) {
+    final texts = results
+        .map((r) => r.generatedText)
+        .whereType<AiGeneratedTextModel>()
+        .where((t) => !t.isEmpty)
+        .toList();
+
+    if (texts.isEmpty) return null;
+
+    // Один job — возвращаем как есть.
+    if (texts.length == 1) return texts.first;
+
+    // Несколько jobs — склеиваем.
+    final allInclusions = <String>[];
+    final allExclusions = <String>[];
+    final allAssumptions = <String>[];
+    final scopeParts = <String>[];
+    final notesParts = <String>[];
+
+    for (final text in texts) {
+      if (text.scopeOfWork.isNotEmpty) scopeParts.add(text.scopeOfWork);
+      if (text.notes.isNotEmpty) notesParts.add(text.notes);
+      allInclusions.addAll(text.inclusions);
+      allExclusions.addAll(text.exclusions);
+      allAssumptions.addAll(text.assumptions);
+    }
+
+    String dedupSimilar(List<String> values) {
+      final seen = <String>{};
+      final result = <String>[];
+      for (final v in values) {
+        final key = v.toLowerCase().trim();
+        if (key.isEmpty || seen.contains(key)) continue;
+        seen.add(key);
+        result.add(v);
+      }
+      return result.join('|||SEP|||');
+    }
+
+    List<String> dedupList(List<String> values) {
+      return dedupSimilar(values).split('|||SEP|||').where((e) => e.isNotEmpty).toList();
+    }
+
+    return AiGeneratedTextModel(
+      title: 'Multi-Service Estimate',
+      scopeOfWork: scopeParts.join('\n\n'),
+      inclusions: dedupList(allInclusions),
+      exclusions: dedupList(allExclusions),
+      assumptions: dedupList(allAssumptions),
+      notes: notesParts.join('\n\n'),
+      // Берём terms из первого — они одинаковые в рамках компании.
+      terms: texts.first.terms,
+      reasoning: texts.map((t) => t.reasoning).where((r) => r.isNotEmpty).join(' | '),
     );
   }
 
@@ -2361,6 +2392,11 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         return;
       }
 
+      final promptMaterials = await _buildPromptMaterialItems(
+        normalizedPrompt.trim(),
+        startSortOrder: 0,
+      );
+
       final results = <AiEstimateResultModel>[];
       final failedJobs = <String>[];
 
@@ -2429,6 +2465,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
           propertyId: _selectedProperty?.id,
           ruleUnit: selectedRule.unit,
           selectedRule: selectedRule,
+          promptMaterials: promptMaterials, // ← НОВОЕ
         );
 
         if (updated.items.isEmpty) {
@@ -2840,6 +2877,18 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         return;
       }
 
+// === КРИТИЧНО: парсим материалы из промпта ОДИН РАЗ ===
+// Это нужно ДО генерации каждого job, чтобы AI text видел материалы
+// и не писал "materials not included" когда они есть.
+      final promptMaterials = await _buildPromptMaterialItems(
+        normalizedPrompt.trim(),
+        startSortOrder: 0,
+      );
+      debugPrint('🔴 PROMPT MATERIALS COUNT: ${promptMaterials.length}');
+      for (final m in promptMaterials) {
+        debugPrint('   - ${m.title} | qty=${m.quantity} | price=\$${m.unitPrice}');
+      }
+
       final results = <AiEstimateResultModel>[];
       final failedJobs = <String>[];
 
@@ -2883,8 +2932,14 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
             : baseJobPrompt;
 
         final result = inspectionOnly
-            ? await _generateSingleAiInspectionJob(finalJobPrompt)
-            : await _generateSingleAiEstimateJob(finalJobPrompt);
+            ? await _generateSingleAiInspectionJob(
+          finalJobPrompt,
+          promptMaterials: promptMaterials, // ← НОВОЕ
+        )
+            : await _generateSingleAiEstimateJob(
+          finalJobPrompt,
+          promptMaterials: promptMaterials, // ← НОВОЕ
+        );
 
         if (result == null || result.items.isEmpty) {
           failedJobs.add(cleanJobText);
@@ -2908,18 +2963,10 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         results: results,
       );
 
-      final promptMaterialItems = await _buildPromptMaterialItems(
-        normalizedPrompt.trim(),
-        startSortOrder: merged.items.length,
-      );
-
-      final finalResult = _appendPromptMaterialItems(
-        merged,
-        promptMaterialItems,
-      );
-
-      _applySmartResult(finalResult);
-      _showSmartResultMessage(finalResult);
+// Материалы уже прикреплены к items внутри SmartEstimateService.generate
+// (через параметр promptMaterials), поэтому здесь повторно не добавляем.
+      _applySmartResult(merged);
+      _showSmartResultMessage(merged);
 
       if (failedJobs.isNotEmpty) {
         final failedText = failedJobs.take(2).join(', ');
@@ -3460,6 +3507,69 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
 
     return result;
+  }
+
+  Widget _buildInclusionsCard(List<String> inclusions) {
+    return _buildSectionCard(
+      title: "What's Included",
+      subtitle: 'Work and items covered by this estimate',
+      child: Column(
+        children: List.generate(inclusions.length, (index) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: index == inclusions.length - 1 ? 0 : 10,
+            ),
+            child: _ChecklistRow(
+              text: inclusions[index],
+              icon: CupertinoIcons.checkmark_circle_fill,
+              iconColor: const Color(0xFF33C27F),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildExclusionsCard(List<String> exclusions) {
+    return _buildSectionCard(
+      title: "What's Not Included",
+      subtitle: 'Items outside the scope of this estimate',
+      child: Column(
+        children: List.generate(exclusions.length, (index) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: index == exclusions.length - 1 ? 0 : 10,
+            ),
+            child: _ChecklistRow(
+              text: exclusions[index],
+              icon: CupertinoIcons.xmark_circle_fill,
+              iconColor: const Color(0xFFE05A5A),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildAssumptionsCard(List<String> assumptions) {
+    return _buildSectionCard(
+      title: 'Assumptions',
+      subtitle: 'Conditions that make this pricing valid',
+      child: Column(
+        children: List.generate(assumptions.length, (index) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: index == assumptions.length - 1 ? 0 : 10,
+            ),
+            child: _ChecklistRow(
+              text: assumptions[index],
+              icon: CupertinoIcons.info_circle_fill,
+              iconColor: const Color(0xFF8E93A6),
+            ),
+          );
+        }),
+      ),
+    );
   }
 
   Widget _buildSmartInsightsCard() {
@@ -4102,31 +4212,6 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                       }).toList(),
                     ),
                   ],
-                  if (_activePromptRule != null) ...[
-                    const SizedBox(height: 12),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Quick Add',
-                        style: TextStyle(
-                          color: Color(0xFFB6BCD0),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _buildPromptChips(_activePromptRule).map((chip) {
-                        return _QuickPromptChip(
-                          label: chip,
-                          onTap: () => _appendPromptToken(chip),
-                        );
-                      }).toList(),
-                    ),
-                  ],
                   const SizedBox(height: 14),
                   const Text(
                     'Tip: mention the work, quantity, materials, and urgency for the best result.',
@@ -4234,6 +4319,21 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                 ),
               ),
               const SizedBox(height: 14),
+              // === Фаза 3: AI-сгенерированный профессиональный контент ===
+              if (_smartResult?.hasRichContent == true) ...[
+                if (_smartResult!.generatedText!.inclusions.isNotEmpty) ...[
+                  _buildInclusionsCard(_smartResult!.generatedText!.inclusions),
+                  const SizedBox(height: 14),
+                ],
+                if (_smartResult!.generatedText!.exclusions.isNotEmpty) ...[
+                  _buildExclusionsCard(_smartResult!.generatedText!.exclusions),
+                  const SizedBox(height: 14),
+                ],
+                if (_smartResult!.generatedText!.assumptions.isNotEmpty) ...[
+                  _buildAssumptionsCard(_smartResult!.generatedText!.assumptions),
+                  const SizedBox(height: 14),
+                ],
+              ],
               _buildSectionCard(
                 title: 'Generated Items',
                 subtitle: 'AI suggested estimate line items',
@@ -4287,6 +4387,10 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                 ),
               ),
               const SizedBox(height: 18),
+              if ((_smartResult?.generatedText?.terms ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _TermsCard(terms: _smartResult!.generatedText!.terms),
+              ],
               CupertinoButton(
                 color: const Color(0xFF5B8CFF),
                 borderRadius: BorderRadius.circular(18),
@@ -5657,4 +5761,141 @@ class _PromptSuggestion {
     required this.matchText,
     required this.score,
   });
+}
+
+class _ChecklistRow extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  final Color iconColor;
+
+  const _ChecklistRow({
+    required this.text,
+    required this.icon,
+    required this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(icon, color: iconColor, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TermsCard extends StatefulWidget {
+  final String terms;
+
+  const _TermsCard({required this.terms});
+
+  @override
+  State<_TermsCard> createState() => _TermsCardState();
+}
+
+class _TermsCardState extends State<_TermsCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15161C),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFF262832)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Terms & Conditions',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Standard payment and validity terms',
+                        style: TextStyle(
+                          color: Color(0xFF8E93A6),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  _expanded
+                      ? CupertinoIcons.chevron_up
+                      : CupertinoIcons.chevron_down,
+                  color: const Color(0xFF8E93A6),
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+          if (_expanded) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101117),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF23252E)),
+              ),
+              child: Text(
+                widget.terms,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../models/estimate_price_rule_model.dart';
 import '../services/estimate_price_rules_service.dart';
 import '../services/rule_ai_metadata_service.dart';
+import '../utils/workio_icon_mapper.dart';
 
 class _WorkioUnitOption {
   final String value;
@@ -190,6 +191,40 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     super.dispose();
   }
 
+  void _generateAiMetadataInBackground(EstimatePriceRuleModel rule) {
+    final displayName = rule.displayName?.trim() ?? rule.serviceType;
+    if (displayName.isEmpty) return;
+
+    RuleAiMetadataService.generate(
+      serviceType: rule.serviceType,
+      displayName: displayName,
+      category: rule.category,
+      unit: rule.unit,
+      aliases: rule.aliases,
+    ).then((result) async {
+      try {
+        final updated = rule.copyWith(
+          aliases: result.aliases,
+          aiKeywords: result.aiKeywords,
+          negativeKeywords: result.negativeKeywords,
+          aiScopeTemplate: result.aiScopeTemplate.isEmpty ? null : result.aiScopeTemplate,
+          aiNotesTemplate: result.aiNotesTemplate.isEmpty ? null : result.aiNotesTemplate,
+          aiLaborTitle: result.aiLaborTitle.isEmpty ? null : result.aiLaborTitle,
+          aiLaborDescription: result.aiLaborDescription.isEmpty ? null : result.aiLaborDescription,
+          aiMaterialsTitle: result.aiMaterialsTitle.isEmpty ? null : result.aiMaterialsTitle,
+          aiMaterialsDescription: result.aiMaterialsDescription.isEmpty ? null : result.aiMaterialsDescription,
+          aiPrepTitle: result.aiPrepTitle.isEmpty ? null : result.aiPrepTitle,
+          aiPrepDescription: result.aiPrepDescription.isEmpty ? null : result.aiPrepDescription,
+          aiRushTitle: result.aiRushTitle.isEmpty ? null : result.aiRushTitle,
+          aiRushDescription: result.aiRushDescription.isEmpty ? null : result.aiRushDescription,
+          aiFollowupQuestions: result.aiFollowupQuestions,
+        );
+        await EstimatePriceRulesService.updateRule(updated);
+        if (mounted) await _loadRules();
+      } catch (_) {}
+    }).catchError((_) {});
+  }
+
   Future<void> _loadRules() async {
     setState(() {
       _isLoading = true;
@@ -309,45 +344,6 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     final displayNameController = TextEditingController(
       text: rule.displayName ?? '',
     );
-    final aliasesController = TextEditingController(
-      text: rule.aliases.join(', '),
-    );
-    final aiKeywordsController = TextEditingController(
-      text: rule.aiKeywords.join(', '),
-    );
-    final negativeKeywordsController = TextEditingController(
-      text: rule.negativeKeywords.join(', '),
-    );
-    final aiScopeTemplateController = TextEditingController(
-      text: rule.aiScopeTemplate ?? '',
-    );
-    final aiNotesTemplateController = TextEditingController(
-      text: rule.aiNotesTemplate ?? '',
-    );
-    final aiLaborTitleController = TextEditingController(
-      text: rule.aiLaborTitle ?? '',
-    );
-    final aiLaborDescriptionController = TextEditingController(
-      text: rule.aiLaborDescription ?? '',
-    );
-    final aiMaterialsTitleController = TextEditingController(
-      text: rule.aiMaterialsTitle ?? '',
-    );
-    final aiMaterialsDescriptionController = TextEditingController(
-      text: rule.aiMaterialsDescription ?? '',
-    );
-    final aiPrepTitleController = TextEditingController(
-      text: rule.aiPrepTitle ?? '',
-    );
-    final aiPrepDescriptionController = TextEditingController(
-      text: rule.aiPrepDescription ?? '',
-    );
-    final aiRushTitleController = TextEditingController(
-      text: rule.aiRushTitle ?? '',
-    );
-    final aiRushDescriptionController = TextEditingController(
-      text: rule.aiRushDescription ?? '',
-    );
     final materialRatePerSqftController = TextEditingController(
       text: rule.materialRatePerSqft?.toStringAsFixed(2) ?? '',
     );
@@ -373,12 +369,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
       text: rule.diagnosticFixedRate?.toStringAsFixed(2) ?? '',
     );
 
-    bool isAiMetadataExpanded = false;
-    bool isGeneratingAi = false;
     bool isAdvancedPricingExpanded = false;
-
-    List<Map<String, dynamic>> generatedFollowupQuestions =
-    List<Map<String, dynamic>>.from(rule.aiFollowupQuestions);
 
     final updatedRule = await showModalBottomSheet<EstimatePriceRuleModel>(
       context: context,
@@ -387,415 +378,182 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setModalState) {
-              return Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Edit ${_formatCategoryTitle(rule.category)} Service',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 32,
+                          onPressed: () => Navigator.pop(context),
+                          child: const Icon(
+                            CupertinoIcons.xmark_circle_fill,
+                            color: Color(0xFF8E93A6),
+                            size: 24,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: Alignment.centerLeft,
                       child: Text(
-                        'Edit ${_formatCategoryTitle(rule.category)} Service',
+                        rule.displayName?.trim().isNotEmpty == true
+                            ? rule.displayName!.trim()
+                            : rule.serviceType,
                         style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF8E93A6),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      minSize: 32,
-                      onPressed: () => Navigator.pop(context),
-                      child: const Icon(
-                        CupertinoIcons.xmark_circle_fill,
-                        color: Color(0xFF8E93A6),
-                        size: 24,
+                    const SizedBox(height: 18),
+                    _LockedCategoryInfo(
+                      title: 'Category',
+                      value: _formatCategoryTitle(rule.category),
+                    ),
+                    const SizedBox(height: 12),
+                    _RuleUnitPickerField(
+                      controller: unitController,
+                      label: 'Unit',
+                      onTap: () => _pickRuleUnit(
+                        controller: unitController,
+                        setModalState: setModalState,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    rule.displayName?.trim().isNotEmpty == true
-                        ? rule.displayName!.trim()
-                        : rule.serviceType,
-                    style: const TextStyle(
-                      color: Color(0xFF8E93A6),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 12),
+                    _RuleTextField(
+                      controller: displayNameController,
+                      label: 'Service Name',
+                      hintText: 'Service display name',
                     ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                _LockedCategoryInfo(
-                  title: 'Category',
-                  value: _formatCategoryTitle(rule.category),
-                ),
-                const SizedBox(height: 12),
-                _RuleUnitPickerField(
-                  controller: unitController,
-                  label: 'Unit',
-                  onTap: () => _pickRuleUnit(
-                    controller: unitController,
-                    setModalState: setModalState,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _RuleTextField(
-                  controller: displayNameController,
-                  label: 'Display Name',
-                  hintText: 'Service display name',
-                ),
-                const SizedBox(height: 12),
-                _RuleTextField(
-                  controller: aliasesController,
-                  label: 'Aliases (comma separated)',
-                  hintText: 'main name, short name, common client words',
-                  maxLines: 2,
-                  inputFormatters: [
-                    AliasesAutoCommaFormatter(),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _CollapsibleSectionHeader(
-                  title: 'AI Metadata',
-                  subtitle: 'Optional • only for smarter AI output',
-                  isExpanded: isAiMetadataExpanded,
-                  onTap: () {
-                    setModalState(() {
-                      isAiMetadataExpanded = !isAiMetadataExpanded;
-                    });
-                  },
-                ),
-                const SizedBox(height: 12),
-                _RuleTextField(
-                  controller: negativeKeywordsController,
-                  label: 'Negative Keywords (comma separated)',
-                  hintText: 'words that should NOT match this service',
-                  maxLines: 2,
-                  inputFormatters: [
-                    AliasesAutoCommaFormatter(),
-                  ],
-                ),
-                if (isAiMetadataExpanded)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
-                    child: Column(
-                      children: [
-                        _RuleTextField(
-                          controller: aiKeywordsController,
-                          label: 'AI Keywords (comma separated)',
-                          hintText: 'common request, problem words, client phrases',
-                          maxLines: 2,
-                          inputFormatters: [
-                            AliasesAutoCommaFormatter(),
+                    const SizedBox(height: 12),
+                    _RuleField(
+                      controller: baseRateController,
+                      label: 'Base Rate',
+                    ),
+                    const SizedBox(height: 12),
+                    _CollapsibleSectionHeader(
+                      title: 'Advanced Pricing',
+                      subtitle: 'Optional • install / replace / repair / diagnostic',
+                      isExpanded: isAdvancedPricingExpanded,
+                      onTap: () {
+                        setModalState(() {
+                          isAdvancedPricingExpanded = !isAdvancedPricingExpanded;
+                        });
+                      },
+                    ),
+                    if (isAdvancedPricingExpanded)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
+                        child: Column(
+                          children: [
+                            _RuleField(
+                              controller: installFixedRateController,
+                              label: 'Install Fixed Rate',
+                            ),
+                            const SizedBox(height: 12),
+                            _RuleField(
+                              controller: replaceFixedRateController,
+                              label: 'Replace Fixed Rate',
+                            ),
+                            const SizedBox(height: 12),
+                            _RuleField(
+                              controller: repairFixedRateController,
+                              label: 'Repair Fixed Rate',
+                            ),
+                            const SizedBox(height: 12),
+                            _RuleField(
+                              controller: diagnosticFixedRateController,
+                              label: 'Diagnostic / Inspection Fee',
+                            ),
+                            const SizedBox(height: 12),
+                            _RuleField(
+                              controller: materialRatePerSqftController,
+                              label: 'Material Rate / Sqft',
+                            ),
+                            const SizedBox(height: 12),
+                            _RuleField(
+                              controller: materialFixedRateController,
+                              label: 'Material Fixed Rate',
+                            ),
+                            const SizedBox(height: 12),
+                            _RuleField(
+                              controller: prepFixedRateController,
+                              label: 'Prep Fixed Rate',
+                            ),
+                            const SizedBox(height: 12),
+                            _RuleField(
+                              controller: rushFixedRateController,
+                              label: 'Rush Fixed Rate',
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiScopeTemplateController,
-                          label: 'AI Scope Template',
-                          hintText: 'Complete the requested {service_label} work...',
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiNotesTemplateController,
-                          label: 'AI Notes Template',
-                          hintText: 'Final price may change if hidden issues are found...',
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiLaborTitleController,
-                          label: 'AI Labor Title',
-                          hintText: 'Main Service Work',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiLaborDescriptionController,
-                          label: 'AI Labor Description',
-                          hintText: 'Labor for the requested service',
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiMaterialsTitleController,
-                          label: 'AI Materials Title',
-                          hintText: 'Service Materials',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiMaterialsDescriptionController,
-                          label: 'AI Materials Description',
-                          hintText: 'Materials and consumables',
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiPrepTitleController,
-                          label: 'AI Prep Title',
-                          hintText: 'Prep Work',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiPrepDescriptionController,
-                          label: 'AI Prep Description',
-                          hintText: 'Preparation before main work begins',
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiRushTitleController,
-                          label: 'AI Rush Title',
-                          hintText: 'Rush Service',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiRushDescriptionController,
-                          label: 'AI Rush Description',
-                          hintText: 'Priority scheduling and rush handling',
-                          maxLines: 2,
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: CupertinoButton(
-                    color: const Color(0xFF1E212B),
-                    borderRadius: BorderRadius.circular(16),
-                    onPressed: isGeneratingAi
-                        ? null
-                        : () async {
-                      final serviceType = rule.serviceType.trim();
-                      if (serviceType.isEmpty) return;
+                      ),
 
-                      setModalState(() {
-                        isGeneratingAi = true;
-                      });
-
-                      try {
-                        final result = await RuleAiMetadataService.generate(
-                          serviceType: serviceType,
-                          displayName: displayNameController.text.trim(),
-                          category: rule.category,
-                          unit: unitController.text.trim().isEmpty
-                              ? rule.unit
-                              : unitController.text.trim().toLowerCase(),
-                          aliases: _parseAliases(aliasesController.text),
-                        );
-
-                        displayNameController.text =
-                        result.suggestedDisplayName.trim().isEmpty
-                            ? displayNameController.text.trim()
-                            : result.suggestedDisplayName.trim();
-
-                        aiKeywordsController.text = result.aiKeywords.join(', ');
-                        negativeKeywordsController.text = result.negativeKeywords.join(', ');
-                        aiScopeTemplateController.text = result.aiScopeTemplate;
-                        aiNotesTemplateController.text = result.aiNotesTemplate;
-                        aiLaborTitleController.text = result.aiLaborTitle;
-                        aiLaborDescriptionController.text =
-                            result.aiLaborDescription;
-                        aiMaterialsTitleController.text = result.aiMaterialsTitle;
-                        aiMaterialsDescriptionController.text =
-                            result.aiMaterialsDescription;
-                        aiPrepTitleController.text = result.aiPrepTitle;
-                        aiPrepDescriptionController.text = result.aiPrepDescription;
-                        aiRushTitleController.text = result.aiRushTitle;
-                        aiRushDescriptionController.text = result.aiRushDescription;
-                        generatedFollowupQuestions =
-                        List<Map<String, dynamic>>.from(result.aiFollowupQuestions);
-
-                        final mergedAliases = <String>{
-                          ..._parseAliases(aliasesController.text),
-                          ...result.aliases,
-                        }.toList();
-
-                        aliasesController.text = mergedAliases.join(', ');
-
-                        _showSnack('AI metadata generated');
-                      } catch (e) {
-                        _showSnack('Failed to generate AI metadata: $e');
-                        debugPrint('Failed to generate AI metadata: $e');
-                      } finally {
-                        setModalState(() {
-                          isGeneratingAi = false;
-                        });
-                      }
-                    },
-                    child: isGeneratingAi
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : const Text(
-                      'Generate AI Metadata',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton(
+                        color: const Color(0xFF5B8CFF),
+                        borderRadius: BorderRadius.circular(16),
+                        onPressed: () {
+                          Navigator.pop(
+                            context,
+                            rule.copyWith(
+                              displayName: displayNameController.text.trim().isEmpty
+                                  ? null
+                                  : displayNameController.text.trim(),
+                              unit: unitController.text.trim().isEmpty
+                                  ? rule.unit
+                                  : unitController.text.trim().toLowerCase(),
+                              baseRate: _parseDouble(baseRateController.text) ?? rule.baseRate,
+                              installFixedRate: _parseNullableDouble(installFixedRateController.text),
+                              replaceFixedRate: _parseNullableDouble(replaceFixedRateController.text),
+                              repairFixedRate: _parseNullableDouble(repairFixedRateController.text),
+                              diagnosticFixedRate: _parseNullableDouble(diagnosticFixedRateController.text),
+                              materialRatePerSqft: _parseNullableDouble(materialRatePerSqftController.text),
+                              materialFixedRate: _parseNullableDouble(materialFixedRateController.text),
+                              prepFixedRate: _parseNullableDouble(prepFixedRateController.text),
+                              rushFixedRate: _parseNullableDouble(rushFixedRateController.text),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Save Rule',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: baseRateController,
-                  label: 'Base Rate',
-                ),
-                const SizedBox(height: 12),
-                _CollapsibleSectionHeader(
-                  title: 'Advanced Pricing',
-                  subtitle: 'Optional • install / replace / repair / diagnostic',
-                  isExpanded: isAdvancedPricingExpanded,
-                  onTap: () {
-                    setModalState(() {
-                      isAdvancedPricingExpanded = !isAdvancedPricingExpanded;
-                    });
-                  },
-                ),
-                if (isAdvancedPricingExpanded)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
-                    child: Column(
-                      children: [
-                        _RuleField(
-                          controller: installFixedRateController,
-                          label: 'Install Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: replaceFixedRateController,
-                          label: 'Replace Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: repairFixedRateController,
-                          label: 'Repair Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: diagnosticFixedRateController,
-                          label: 'Diagnostic / Inspection Fee',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: materialRatePerSqftController,
-                          label: 'Material Rate / Sqft',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: materialFixedRateController,
-                          label: 'Material Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: prepFixedRateController,
-                          label: 'Prep Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: rushFixedRateController,
-                          label: 'Rush Fixed Rate',
-                        ),
-                      ],
-                    ),
-                  ),
-
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: CupertinoButton(
-                    color: const Color(0xFF5B8CFF),
-                    borderRadius: BorderRadius.circular(16),
-                    onPressed: () {
-                      Navigator.pop(
-                        context,
-                        rule.copyWith(
-                          displayName: displayNameController.text.trim().isEmpty
-                              ? null
-                              : displayNameController.text.trim(),
-                          aliases: _parseAliases(aliasesController.text),
-                          aiKeywords: _parseAliases(aiKeywordsController.text),
-                          negativeKeywords: _parseAliases(negativeKeywordsController.text),
-                          aiScopeTemplate: aiScopeTemplateController.text.trim().isEmpty
-                              ? null
-                              : aiScopeTemplateController.text.trim(),
-                          aiNotesTemplate: aiNotesTemplateController.text.trim().isEmpty
-                              ? null
-                              : aiNotesTemplateController.text.trim(),
-                          aiLaborTitle: aiLaborTitleController.text.trim().isEmpty
-                              ? null
-                              : aiLaborTitleController.text.trim(),
-                          aiLaborDescription: aiLaborDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiLaborDescriptionController.text.trim(),
-                          aiMaterialsTitle: aiMaterialsTitleController.text.trim().isEmpty
-                              ? null
-                              : aiMaterialsTitleController.text.trim(),
-                          aiMaterialsDescription: aiMaterialsDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiMaterialsDescriptionController.text.trim(),
-                          aiPrepTitle: aiPrepTitleController.text.trim().isEmpty
-                              ? null
-                              : aiPrepTitleController.text.trim(),
-                          aiPrepDescription: aiPrepDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiPrepDescriptionController.text.trim(),
-                          aiRushTitle: aiRushTitleController.text.trim().isEmpty
-                              ? null
-                              : aiRushTitleController.text.trim(),
-                          aiRushDescription: aiRushDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiRushDescriptionController.text.trim(),
-                          unit: unitController.text.trim().isEmpty
-                              ? rule.unit
-                              : unitController.text.trim().toLowerCase(),
-                          baseRate: _parseDouble(baseRateController.text) ?? 0,
-                          installFixedRate:
-                          _parseNullableDouble(installFixedRateController.text),
-                          replaceFixedRate:
-                          _parseNullableDouble(replaceFixedRateController.text),
-                          repairFixedRate:
-                          _parseNullableDouble(repairFixedRateController.text),
-                          diagnosticFixedRate:
-                          _parseNullableDouble(diagnosticFixedRateController.text),
-                          materialRatePerSqft:
-                          _parseNullableDouble(materialRatePerSqftController.text),
-                          materialFixedRate:
-                          _parseNullableDouble(materialFixedRateController.text),
-                          prepFixedRate:
-                          _parseNullableDouble(prepFixedRateController.text),
-                          rushFixedRate:
-                          _parseNullableDouble(rushFixedRateController.text),
-                          aiFollowupQuestions: generatedFollowupQuestions,
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Save Rule',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-         );
-        },
-       );
+              ),
+            );
+          },
+        );
       },
     );
 
@@ -806,39 +564,24 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
       await EstimatePriceRulesService.suggestAndSaveIcon(updatedRule);
       await _loadRules();
       _showSnack('Rule updated');
+      // Regenerate AI metadata only if name changed
+      final nameChanged = updatedRule.displayName?.trim() != rule.displayName?.trim();
+      if (nameChanged) {
+        _generateAiMetadataInBackground(updatedRule);
+      }
     } catch (e) {
       _showSnack('Не удалось обновить rule');
     }
   }
 
   Future<void> _addRule({String? initialCategory}) async {
-    final serviceTypeController = TextEditingController();
-
     final lockedCategory = initialCategory?.trim().isNotEmpty == true
         ? initialCategory!.trim().toLowerCase()
         : null;
 
-    final categoryController = TextEditingController(
-      text: lockedCategory ?? '',
-    );
+    final categoryController = TextEditingController(text: lockedCategory ?? '');
     final unitController = TextEditingController(text: 'fixed');
-
     final displayNameController = TextEditingController();
-    final aliasesController = TextEditingController();
-
-    final aiKeywordsController = TextEditingController();
-    final negativeKeywordsController = TextEditingController();
-    final aiScopeTemplateController = TextEditingController();
-    final aiNotesTemplateController = TextEditingController();
-    final aiLaborTitleController = TextEditingController();
-    final aiLaborDescriptionController = TextEditingController();
-    final aiMaterialsTitleController = TextEditingController();
-    final aiMaterialsDescriptionController = TextEditingController();
-    final aiPrepTitleController = TextEditingController();
-    final aiPrepDescriptionController = TextEditingController();
-    final aiRushTitleController = TextEditingController();
-    final aiRushDescriptionController = TextEditingController();
-
     final baseRateController = TextEditingController();
     final materialRatePerSqftController = TextEditingController();
     final materialFixedRateController = TextEditingController();
@@ -849,11 +592,7 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     final repairFixedRateController = TextEditingController();
     final diagnosticFixedRateController = TextEditingController();
 
-    bool isAiMetadataExpanded = false;
-    bool isGeneratingAi = false;
     bool isAdvancedPricingExpanded = false;
-
-    List<Map<String, dynamic>> generatedFollowupQuestions = [];
 
     final newRule = await showModalBottomSheet<EstimatePriceRuleModel>(
       context: context,
@@ -862,448 +601,178 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setModalState) {
-              return Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            20,
-            20,
-            MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.92,
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: Text(
-                        lockedCategory == null
-                            ? 'Add Service Type'
-                            : 'Add ${_formatCategoryTitle(lockedCategory)} Service',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      minSize: 32,
-                      onPressed: () => Navigator.pop(context),
-                      child: const Icon(
-                        CupertinoIcons.xmark_circle_fill,
-                        color: Color(0xFF8E93A6),
-                        size: 24,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                _RuleTextField(
-                  controller: serviceTypeController,
-                  label: 'Service Type',
-                  hintText: 'service_type',
-                ),
-                const SizedBox(height: 12),
-                _RuleTextField(
-                  controller: displayNameController,
-                  label: 'Display Name',
-                  hintText: 'Service display name',
-                ),
-                const SizedBox(height: 12),
-                _RuleTextField(
-                  controller: aliasesController,
-                  label: 'Aliases (comma separated)',
-                  hintText: 'main name, short name, common client words',
-                  maxLines: 2,
-                  inputFormatters: [
-                    AliasesAutoCommaFormatter(),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _CollapsibleSectionHeader(
-                  title: 'AI Metadata',
-                  subtitle: 'Optional • only for smarter AI output',
-                  isExpanded: isAiMetadataExpanded,
-                  onTap: () {
-                    setModalState(() {
-                      isAiMetadataExpanded = !isAiMetadataExpanded;
-                    });
-                  },
-                ),
-                const SizedBox(height: 12),
-                _RuleTextField(
-                  controller: negativeKeywordsController,
-                  label: 'Negative Keywords (comma separated)',
-                  hintText: 'do not match: demolition, wall removal, furniture pickup',
-                  maxLines: 2,
-                  inputFormatters: [
-                    AliasesAutoCommaFormatter(),
-                  ],
-                ),
-                if (isAiMetadataExpanded)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
-                    child: Column(
+                    Row(
                       children: [
-                        _RuleTextField(
-                          controller: aiKeywordsController,
-                          label: 'AI Keywords (comma separated)',
-                          hintText: 'common request, problem words, client phrases',
-                          maxLines: 2,
-                          inputFormatters: [
-                            AliasesAutoCommaFormatter(),
+                        Expanded(
+                          child: Text(
+                            lockedCategory == null
+                                ? 'Add Service Type'
+                                : 'Add ${_formatCategoryTitle(lockedCategory)} Service',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          minSize: 32,
+                          onPressed: () => Navigator.pop(context),
+                          child: const Icon(
+                            CupertinoIcons.xmark_circle_fill,
+                            color: Color(0xFF8E93A6),
+                            size: 24,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    _RuleTextField(
+                      controller: displayNameController,
+                      label: 'Service Name',
+                      hintText: 'e.g. Outlet Replacement',
+                    ),
+                    const SizedBox(height: 12),
+                    if (lockedCategory == null) ...[
+                      _RuleTextField(
+                        controller: categoryController,
+                        label: 'Category',
+                        hintText: 'plumbing, electrical, roofing',
+                      ),
+                      const SizedBox(height: 12),
+                    ] else ...[
+                      _LockedCategoryInfo(
+                        title: 'Category',
+                        value: _formatCategoryTitle(lockedCategory),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    _RuleUnitPickerField(
+                      controller: unitController,
+                      label: 'Unit',
+                      onTap: () => _pickRuleUnit(
+                        controller: unitController,
+                        setModalState: setModalState,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _RuleField(
+                      controller: baseRateController,
+                      label: 'Base Rate',
+                    ),
+                    const SizedBox(height: 12),
+                    _CollapsibleSectionHeader(
+                      title: 'Advanced Pricing',
+                      subtitle: 'Optional • install / replace / repair / diagnostic',
+                      isExpanded: isAdvancedPricingExpanded,
+                      onTap: () {
+                        setModalState(() {
+                          isAdvancedPricingExpanded = !isAdvancedPricingExpanded;
+                        });
+                      },
+                    ),
+                    if (isAdvancedPricingExpanded)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
+                        child: Column(
+                          children: [
+                            _RuleField(controller: installFixedRateController, label: 'Install Fixed Rate'),
+                            const SizedBox(height: 12),
+                            _RuleField(controller: replaceFixedRateController, label: 'Replace Fixed Rate'),
+                            const SizedBox(height: 12),
+                            _RuleField(controller: repairFixedRateController, label: 'Repair Fixed Rate'),
+                            const SizedBox(height: 12),
+                            _RuleField(controller: diagnosticFixedRateController, label: 'Diagnostic / Inspection Fee'),
+                            const SizedBox(height: 12),
+                            _RuleField(controller: materialRatePerSqftController, label: 'Material Rate / Sqft'),
+                            const SizedBox(height: 12),
+                            _RuleField(controller: materialFixedRateController, label: 'Material Fixed Rate'),
+                            const SizedBox(height: 12),
+                            _RuleField(controller: prepFixedRateController, label: 'Prep Fixed Rate'),
+                            const SizedBox(height: 12),
+                            _RuleField(controller: rushFixedRateController, label: 'Rush Fixed Rate'),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiScopeTemplateController,
-                          label: 'AI Scope Template',
-                          hintText: 'Complete the requested {service_label} work...',
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiNotesTemplateController,
-                          label: 'AI Notes Template',
-                          hintText: 'Final price may change if hidden issues are found...',
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiLaborTitleController,
-                          label: 'AI Labor Title',
-                          hintText: 'Main Service Work',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiLaborDescriptionController,
-                          label: 'AI Labor Description',
-                          hintText: 'Labor for the requested service',
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiMaterialsTitleController,
-                          label: 'AI Materials Title',
-                          hintText: 'Service Materials',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiMaterialsDescriptionController,
-                          label: 'AI Materials Description',
-                          hintText: 'Materials and consumables',
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiPrepTitleController,
-                          label: 'AI Prep Title',
-                          hintText: 'Prep Work',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiPrepDescriptionController,
-                          label: 'AI Prep Description',
-                          hintText: 'Preparation before main work begins',
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiRushTitleController,
-                          label: 'AI Rush Title',
-                          hintText: 'Rush Service',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleTextField(
-                          controller: aiRushDescriptionController,
-                          label: 'AI Rush Description',
-                          hintText: 'Priority scheduling and rush handling',
-                          maxLines: 2,
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: CupertinoButton(
-                    color: const Color(0xFF1E212B),
-                    borderRadius: BorderRadius.circular(16),
-                    onPressed: isGeneratingAi
-                        ? null
-                        : () async {
-                      final serviceType = serviceTypeController.text.trim();
-                      final category = categoryController.text.trim();
-                      final unit = unitController.text.trim();
+                      ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: CupertinoButton(
+                        color: const Color(0xFF5B8CFF),
+                        borderRadius: BorderRadius.circular(16),
+                        onPressed: () {
+                          final displayName = displayNameController.text.trim();
+                          final category = lockedCategory ?? categoryController.text.trim();
+                          final unit = unitController.text.trim();
+                          final baseRate = _parseDouble(baseRateController.text);
 
-                      if (serviceType.isEmpty) return;
+                          if (displayName.isEmpty || category.isEmpty || baseRate == null) {
+                            _showSnack('Service name and base rate are required');
+                            return;
+                          }
 
-                      setModalState(() {
-                        isGeneratingAi = true;
-                      });
+                          final autoServiceType = displayName
+                              .toLowerCase()
+                              .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+                              .replaceAll(RegExp(r'_+'), '_')
+                              .replaceAll(RegExp(r'^_|_$'), '');
 
-                      try {
-                        final result = await RuleAiMetadataService.generate(
-                          serviceType: serviceType,
-                          displayName: displayNameController.text.trim(),
-                          category: category,
-                          unit: unit,
-                          aliases: _parseAliases(aliasesController.text),
-                        );
-
-                        serviceTypeController.text =
-                        result.normalizedServiceType.trim().isEmpty
-                            ? serviceTypeController.text.trim().toLowerCase()
-                            : result.normalizedServiceType.trim().toLowerCase();
-
-                        displayNameController.text =
-                        result.suggestedDisplayName.trim().isEmpty
-                            ? displayNameController.text.trim()
-                            : result.suggestedDisplayName.trim();
-
-                        aiKeywordsController.text = result.aiKeywords.join(', ');
-                        aiScopeTemplateController.text = result.aiScopeTemplate;
-                        aiNotesTemplateController.text = result.aiNotesTemplate;
-                        aiLaborTitleController.text = result.aiLaborTitle;
-                        aiLaborDescriptionController.text =
-                            result.aiLaborDescription;
-                        aiMaterialsTitleController.text = result.aiMaterialsTitle;
-                        aiMaterialsDescriptionController.text =
-                            result.aiMaterialsDescription;
-                        aiPrepTitleController.text = result.aiPrepTitle;
-                        aiPrepDescriptionController.text = result.aiPrepDescription;
-                        aiRushTitleController.text = result.aiRushTitle;
-                        aiRushDescriptionController.text = result.aiRushDescription;
-                        generatedFollowupQuestions =
-                        List<Map<String, dynamic>>.from(result.aiFollowupQuestions);
-
-                        final mergedAliases = <String>{
-                          ..._parseAliases(aliasesController.text),
-                          ...result.aliases,
-                        }.toList();
-
-                        aliasesController.text = mergedAliases.join(', ');
-
-                        _showSnack('AI metadata generated');
-                      } catch (e) {
-                        _showSnack('Failed to generate AI metadata: $e');
-                        debugPrint('Failed to generate AI metadata: $e');
-                      } finally {
-                        setModalState(() {
-                          isGeneratingAi = false;
-                        });
-                      }
-                    },
-                    child: isGeneratingAi
-                        ? const CupertinoActivityIndicator(color: Colors.white)
-                        : const Text(
-                      'Generate AI Metadata',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                          Navigator.pop(
+                            context,
+                            EstimatePriceRuleModel(
+                              id: _buildRuleId(serviceType: autoServiceType, category: category),
+                              aiFollowupQuestions: const [],
+                              negativeKeywords: const [],
+                              serviceType: autoServiceType,
+                              category: category.toLowerCase(),
+                              unit: unit.isEmpty ? 'fixed' : unit.toLowerCase(),
+                              displayName: displayName,
+                              aliases: const [],
+                              aiKeywords: const [],
+                              baseRate: baseRate,
+                              installFixedRate: _parseNullableDouble(installFixedRateController.text),
+                              replaceFixedRate: _parseNullableDouble(replaceFixedRateController.text),
+                              repairFixedRate: _parseNullableDouble(repairFixedRateController.text),
+                              diagnosticFixedRate: _parseNullableDouble(diagnosticFixedRateController.text),
+                              materialRatePerSqft: _parseNullableDouble(materialRatePerSqftController.text),
+                              materialFixedRate: _parseNullableDouble(materialFixedRateController.text),
+                              prepFixedRate: _parseNullableDouble(prepFixedRateController.text),
+                              rushFixedRate: _parseNullableDouble(rushFixedRateController.text),
+                              isActive: true,
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Create Rule',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                if (lockedCategory == null) ...[
-                  _RuleTextField(
-                    controller: categoryController,
-                    label: 'Category',
-                    hintText: 'plumbing, electrical, roofing',
-                  ),
-                  const SizedBox(height: 12),
-                ] else ...[
-                  _LockedCategoryInfo(
-                    title: 'Category',
-                    value: _formatCategoryTitle(lockedCategory),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                _RuleUnitPickerField(
-                  controller: unitController,
-                  label: 'Unit',
-                  onTap: () => _pickRuleUnit(
-                    controller: unitController,
-                    setModalState: setModalState,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _RuleField(
-                  controller: baseRateController,
-                  label: 'Base Rate',
-                ),
-                const SizedBox(height: 12),
-                _CollapsibleSectionHeader(
-                  title: 'Advanced Pricing',
-                  subtitle: 'Optional • install / replace / repair / diagnostic',
-                  isExpanded: isAdvancedPricingExpanded,
-                  onTap: () {
-                    setModalState(() {
-                      isAdvancedPricingExpanded = !isAdvancedPricingExpanded;
-                    });
-                  },
-                ),
-                if (isAdvancedPricingExpanded)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 12, 0, 0),
-                    child: Column(
-                      children: [
-                        _RuleField(
-                          controller: installFixedRateController,
-                          label: 'Install Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: replaceFixedRateController,
-                          label: 'Replace Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: repairFixedRateController,
-                          label: 'Repair Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: diagnosticFixedRateController,
-                          label: 'Diagnostic / Inspection Fee',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: materialRatePerSqftController,
-                          label: 'Material Rate / Sqft',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: materialFixedRateController,
-                          label: 'Material Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: prepFixedRateController,
-                          label: 'Prep Fixed Rate',
-                        ),
-                        const SizedBox(height: 12),
-                        _RuleField(
-                          controller: rushFixedRateController,
-                          label: 'Rush Fixed Rate',
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: CupertinoButton(
-                    color: const Color(0xFF5B8CFF),
-                    borderRadius: BorderRadius.circular(16),
-                    onPressed: () {
-                      final serviceType = serviceTypeController.text.trim();
-                      final category = categoryController.text.trim();
-                      final unit = unitController.text.trim();
-                      final baseRate = _parseDouble(baseRateController.text);
-
-                      if (serviceType.isEmpty ||
-                          category.isEmpty ||
-                          unit.isEmpty ||
-                          baseRate == null) {
-                        return;
-                      }
-
-                      Navigator.pop(
-                        context,
-                        EstimatePriceRuleModel(
-                          id: _buildRuleId(
-                            serviceType: serviceType,
-                            category: category,
-                          ),
-                          aiFollowupQuestions: generatedFollowupQuestions,
-                          negativeKeywords: _parseAliases(negativeKeywordsController.text),
-                          serviceType: serviceType.toLowerCase(),
-                          category: category.toLowerCase(),
-                          unit: unit.toLowerCase(),
-                          displayName: displayNameController.text.trim().isEmpty
-                              ? null
-                              : displayNameController.text.trim(),
-                          aliases: _parseAliases(aliasesController.text),
-                          aiKeywords: _parseAliases(aiKeywordsController.text),
-                          aiScopeTemplate: aiScopeTemplateController.text.trim().isEmpty
-                              ? null
-                              : aiScopeTemplateController.text.trim(),
-                          aiNotesTemplate: aiNotesTemplateController.text.trim().isEmpty
-                              ? null
-                              : aiNotesTemplateController.text.trim(),
-                          aiLaborTitle: aiLaborTitleController.text.trim().isEmpty
-                              ? null
-                              : aiLaborTitleController.text.trim(),
-                          aiLaborDescription: aiLaborDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiLaborDescriptionController.text.trim(),
-                          aiMaterialsTitle: aiMaterialsTitleController.text.trim().isEmpty
-                              ? null
-                              : aiMaterialsTitleController.text.trim(),
-                          aiMaterialsDescription: aiMaterialsDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiMaterialsDescriptionController.text.trim(),
-                          aiPrepTitle: aiPrepTitleController.text.trim().isEmpty
-                              ? null
-                              : aiPrepTitleController.text.trim(),
-                          aiPrepDescription: aiPrepDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiPrepDescriptionController.text.trim(),
-                          aiRushTitle: aiRushTitleController.text.trim().isEmpty
-                              ? null
-                              : aiRushTitleController.text.trim(),
-                          aiRushDescription: aiRushDescriptionController.text.trim().isEmpty
-                              ? null
-                              : aiRushDescriptionController.text.trim(),
-                          baseRate: baseRate,
-                          installFixedRate: _parseNullableDouble(
-                            installFixedRateController.text,
-                          ),
-                          replaceFixedRate: _parseNullableDouble(
-                            replaceFixedRateController.text,
-                          ),
-                          repairFixedRate: _parseNullableDouble(
-                            repairFixedRateController.text,
-                          ),
-                          diagnosticFixedRate: _parseNullableDouble(
-                            diagnosticFixedRateController.text,
-                          ),
-                          materialRatePerSqft: _parseNullableDouble(
-                            materialRatePerSqftController.text,
-                          ),
-                          materialFixedRate: _parseNullableDouble(
-                            materialFixedRateController.text,
-                          ),
-                          prepFixedRate: _parseNullableDouble(
-                            prepFixedRateController.text,
-                          ),
-                          rushFixedRate: _parseNullableDouble(
-                            rushFixedRateController.text,
-                          ),
-                          isActive: true,
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Create Rule',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-              );
-            },
-          );
-        },
+              ),
+            );
+          },
+        );
+      },
     );
 
     if (newRule == null) return;
@@ -1313,6 +782,8 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
       await EstimatePriceRulesService.suggestAndSaveIcon(newRule);
       await _loadRules();
       _showSnack('Rule created');
+      // Generate AI metadata in background automatically
+      _generateAiMetadataInBackground(newRule);
     } catch (e) {
       _showSnack('Failed to create rule');
     }
@@ -1487,118 +958,118 @@ class _PriceRulesScreenState extends State<PriceRulesScreen> {
     const background = Color(0xFF0B0B0F);
 
     return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
         backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 20,
-        title: const Text(
-          'Price Rules',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
+        appBar: AppBar(
+          backgroundColor: background,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          centerTitle: false,
+          titleSpacing: 20,
+          title: const Text(
+            'Price Rules',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.4,
+            ),
           ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                color: const Color(0xFF1E212B),
+                borderRadius: BorderRadius.circular(14),
+                onPressed: () => _addRule(),
+                child: const Text(
+                  'Add',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                color: const Color(0xFF5B8CFF),
+                borderRadius: BorderRadius.circular(14),
+                onPressed: _isDeletingAll ? null : _deleteAllRules,
+                child: _isDeletingAll
+                    ? const CupertinoActivityIndicator(color: Colors.white)
+                    : const Text(
+                  'Delete All',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: const Color(0xFF1E212B),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: () => _addRule(),
-              child: const Text(
-                'Add',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+        body: _isLoading
+            ? const Center(
+          child: CupertinoActivityIndicator(radius: 16),
+        )
+            : _rules.isEmpty
+            ? _EmptyPriceRulesState(onAdd: () => _addRule())
+            : Builder(
+          builder: (context) {
+            final visibleRulesByCategory = _visibleRulesByCategory;
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
+              children: [
+                _PriceRulesSearchField(
+                  controller: _searchController,
+                  onClear: () => _searchController.clear(),
                 ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: _isDeletingAll ? null : _deleteAllRules,
-              child: _isDeletingAll
-                  ? const CupertinoActivityIndicator(color: Colors.white)
-                  : const Text(
-                'Delete All',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(
-        child: CupertinoActivityIndicator(radius: 16),
-      )
-          : _rules.isEmpty
-          ? _EmptyPriceRulesState(onAdd: () => _addRule())
-          : Builder(
-        builder: (context) {
-      final visibleRulesByCategory = _visibleRulesByCategory;
+                const SizedBox(height: 14),
 
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
-        children: [
-          _PriceRulesSearchField(
-            controller: _searchController,
-            onClear: () => _searchController.clear(),
-          ),
-          const SizedBox(height: 14),
+                if (visibleRulesByCategory.isEmpty)
+                  const _NoSearchResultsState()
+                else
+                  ...visibleRulesByCategory.entries.map((entry) {
+                    final category = entry.key;
+                    final rules = entry.value;
+                    final isExpanded = _isSearching || _expandedCategory == category;
 
-          if (visibleRulesByCategory.isEmpty)
-            const _NoSearchResultsState()
-          else
-            ...visibleRulesByCategory.entries.map((entry) {
-              final category = entry.key;
-              final rules = entry.value;
-              final isExpanded = _isSearching || _expandedCategory == category;
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: _PriceRuleCategoryCard(
-                  title: _formatCategoryTitle(category),
-                  subtitle:
-                  '${rules.length} service${rules.length == 1 ? '' : 's'}',
-                  onAdd: () => _addRule(initialCategory: category),
-                  isExpanded: isExpanded,
-                  onToggle: () {
-                    if (_isSearching) return;
-
-                    setState(() {
-                      _expandedCategory = isExpanded ? null : category;
-                    });
-                  },
-                  children: rules.map((rule) {
                     return Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: _PriceRuleTile(
-                        rule: rule,
-                        onTap: () => _editRule(rule),
-                        onDelete: () => _deleteRule(rule),
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: _PriceRuleCategoryCard(
+                        title: _formatCategoryTitle(category),
+                        subtitle:
+                        '${rules.length} service${rules.length == 1 ? '' : 's'}',
+                        onAdd: () => _addRule(initialCategory: category),
+                        isExpanded: isExpanded,
+                        onToggle: () {
+                          if (_isSearching) return;
+
+                          setState(() {
+                            _expandedCategory = isExpanded ? null : category;
+                          });
+                        },
+                        children: rules.map((rule) {
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: _PriceRuleTile(
+                              rule: rule,
+                              onTap: () => _editRule(rule),
+                              onDelete: () => _deleteRule(rule),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     );
                   }).toList(),
-                ),
-              );
-            }).toList(),
-        ],
-      );
-    },
-    )
+              ],
+            );
+          },
+        )
     );
   }
 }
@@ -1614,13 +1085,28 @@ class _PriceRuleTile extends StatelessWidget {
     required this.onDelete,
   });
 
-  String _formatValue(double? value) {
-    if (value == null) return '—';
-    return value.toStringAsFixed(2);
-  }
-
   @override
   Widget build(BuildContext context) {
+    final name = rule.displayName?.trim().isNotEmpty == true
+        ? rule.displayName!.trim()
+        : rule.serviceType
+        .split(RegExp(r'[_\s-]+'))
+        .where((p) => p.isNotEmpty)
+        .map((p) => p[0].toUpperCase() + p.substring(1).toLowerCase())
+        .join(' ');
+
+    final rates = <MapEntry<String, double>>[
+      if (rule.baseRate > 0) MapEntry('Base Rate', rule.baseRate),
+      if ((rule.installFixedRate ?? 0) > 0) MapEntry('Install', rule.installFixedRate!),
+      if ((rule.replaceFixedRate ?? 0) > 0) MapEntry('Replace', rule.replaceFixedRate!),
+      if ((rule.repairFixedRate ?? 0) > 0) MapEntry('Repair', rule.repairFixedRate!),
+      if ((rule.diagnosticFixedRate ?? 0) > 0) MapEntry('Inspect', rule.diagnosticFixedRate!),
+      if ((rule.materialRatePerSqft ?? 0) > 0) MapEntry('Material / Sqft', rule.materialRatePerSqft!),
+      if ((rule.materialFixedRate ?? 0) > 0) MapEntry('Material Fixed', rule.materialFixedRate!),
+      if ((rule.prepFixedRate ?? 0) > 0) MapEntry('Prep Fixed', rule.prepFixedRate!),
+      if ((rule.rushFixedRate ?? 0) > 0) MapEntry('Rush Fixed', rule.rushFixedRate!),
+    ];
+
     return Material(
       color: const Color(0xFF101117),
       borderRadius: BorderRadius.circular(18),
@@ -1628,7 +1114,7 @@ class _PriceRuleTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: const Color(0xFF23252E)),
@@ -1639,47 +1125,44 @@ class _PriceRuleTile extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Icon(
+                      WorkioIconMapper.resolveFromTitle(name, iconName: rule.iconName),
+                      color: const Color(0xFF8E93A6),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          rule.displayName?.trim().isNotEmpty == true
-                              ? rule.displayName!
-                              : rule.serviceType
-                              .split(RegExp(r'[_\s-]+'))
-                              .where((part) => part.isNotEmpty)
-                              .map((part) => part[0].toUpperCase() + part.substring(1).toLowerCase())
-                              .join(' '),
+                          name,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 3),
                         Text(
-                          'Type: ${rule.serviceType} • Unit: ${rule.unit}',
+                          'Unit: ${rule.unit}',
                           style: const TextStyle(
                             color: Color(0xFF8E93A6),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
                   GestureDetector(
                     onTap: onDelete,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF171922),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF2A2D37)),
-                      ),
-                      child: const Icon(
+                    child: const Padding(
+                      padding: EdgeInsets.fromLTRB(8, 0, 0, 0),
+                      child: Icon(
                         CupertinoIcons.trash,
                         color: Color(0xFFFF7B7B),
                         size: 18,
@@ -1688,36 +1171,42 @@ class _PriceRuleTile extends StatelessWidget {
                   ),
                 ],
               ),
-              if (rule.aliases.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Aliases: ${rule.aliases.join(', ')}',
-                  style: const TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    height: 1.3,
+              if (rates.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                ...rates.map((e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D0E14),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF1F212A)),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          e.key,
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          e.value.toStringAsFixed(2),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                )),
               ],
-              const SizedBox(height: 10),
-              _RuleLine(label: 'Base Rate', value: _formatValue(rule.baseRate)),
-              _RuleLine(
-                label: 'Material / Sqft',
-                value: _formatValue(rule.materialRatePerSqft),
-              ),
-              _RuleLine(
-                label: 'Material Fixed',
-                value: _formatValue(rule.materialFixedRate),
-              ),
-              _RuleLine(
-                label: 'Prep Fixed',
-                value: _formatValue(rule.prepFixedRate),
-              ),
-              _RuleLine(
-                label: 'Rush Fixed',
-                value: _formatValue(rule.rushFixedRate),
-              ),
             ],
           ),
         ),

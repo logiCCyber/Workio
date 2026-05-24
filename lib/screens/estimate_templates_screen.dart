@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/estimate_template_model.dart';
 import '../services/estimate_template_service.dart';
@@ -83,6 +84,306 @@ class _EstimateTemplatesScreenState extends State<EstimateTemplatesScreen> {
     });
   }
 
+  Future<void> _openLargeTextEditor({
+    required String title,
+    required TextEditingController controller,
+    required IconData icon,
+  }) async {
+    final tempController = TextEditingController(text: controller.text.trim());
+    final focusNode = FocusNode();
+
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFF15161C),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * 0.88,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3A3D49),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+                        Icon(
+                          icon,
+                          color: const Color(0xFF8FB0FF),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () async {
+                            FocusManager.instance.primaryFocus?.unfocus();
+                            await SystemChannels.textInput
+                                .invokeMethod<void>('TextInput.hide');
+                            await Future.delayed(
+                              const Duration(milliseconds: 250),
+                            );
+
+                            if (sheetContext.mounted) {
+                              Navigator.pop(sheetContext);
+                            }
+                          },
+                          child: const Icon(
+                            CupertinoIcons.xmark_circle_fill,
+                            color: Color(0xFF8E93A6),
+                            size: 28,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Review and edit this text before saving.',
+                        style: TextStyle(
+                          color: Color(0xFF8E93A6),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF101117),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: const Color(0xFF23252E)),
+                        ),
+                        child: TextField(
+                          controller: tempController,
+                          focusNode: focusNode,
+                          expands: true,
+                          maxLines: null,
+                          minLines: null,
+                          keyboardType: TextInputType.multiline,
+                          textAlignVertical: TextAlignVertical.top,
+                          cursorColor: const Color(0xFF5B8CFF),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            height: 1.45,
+                          ),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Enter text...',
+                            hintStyle: TextStyle(
+                              color: Color(0xFF697086),
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: CupertinoButton(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            color: const Color(0xFF20232D),
+                            borderRadius: BorderRadius.circular(16),
+                            onPressed: () async {
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await SystemChannels.textInput
+                                  .invokeMethod<void>('TextInput.hide');
+                              await Future.delayed(
+                                const Duration(milliseconds: 250),
+                              );
+
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+                            },
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: CupertinoButton(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            color: const Color(0xFF5B8CFF),
+                            borderRadius: BorderRadius.circular(16),
+                            onPressed: () async {
+                              final value = tempController.text.trim();
+
+                              FocusManager.instance.primaryFocus?.unfocus();
+                              await SystemChannels.textInput
+                                  .invokeMethod<void>('TextInput.hide');
+                              await Future.delayed(
+                                const Duration(milliseconds: 250),
+                              );
+
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext, value);
+                              }
+                            },
+                            child: const Text(
+                              'Save',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    tempController.dispose();
+    focusNode.dispose();
+
+    if (result == null) return;
+
+    setState(() {
+      controller.text = result.trim();
+    });
+  }
+
+  Widget _formPanel({
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF101117),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF23252E)),
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _largeTextRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    final cleanValue = value.trim().isEmpty ? 'Tap to add text' : value.trim();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                color: const Color(0xFF8E93A6),
+                size: 18,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            color: Color(0xFF8E93A6),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        const Icon(
+                          CupertinoIcons.arrow_up_left_arrow_down_right,
+                          color: Color(0xFF8E93A6),
+                          size: 15,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      cleanValue,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: value.trim().isEmpty
+                            ? const Color(0xFF697086)
+                            : Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
 
@@ -107,56 +408,111 @@ class _EstimateTemplatesScreenState extends State<EstimateTemplatesScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
             20,
+            14,
             20,
-            20,
-            MediaQuery.of(context).viewInsets.bottom + 24,
+            MediaQuery.of(sheetContext).viewInsets.bottom + 24,
           ),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  template == null ? 'New Template' : 'Edit Template',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3D49),
+                    borderRadius: BorderRadius.circular(999),
                   ),
                 ),
+
                 const SizedBox(height: 18),
-                _PremiumTextField(
-                  controller: nameController,
-                  label: 'Template Name',
-                  hintText: 'Basic Service Template',
+
+                Row(
+                  children: [
+                    Icon(
+                      template == null
+                          ? CupertinoIcons.plus_circle
+                          : CupertinoIcons.pencil_circle,
+                      color: const Color(0xFFB8C1D9),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        template == null ? 'New Template' : 'Edit Template',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                _PremiumTextField(
-                  controller: serviceTypeController,
-                  label: 'Service Type',
-                  hintText: 'service_type',
-                ),
-                const SizedBox(height: 12),
-                _PremiumTextField(
-                  controller: scopeController,
-                  label: 'Default Scope',
-                  hintText: 'Describe the default work scope for this service...',
-                  maxLines: 5,
-                ),
-                const SizedBox(height: 12),
-                _PremiumTextField(
-                  controller: notesController,
-                  label: 'Default Notes',
-                  hintText: 'Default notes, exclusions, materials, or conditions...',
-                  maxLines: 4,
-                ),
+
                 const SizedBox(height: 18),
+
+                _formPanel(
+                  children: [
+                    _PremiumTextField(
+                      controller: nameController,
+                      label: 'Template Name',
+                      hintText: 'Basic Service Template',
+                      leadingIcon: CupertinoIcons.doc_text,
+                    ),
+                    const Divider(color: Color(0xFF23252E), height: 1),
+                    _PremiumTextField(
+                      controller: serviceTypeController,
+                      label: 'Service Type',
+                      hintText: 'service_type',
+                      leadingIcon: CupertinoIcons.gear,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                _formPanel(
+                  children: [
+                    _largeTextRow(
+                      icon: CupertinoIcons.doc_plaintext,
+                      label: 'Default Scope',
+                      value: scopeController.text,
+                      onTap: () {
+                        _openLargeTextEditor(
+                          title: 'Edit Default Scope',
+                          controller: scopeController,
+                          icon: CupertinoIcons.doc_plaintext,
+                        );
+                      },
+                    ),
+                    const Divider(color: Color(0xFF23252E), height: 1),
+                    _largeTextRow(
+                      icon: CupertinoIcons.text_alignleft,
+                      label: 'Default Notes',
+                      value: notesController.text,
+                      onTap: () {
+                        _openLargeTextEditor(
+                          title: 'Edit Default Notes',
+                          controller: notesController,
+                          icon: CupertinoIcons.text_alignleft,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 18),
+
                 SizedBox(
                   width: double.infinity,
                   child: CupertinoButton(
+                    padding: const EdgeInsets.symmetric(vertical: 15),
                     color: const Color(0xFF5B8CFF),
                     borderRadius: BorderRadius.circular(16),
                     onPressed: _isSaving
@@ -165,11 +521,36 @@ class _EstimateTemplatesScreenState extends State<EstimateTemplatesScreen> {
                       final name = nameController.text.trim();
                       if (name.isEmpty) return;
 
-                      Navigator.pop(context, true);
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      await SystemChannels.textInput
+                          .invokeMethod<void>('TextInput.hide');
+                      await Future.delayed(
+                        const Duration(milliseconds: 250),
+                      );
+
+                      if (sheetContext.mounted) {
+                        Navigator.pop(sheetContext, true);
+                      }
                     },
-                    child: Text(
-                      template == null ? 'Continue' : 'Save Changes',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          template == null
+                              ? CupertinoIcons.arrow_right_circle
+                              : CupertinoIcons.checkmark_circle,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          template == null ? 'Continue' : 'Save Changes',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -179,6 +560,8 @@ class _EstimateTemplatesScreenState extends State<EstimateTemplatesScreen> {
         );
       },
     );
+
+    await Future.delayed(const Duration(milliseconds: 400));
 
     if (result == true) {
       setState(() {
@@ -222,6 +605,11 @@ class _EstimateTemplatesScreenState extends State<EstimateTemplatesScreen> {
         }
       }
     }
+
+    nameController.dispose();
+    serviceTypeController.dispose();
+    scopeController.dispose();
+    notesController.dispose();
   }
 
   Future<void> _deleteTemplate(EstimateTemplateModel template) async {
@@ -651,6 +1039,7 @@ class _PremiumTextField extends StatefulWidget {
   final String hintText;
   final int maxLines;
   final TextInputType? keyboardType;
+  final IconData? leadingIcon;
 
   const _PremiumTextField({
     required this.controller,
@@ -658,6 +1047,7 @@ class _PremiumTextField extends StatefulWidget {
     required this.hintText,
     this.maxLines = 1,
     this.keyboardType,
+    this.leadingIcon,
   });
 
   @override
@@ -715,9 +1105,8 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF101117),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -737,6 +1126,17 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
               crossAxisAlignment:
               isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
               children: [
+                if (widget.leadingIcon != null) ...[
+                  Padding(
+                    padding: EdgeInsets.only(top: isSingleLine ? 0 : 2),
+                    child: Icon(
+                      widget.leadingIcon,
+                      color: const Color(0xFF8E93A6),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: TextField(
                     controller: widget.controller,

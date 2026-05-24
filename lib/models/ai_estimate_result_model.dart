@@ -1,4 +1,5 @@
 import 'ai_assumption_model.dart';
+import 'ai_generated_text_model.dart';
 import 'ai_history_context_model.dart';
 import 'ai_missing_field_model.dart';
 import 'ai_parsed_request_model.dart';
@@ -18,6 +19,11 @@ class AiEstimateResultModel {
 
   final double confidence;
 
+  /// Профессиональный AI-сгенерированный контент estimate (Фаза 3).
+  /// Содержит scope_of_work, inclusions, exclusions, assumptions, terms.
+  /// Может быть null если AI ещё не вызывался или упал.
+  final AiGeneratedTextModel? generatedText;
+
   const AiEstimateResultModel({
     this.title,
     this.scope,
@@ -28,6 +34,7 @@ class AiEstimateResultModel {
     this.assumptions = const [],
     this.missingFields = const [],
     this.confidence = 0,
+    this.generatedText,
   });
 
   factory AiEstimateResultModel.fromMap(Map<String, dynamic> map) {
@@ -49,6 +56,11 @@ class AiEstimateResultModel {
       assumptions: _toAssumptions(map['assumptions']),
       missingFields: _toMissingFields(map['missing_fields']),
       confidence: _toDouble(map['confidence']),
+      generatedText: map['generated_text'] != null
+          ? AiGeneratedTextModel.fromMap(
+        Map<String, dynamic>.from(map['generated_text'] as Map),
+      )
+          : null,
     );
   }
 
@@ -102,6 +114,16 @@ class AiEstimateResultModel {
     return !missingFields.any((field) => field.isRequired);
   }
 
+  /// Удобный геттер: есть ли богатый AI-сгенерированный контент (Фаза 3).
+  bool get hasRichContent {
+    final text = generatedText;
+    if (text == null || text.isEmpty) return false;
+    return text.inclusions.isNotEmpty ||
+        text.exclusions.isNotEmpty ||
+        text.assumptions.isNotEmpty ||
+        text.terms.isNotEmpty;
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'title': title,
@@ -113,6 +135,7 @@ class AiEstimateResultModel {
       'assumptions': assumptions.map((item) => item.toMap()).toList(),
       'missing_fields': missingFields.map((item) => item.toMap()).toList(),
       'confidence': confidence,
+      'generated_text': generatedText?.toMap(),
     };
   }
 
@@ -126,6 +149,7 @@ class AiEstimateResultModel {
     List<AiAssumptionModel>? assumptions,
     List<AiMissingFieldModel>? missingFields,
     double? confidence,
+    AiGeneratedTextModel? generatedText,
   }) {
     return AiEstimateResultModel(
       title: title ?? this.title,
@@ -137,6 +161,7 @@ class AiEstimateResultModel {
       assumptions: assumptions ?? this.assumptions,
       missingFields: missingFields ?? this.missingFields,
       confidence: confidence ?? this.confidence,
+      generatedText: generatedText ?? this.generatedText,
     );
   }
 }
