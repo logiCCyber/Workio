@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
-import 'package:intl_phone_number_input/intl_phone_number_input.dart';
 
 import '../models/company_settings_model.dart';
 
@@ -11,6 +10,13 @@ import '../services/company_settings_service.dart';
 
 import '../utils/estimate_calculator.dart';
 import '../utils/company_logo_helper.dart';
+
+const _kCompanyAccent = Color(0xFF38BDF8);
+const _kCompanyCard = Color(0xFF1F232C);
+const _kCompanyPanel = Color(0xFF202530);
+const _kCompanyPanelSoft = Color(0xFF1B2028);
+const _kCompanyBorder = Color(0xFF3A4050);
+const _kCompanyTextSoft = Color(0xFFA0A7B8);
 
 class CompanySettingsScreen extends StatefulWidget {
   const CompanySettingsScreen({super.key});
@@ -41,7 +47,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   Uint8List? _logoPreviewBytes;
 
   CompanySettingsModel? _settings;
-  PhoneNumber _initialPhoneNumber = PhoneNumber(isoCode: 'CA');
   bool _isPhoneValid = true;
   String? _normalizedPhoneNumber;
 
@@ -97,7 +102,10 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
       _companyNameController.text = settings?.companyName ?? '';
       _companyEmailController.text = settings?.companyEmail ?? '';
-      _companyPhoneController.text = settings?.companyPhone ?? '';
+      final savedPhone = settings?.companyPhone?.trim() ?? '';
+      _companyPhoneController.text = _formatPhoneDisplay(savedPhone);
+      _normalizedPhoneNumber =
+      savedPhone.isEmpty ? null : _normalizePhoneForSave(savedPhone);
       _companyWebsiteController.text = settings?.companyWebsite ?? '';
       _companyAddressController.text = settings?.companyAddress ?? '';
       _taxLabelController.text = settings?.taxLabel ?? 'Tax';
@@ -109,23 +117,6 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
       _timezone = settings?.timezone ?? (_countryCode == 'US' ? 'America/New_York' : 'America/Toronto');
       _enableSystemHolidays = settings?.enableSystemHolidays ?? true;
       _enableConstructionHoliday = settings?.enableConstructionHoliday ?? true;
-
-      final savedPhone = settings?.companyPhone?.trim() ?? '';
-      _normalizedPhoneNumber = savedPhone.isEmpty ? null : savedPhone;
-
-      if (savedPhone.isNotEmpty) {
-        try {
-          _initialPhoneNumber =
-          await PhoneNumber.getRegionInfoFromPhoneNumber(savedPhone, 'CA');
-        } catch (_) {
-          _initialPhoneNumber = PhoneNumber(
-            phoneNumber: savedPhone,
-            isoCode: 'CA',
-          );
-        }
-      } else {
-        _initialPhoneNumber = PhoneNumber(isoCode: 'CA');
-      }
 
       setState(() {
         _isLoading = false;
@@ -152,6 +143,74 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   void _handlePreviewChanged() {
     if (!mounted) return;
     setState(() {});
+  }
+
+  String _normalizePhoneForSave(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.isEmpty) return '';
+
+    if (digits.length == 10) {
+      return '+1$digits';
+    }
+
+    if (digits.length == 11 && digits.startsWith('1')) {
+      return '+$digits';
+    }
+
+    if (raw.trim().startsWith('+')) {
+      return '+$digits';
+    }
+
+    return '+1$digits';
+  }
+
+  String _formatPhoneDisplay(String raw) {
+    final trimmed = raw.trim();
+    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.isEmpty) return '';
+
+    final local = digits.length == 11 && digits.startsWith('1')
+        ? digits.substring(1)
+        : digits;
+
+    if (local.length <= 3) {
+      return '+1 $local';
+    }
+
+    if (local.length <= 6) {
+      return '+1 ${local.substring(0, 3)}-${local.substring(3)}';
+    }
+
+    if (local.length <= 10) {
+      return '+1 ${local.substring(0, 3)}-${local.substring(3, 6)}-${local.substring(6)}';
+    }
+
+    if (trimmed.startsWith('+')) {
+      return '+$digits';
+    }
+
+    return '+$digits';
+  }
+
+  void _handleCompanyPhoneChanged(String rawValue) {
+    final formatted = _formatPhoneDisplay(rawValue);
+
+    if (_companyPhoneController.text != formatted) {
+      _companyPhoneController.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
+      );
+    }
+
+    final normalized = _normalizePhoneForSave(formatted);
+    final digits = normalized.replaceAll(RegExp(r'[^0-9]'), '');
+
+    setState(() {
+      _normalizedPhoneNumber = normalized.isEmpty ? null : normalized;
+      _isPhoneValid = digits.isEmpty || digits.length >= 10;
+    });
   }
 
   Future<void> _saveSettings() async {
@@ -467,7 +526,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     return showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: _kCompanyCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -655,7 +714,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF15161C),
+      backgroundColor: _kCompanyCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -792,41 +851,13 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 20,
-        title: const Text(
-          'Company Settings',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
-          ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(104),
+        child: _CompanySettingsTopBar(
+          onBack: () => Navigator.of(context).maybePop(),
+          onSave: _isSaving ? null : _saveSettings,
+          isSaving: _isSaving,
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: _isSaving ? null : _saveSettings,
-              child: _isSaving
-                  ? const CupertinoActivityIndicator(color: Colors.white)
-                  : const Text(
-                'Save',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: _isLoading
           ? const Center(
@@ -848,7 +879,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     hintText: 'Sharof Renovation',
                     leadingIcon: CupertinoIcons.building_2_fill,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PremiumTextField(
                     controller: _companyEmailController,
                     label: 'Email',
@@ -856,121 +887,20 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     keyboardType: TextInputType.emailAddress,
                     leadingIcon: CupertinoIcons.mail,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    CupertinoIcons.phone,
-                                    color: Color(0xFF8E93A6),
-                                    size: 16,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Phone',
-                                    style: TextStyle(
-                                      color: Color(0xFF8E93A6),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                          const SizedBox(height: 8),
-                          Padding(
-                            padding: const EdgeInsets.only(left: 24),
-                            child: InternationalPhoneNumberInput(
-                                initialValue: _initialPhoneNumber,
-                                textFieldController: _companyPhoneController,
-                              selectorConfig: const SelectorConfig(
-                                selectorType: PhoneInputSelectorType.BOTTOM_SHEET,
-                                showFlags: false,
-                                useEmoji: false,
-                                setSelectorButtonAsPrefixIcon: true,
-                              ),
-                                onInputChanged: (PhoneNumber number) {
-                                  if (!mounted) return;
-                                  setState(() {
-                                    _initialPhoneNumber = number;
-                                    _normalizedPhoneNumber = number.phoneNumber;
-                                  });
-                                },
-                                onInputValidated: (bool value) {
-                                  if (!mounted) return;
-                                  setState(() {
-                                    _isPhoneValid = value;
-                                  });
-                                },
-                                ignoreBlank: true,
-                                autoValidateMode: AutovalidateMode.disabled,
-                                formatInput: true,
-                                keyboardType: const TextInputType.numberWithOptions(
-                                  signed: true,
-                                  decimal: false,
-                                ),
-                                cursorColor: const Color(0xFF5B8CFF),
-                                selectorTextStyle: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                textStyle: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.35,
-                                ),
-                                inputBorder: InputBorder.none,
-                                inputDecoration: InputDecoration(
-                                  isDense: true,
-                                  hintText: 'Phone number',
-                                  hintStyle: const TextStyle(
-                                    color: Color(0xFF697086),
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.zero,
-                                  suffixIcon: _companyPhoneController.text.trim().isNotEmpty
-                                      ? GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _companyPhoneController.clear();
-                                        _normalizedPhoneNumber = null;
-                                        _isPhoneValid = true;
-                                        _initialPhoneNumber = PhoneNumber(isoCode: 'CA');
-                                      });
-                                    },
-                                    child: const Icon(
-                                      CupertinoIcons.xmark_circle_fill,
-                                      color: Color(0xFF8E93A6),
-                                      size: 18,
-                                    ),
-                                  )
-                                      : null,
-                                  suffixIconConstraints: const BoxConstraints(
-                                    minWidth: 24,
-                                    minHeight: 24,
-                                  ),
-                                ),
-                              ),
-                             ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: 10),
+                  _CompanyPhoneField(
+                    controller: _companyPhoneController,
+                    isValid: _isPhoneValid,
+                    onChanged: _handleCompanyPhoneChanged,
+                    onClear: () {
+                      setState(() {
+                        _companyPhoneController.clear();
+                        _normalizedPhoneNumber = null;
+                        _isPhoneValid = true;
+                      });
+                    },
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PremiumTextField(
                     controller: _companyWebsiteController,
                     label: 'Website',
@@ -978,7 +908,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     keyboardType: TextInputType.url,
                     leadingIcon: CupertinoIcons.globe,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PremiumTextField(
                     controller: _companyAddressController,
                     label: 'Address',
@@ -999,9 +929,9 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     width: 100,
                     height: 75,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF101117),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF23252E)),
+                      color: _kCompanyPanelSoft,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _kCompanyBorder),
                     ),
                     alignment: Alignment.center,
                     child: ClipRRect(
@@ -1033,7 +963,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     children: [
                       Expanded(
                         child: CupertinoButton(
-                          color: const Color(0xFF5B8CFF),
+                          color: const Color(0xFF3B82F6),
                           borderRadius: BorderRadius.circular(16),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           onPressed: _isUploadingLogo ? null : _pickAndUploadLogo,
@@ -1081,7 +1011,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     hintText: 'Tax',
                     leadingIcon: CupertinoIcons.tag,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PremiumTextField(
                     controller: _defaultTaxRateController,
                     label: 'Default Tax Rate %',
@@ -1091,7 +1021,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     ),
                     leadingIcon: CupertinoIcons.percent,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _CurrencyPickerRow(
                     label: 'Currency Code',
                     value: _currencyCodeController.text.trim().isEmpty
@@ -1115,7 +1045,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     code: _countryCode,
                     onTap: _pickCountryCode,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _BusinessPickerRow(
                     icon: CupertinoIcons.location_solid,
                     label: 'Region',
@@ -1123,7 +1053,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     code: _regionCode,
                     onTap: _pickRegionCode,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _BusinessPickerRow(
                     icon: CupertinoIcons.time,
                     label: 'Timezone',
@@ -1131,7 +1061,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     code: _timezone,
                     onTap: _pickTimezone,
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _BusinessSwitchRow(
                     icon: CupertinoIcons.calendar,
                     label: 'System Holidays',
@@ -1141,7 +1071,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                       setState(() => _enableSystemHolidays = v);
                     },
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _BusinessSwitchRow(
                     icon: CupertinoIcons.hammer,
                     label: 'Construction Holiday',
@@ -1168,7 +1098,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         ? '—'
                         : _companyNameController.text.trim(),
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PreviewRow(
                     icon: CupertinoIcons.mail,
                     label: 'Email',
@@ -1176,7 +1106,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         ? '—'
                         : _companyEmailController.text.trim(),
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PreviewRow(
                     icon: CupertinoIcons.phone,
                     label: 'Phone',
@@ -1184,7 +1114,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         ? '—'
                         : _companyPhoneController.text.trim(),
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PreviewRow(
                     icon: CupertinoIcons.tag,
                     label: 'Tax',
@@ -1192,14 +1122,14 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         ? 'Tax'
                         : _taxLabelController.text.trim(),
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PreviewRow(
                     icon: CupertinoIcons.percent,
                     label: 'Default Rate',
                     value:
                     '${EstimateCalculator.parseNumber(_defaultTaxRateController.text).toStringAsFixed(2)}%',
                   ),
-                  const Divider(color: Color(0xFF23252E), height: 1),
+                  const SizedBox(height: 10),
                   _PreviewRow(
                     icon: CupertinoIcons.money_dollar_circle,
                     label: 'Currency',
@@ -1212,7 +1142,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
             ),
             const SizedBox(height: 18),
             CupertinoButton(
-              color: const Color(0xFF5B8CFF),
+              color: const Color(0xFF3B82F6),
               borderRadius: BorderRadius.circular(18),
               padding: const EdgeInsets.symmetric(vertical: 16),
               onPressed: _isSaving ? null : _saveSettings,
@@ -1236,14 +1166,8 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
   Widget _formPanel({
     required List<Widget> children,
   }) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF23252E)),
-      ),
-      child: Column(children: children),
+    return Column(
+      children: children,
     );
   }
 
@@ -1252,12 +1176,29 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     String? subtitle,
     required Widget child,
   }) {
+    final cleanSubtitle = (subtitle ?? '').trim();
+
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        color: _kCompanyCard,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: _kCompanyBorder,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.34),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.025),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1265,26 +1206,158 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
           Text(
             title,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
+              color: Color(0xFFF4F6FA),
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.25,
+              height: 1.0,
             ),
           ),
-          if ((subtitle ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
+          if (cleanSubtitle.isNotEmpty) ...[
+            const SizedBox(height: 8),
             Text(
-              subtitle!,
+              cleanSubtitle,
               style: const TextStyle(
-                color: Color(0xFF8E93A6),
+                color: _kCompanyTextSoft,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
+                height: 1.2,
               ),
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           child,
         ],
+      ),
+    );
+  }
+}
+
+class _CompanySettingsTopBar extends StatelessWidget {
+  final VoidCallback onBack;
+  final VoidCallback? onSave;
+  final bool isSaving;
+
+  const _CompanySettingsTopBar({
+    required this.onBack,
+    required this.onSave,
+    required this.isSaving,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Container(
+          height: 82,
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          decoration: BoxDecoration(
+            color: _kCompanyCard,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: _kCompanyBorder,
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.42),
+                blurRadius: 30,
+                offset: const Offset(0, 16),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.035),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 0,
+                onPressed: onBack,
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: _kCompanyPanel,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _kCompanyBorder),
+                  ),
+                  child: const Icon(
+                    CupertinoIcons.chevron_left,
+                    color: Color(0xFFF3F6FC),
+                    size: 25,
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              const Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Company Settings',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 21,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.25,
+                        height: 1.0,
+                      ),
+                    ),
+                    SizedBox(height: 7),
+                    Text(
+                      'Business profile, logo, tax and defaults',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _kCompanyTextSoft,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                minSize: 0,
+                onPressed: onSave,
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF202530),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _kCompanyBorder),
+                  ),
+                  child: isSaving
+                      ? const CupertinoActivityIndicator(
+                    color: Color(0xFFF3F6FC),
+                  )
+                      : const Icon(
+                    CupertinoIcons.checkmark,
+                    color: _kCompanyAccent,
+                    size: 23,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1307,67 +1380,96 @@ class _BusinessPickerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: const Color(0xFF8E93A6),
-                size: 17,
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minSize: 0,
+      onPressed: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 70),
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        decoration: BoxDecoration(
+          color: _kCompanyPanelSoft,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _kCompanyBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 12,
+              offset: const Offset(0, 7),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.02),
+              blurRadius: 6,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: const Color(0xFF9AA3B7),
+              size: 18,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: _kCompanyTextSoft,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFF3F6FC),
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
+            ),
+            const SizedBox(width: 10),
+            Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 9),
+              decoration: BoxDecoration(
+                color: _kCompanyPanel,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: _kCompanyBorder),
+              ),
+              child: Center(
                 child: Text(
-                  label,
+                  code,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF8E93A6),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFD6DCE8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      code,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF697086),
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                CupertinoIcons.chevron_down,
-                color: Color(0xFF8E93A6),
-                size: 15,
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              CupertinoIcons.chevron_down,
+              color: Color(0xFF8E93A6),
+              size: 16,
+            ),
+          ],
         ),
       ),
     );
@@ -1397,44 +1499,69 @@ class _BusinessSwitchRow extends StatelessWidget {
 
     return Opacity(
       opacity: opacity,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 74),
+        padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: _kCompanyPanelSoft,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _kCompanyBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 12,
+              offset: const Offset(0, 7),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.02),
+              blurRadius: 6,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
         child: Row(
           children: [
             Icon(
               icon,
-              color: const Color(0xFF8E93A6),
-              size: 17,
+              color: const Color(0xFF9AA3B7),
+              size: 18,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     label,
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13.5,
+                      color: Color(0xFFF3F6FC),
+                      fontSize: 14,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Text(
                     enabled ? subtitle : 'Available only for Quebec, Canada',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Color(0xFF8E93A6),
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
+                      height: 1.2,
                     ),
                   ),
                 ],
               ),
             ),
-            Switch.adaptive(
-              value: enabled && value,
-              activeColor: const Color(0xFF5B8CFF),
-              onChanged: enabled ? onChanged : null,
+            Transform.scale(
+              scale: 0.86,
+              child: Switch.adaptive(
+                value: enabled && value,
+                activeColor: _kCompanyAccent,
+                onChanged: enabled ? onChanged : null,
+              ),
             ),
           ],
         ),
@@ -1495,9 +1622,7 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
   }
 
   void _refresh() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   void _clearText() {
@@ -1518,90 +1643,213 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
     final isSingleLine = widget.maxLines == 1;
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
+      constraints: BoxConstraints(
+        minHeight: isSingleLine ? 70 : 112,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Row(
-          crossAxisAlignment:
-          isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.leadingIcon != null) ...[
-                        Icon(
-                          widget.leadingIcon,
-                          color: const Color(0xFF8E93A6),
-                          size: 16,
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Text(
-                        widget.label,
-                        style: const TextStyle(
-                          color: Color(0xFF8E93A6),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: EdgeInsets.only(
-                      left: widget.leadingIcon != null ? 24 : 0,
-                    ),
-                    child: TextField(
-                      controller: widget.controller,
-                      focusNode: _focusNode,
-                      keyboardType: widget.keyboardType,
-                      maxLines: widget.maxLines,
-                      minLines: isSingleLine ? 1 : widget.maxLines,
-                      textCapitalization: widget.textCapitalization,
-                      inputFormatters: widget.inputFormatters,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35,
-                      ),
-                      cursorColor: const Color(0xFF5B8CFF),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        hintText: widget.hintText,
-                        hintStyle: const TextStyle(
-                          color: Color(0xFF697086),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w400,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ),
-                ],
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      decoration: BoxDecoration(
+        color: _kCompanyPanelSoft,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: _kCompanyBorder,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 12,
+            offset: const Offset(0, 7),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.02),
+            blurRadius: 6,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment:
+        isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        children: [
+          if (widget.leadingIcon != null) ...[
+            Padding(
+              padding: EdgeInsets.only(top: isSingleLine ? 0 : 5),
+              child: Icon(
+                widget.leadingIcon,
+                color: const Color(0xFF9AA3B7),
+                size: 18,
               ),
             ),
-            if (_showClearButton) ...[
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: _clearText,
-                child: const Icon(
-                  CupertinoIcons.xmark_circle_fill,
-                  color: Color(0xFF8E93A6),
-                  size: 18,
-                ),
-              ),
-            ],
+            const SizedBox(width: 12),
           ],
+          Expanded(
+            child: Column(
+              mainAxisAlignment:
+              isSingleLine ? MainAxisAlignment.center : MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.label,
+                  style: const TextStyle(
+                    color: _kCompanyTextSoft,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                TextField(
+                  controller: widget.controller,
+                  focusNode: _focusNode,
+                  keyboardType: widget.keyboardType,
+                  maxLines: widget.maxLines,
+                  minLines: isSingleLine ? 1 : widget.maxLines,
+                  textCapitalization: widget.textCapitalization,
+                  inputFormatters: widget.inputFormatters,
+                  cursorColor: _kCompanyAccent,
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: widget.hintText,
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF697086),
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_showClearButton) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _clearText,
+              child: const Icon(
+                CupertinoIcons.xmark_circle_fill,
+                color: Color(0xFF8E93A6),
+                size: 18,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompanyPhoneField extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isValid;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  const _CompanyPhoneField({
+    required this.controller,
+    required this.isValid,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 70),
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      decoration: BoxDecoration(
+        color: _kCompanyPanelSoft,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isValid ? _kCompanyBorder : const Color(0xFFFF6B6B),
+          width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.18),
+            blurRadius: 12,
+            offset: const Offset(0, 7),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.02),
+            blurRadius: 6,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            CupertinoIcons.phone,
+            color: Color(0xFF9AA3B7),
+            size: 18,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Phone',
+                  style: TextStyle(
+                    color: _kCompanyTextSoft,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                TextField(
+                  controller: controller,
+                  onChanged: onChanged,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    signed: true,
+                    decimal: false,
+                  ),
+                  cursorColor: _kCompanyAccent,
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: '+1 514-777-2486',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF697086),
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    suffixIcon: controller.text.trim().isNotEmpty
+                        ? GestureDetector(
+                      onTap: onClear,
+                      child: const Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: Color(0xFF8E93A6),
+                        size: 18,
+                      ),
+                    )
+                        : null,
+                    suffixIconConstraints: const BoxConstraints(
+                      minWidth: 24,
+                      minHeight: 24,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1620,60 +1868,70 @@ class _CurrencyPickerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          CupertinoIcons.money_dollar_circle,
-                          color: Color(0xFF8E93A6),
-                          size: 16,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Currency Code',
-                          style: TextStyle(
-                            color: Color(0xFF8E93A6),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minSize: 0,
+      onPressed: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 70),
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        decoration: BoxDecoration(
+          color: _kCompanyPanelSoft,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _kCompanyBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 12,
+              offset: const Offset(0, 7),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.02),
+              blurRadius: 6,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              CupertinoIcons.money_dollar_circle,
+              color: Color(0xFF9AA3B7),
+              size: 18,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: _kCompanyTextSoft,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.0,
                     ),
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 24),
-                      child: Text(
-                        value,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: Color(0xFFF3F6FC),
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const Icon(
-                CupertinoIcons.chevron_down,
-                color: Color(0xFF8E93A6),
-                size: 18,
-              ),
-            ],
-          ),
+            ),
+            const Icon(
+              CupertinoIcons.chevron_down,
+              color: Color(0xFF8E93A6),
+              size: 16,
+            ),
+          ],
         ),
       ),
     );
@@ -1693,37 +1951,58 @@ class _PreviewRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+    final isEmpty = value.trim() == '—';
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        color: _kCompanyPanelSoft,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _kCompanyBorder),
+      ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: const Color(0xFF8E93A6),
-            size: 18,
-          ),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF8E93A6),
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+          SizedBox(
+            width: 26,
+            child: Icon(
+              icon,
+              color: const Color(0xFF9AA3B7),
+              size: 18,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              softWrap: false,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _kCompanyTextSoft,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isEmpty
+                        ? const Color(0xFF697086)
+                        : const Color(0xFFF3F6FC),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

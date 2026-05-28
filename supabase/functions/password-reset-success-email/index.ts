@@ -189,7 +189,7 @@ serve(async (req) => {
       name,
       email,
       appName: "WorkTime",
-      logoUrl: "https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/images/mahmadiyarov.png",
+      logoUrl: "https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png",
     });
 
     // 3) send

@@ -221,7 +221,7 @@ class EstimateEmailService {
       companyName: _companyName(companySettings),
       companyEmail: _companyEmail(companySettings),
       companyPhone: _companyPhone(companySettings),
-      companyLogoUrl: CompanyLogoHelper.customLogoUrl(companySettings),
+      companyLogoUrl: CompanyLogoHelper.resolvedLogoUrl(companySettings),
     );
   }
 

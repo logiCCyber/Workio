@@ -46,11 +46,14 @@ Future<SendEstimateDialogResult?> showSendEstimateDialog({
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
-    builder: (_) => _SendEstimateDialogContent(
-      estimate: estimate,
-      client: client,
-      companySettings: companySettings,
-      latestDocument: latestDocument,
+    builder: (_) => FractionallySizedBox(
+      heightFactor: 0.88,
+      child: _SendEstimateDialogContent(
+        estimate: estimate,
+        client: client,
+        companySettings: companySettings,
+        latestDocument: latestDocument,
+      ),
     ),
   );
 }
@@ -337,6 +340,7 @@ $_companyName
     required String hintText,
     TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
+    Color iconColor = const Color(0xFFF3F6FC),
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
@@ -348,7 +352,7 @@ $_companyName
             padding: EdgeInsets.only(top: maxLines > 1 ? 4 : 0),
             child: Icon(
               icon,
-              color: const Color(0xFFF3F6FC).withValues(alpha: 0.92),
+              color: iconColor.withValues(alpha: 0.92),
               size: 18,
             ),
           ),
@@ -597,13 +601,15 @@ $_companyName
               children: [
                 _sendInputRow(
                   icon: CupertinoIcons.textformat,
+                  iconColor: const Color(0xFF38BDF8),
                   label: 'Subject',
                   controller: _subjectController,
                   hintText: 'Estimate EST-...',
                 ),
                 const Divider(color: Color(0xFF303442), height: 1),
                 _sendInputRow(
-                  icon: CupertinoIcons.text_alignleft,
+                  icon: CupertinoIcons.chat_bubble_2_fill,
+                  iconColor: const Color(0xFF38BDF8),
                   label: 'Message',
                   controller: _messageController,
                   hintText: 'Write your message...',
@@ -712,14 +718,14 @@ $_companyName
                   children: [
                     Icon(
                       CupertinoIcons.paperplane_fill,
-                      color: Colors.white,
+                      color: Color(0xFF1A1D25),
                       size: 18,
                     ),
                     SizedBox(width: 8),
                     Text(
                       'Continue',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFF1A1D25),
                         fontWeight: FontWeight.w800,
                       ),
                     ),

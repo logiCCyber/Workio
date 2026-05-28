@@ -68,6 +68,27 @@ class WorkerService {
     return list.first;
   }
 
+  Future<Map<String, dynamic>?> getUpcomingTimeOff({int daysAhead = 14}) async {
+    final today = _dateKey(DateTime.now());
+    final until = _dateKey(DateTime.now().add(Duration(days: daysAhead)));
+
+    final rows = await _db
+        .from('worker_time_off')
+        .select('id, type, title, reason, start_date, end_date, status, block_clock_in')
+        .eq('worker_auth_id', _user.id)
+        .eq('status', 'active')
+        .gt('start_date', today)
+        .lte('start_date', until)
+        .order('start_date', ascending: true)
+        .limit(1);
+
+    final list = List<Map<String, dynamic>>.from(rows as List);
+
+    if (list.isEmpty) return null;
+
+    return list.first;
+  }
+
   Future<String> getCurrentAddress() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
       return 'Location disabled';

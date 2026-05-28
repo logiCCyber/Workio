@@ -5,6 +5,12 @@ import 'package:flutter/services.dart';
 import '../models/property_model.dart';
 import '../services/property_service.dart';
 
+const _kPropertyAccent = Color(0xFF38BDF8);
+const _kPropertySheet = Color(0xFF1F232C);
+const _kPropertyInput = Color(0xFF1B2028);
+const _kPropertyInputBorder = Color(0xFF3A4050);
+const _kPropertyIcon = Color(0xFF38BDF8);
+
 Future<PropertyModel?> showAddPropertyDialog(
     BuildContext context, {
       required String clientId,
@@ -13,7 +19,7 @@ Future<PropertyModel?> showAddPropertyDialog(
   return showModalBottomSheet<PropertyModel>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF15161C),
+    backgroundColor: Colors.transparent,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -153,115 +159,198 @@ class _AddPropertyDialogContentState extends State<_AddPropertyDialogContent> {
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.existingProperty == null
+        ? 'New Property'
+        : 'Edit Property';
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        20,
-        20,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 24,
+        12,
+        10,
+        12,
+        MediaQuery.of(context).viewInsets.bottom + 12,
       ),
       child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              widget.existingProperty == null ? 'New Property' : 'Edit Property',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+          decoration: BoxDecoration(
+            color: _kPropertySheet,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: _kPropertyInputBorder),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.42),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
               ),
-            ),
-            const SizedBox(height: 18),
-            _PremiumTextField(
-              controller: _addressLine1Controller,
-              label: 'Address Line 1',
-              hintText: '123 Main Street',
-            ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _addressLine2Controller,
-              label: 'Address Line 2',
-              hintText: 'Unit, suite, floor...',
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _PremiumTextField(
-                    controller: _cityController,
-                    label: 'City',
-                    hintText: 'Montreal',
+              BoxShadow(
+                color: Colors.white.withOpacity(0.025),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minSize: 0,
+                    onPressed: () => Navigator.pop(context),
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF202530),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _kPropertyInputBorder),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.chevron_left,
+                        color: Color(0xFFF3F6FC),
+                        size: 24,
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PremiumTextField(
-                    controller: _provinceController,
-                    label: 'Province',
-                    hintText: 'QC',
+                  Expanded(
+                    child: Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _PremiumTextField(
-                    controller: _postalCodeController,
-                    label: 'Postal Code',
-                    hintText: 'H1H 1H1',
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 ]')),
-                      CanadianPostalCodeFormatter(),
-                    ],
+                  const SizedBox(width: 42),
+                ],
+              ),
+
+              const SizedBox(height: 18),
+
+              _PremiumTextField(
+                controller: _addressLine1Controller,
+                icon: CupertinoIcons.location_solid,
+                label: 'Address Line 1',
+                hintText: '123 Main Street',
+              ),
+              const SizedBox(height: 12),
+
+              _PremiumTextField(
+                controller: _addressLine2Controller,
+                icon: CupertinoIcons.location,
+                label: 'Address Line 2',
+                hintText: 'Unit, suite, floor...',
+              ),
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _PremiumTextField(
+                      controller: _cityController,
+                      icon: CupertinoIcons.building_2_fill,
+                      label: 'City',
+                      hintText: 'Montreal',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PremiumTextField(
-                    controller: _squareFootageController,
-                    label: 'Square Footage',
-                    hintText: '1200',
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _PremiumTextField(
+                      controller: _provinceController,
+                      icon: CupertinoIcons.map,
+                      label: 'Province',
+                      hintText: 'QC',
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _propertyTypeController,
-              label: 'Property Type',
-              hintText: 'Condo / House / Basement',
-            ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _notesController,
-              label: 'Notes',
-              hintText: 'Parking details, access instructions...',
-              maxLines: 4,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: CupertinoButton(
-                color: const Color(0xFF5B8CFF),
-                borderRadius: BorderRadius.circular(16),
-                onPressed: _isSaving ? null : _saveProperty,
-                child: _isSaving
-                    ? const CupertinoActivityIndicator(color: Colors.white)
-                    : Text(
-                    widget.existingProperty == null ? 'Save Property' : 'Save Changes',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _PremiumTextField(
+                      controller: _postalCodeController,
+                      icon: CupertinoIcons.number,
+                      label: 'Postal Code',
+                      hintText: 'H1H 1H1',
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 ]')),
+                        CanadianPostalCodeFormatter(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _PremiumTextField(
+                      controller: _squareFootageController,
+                      icon: CupertinoIcons.square_grid_2x2,
+                      label: 'Sqft',
+                      hintText: '1200',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              _PremiumTextField(
+                controller: _propertyTypeController,
+                icon: CupertinoIcons.house_fill,
+                label: 'Property Type',
+                hintText: 'Condo / House / Basement',
+              ),
+
+              const SizedBox(height: 12),
+
+              _PremiumTextField(
+                controller: _notesController,
+                icon: CupertinoIcons.doc_text,
+                label: 'Notes',
+                hintText: 'Parking details, access instructions...',
+                maxLines: 4,
+              ),
+
+              const SizedBox(height: 18),
+
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  color: const Color(0xFF3B82F6),
+                  borderRadius: BorderRadius.circular(18),
+                  onPressed: _isSaving ? null : _saveProperty,
+                  child: _isSaving
+                      ? const CupertinoActivityIndicator(color: Colors.white)
+                      : Text(
+                    widget.existingProperty == null
+                        ? 'Save Property'
+                        : 'Save Changes',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -270,6 +359,7 @@ class _AddPropertyDialogContentState extends State<_AddPropertyDialogContent> {
 
 class _PremiumTextField extends StatefulWidget {
   final TextEditingController controller;
+  final IconData icon;
   final String label;
   final String hintText;
   final int maxLines;
@@ -279,6 +369,7 @@ class _PremiumTextField extends StatefulWidget {
 
   const _PremiumTextField({
     required this.controller,
+    required this.icon,
     required this.label,
     required this.hintText,
     this.maxLines = 1,
@@ -318,9 +409,7 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
   }
 
   void _refresh() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   void _clearText() {
@@ -341,73 +430,84 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
     final isSingleLine = widget.maxLines == 1;
 
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+      constraints: BoxConstraints(
+        minHeight: isSingleLine ? 78 : 126,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.label,
-              style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: _kPropertyInput,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _kPropertyInputBorder),
+      ),
+      child: Row(
+        crossAxisAlignment:
+        isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(top: isSingleLine ? 0 : 6),
+            child: Icon(
+              widget.icon,
+              color: _kPropertyIcon,
+              size: 22,
             ),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment:
-              isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: widget.controller,
-                    textCapitalization: widget.textCapitalization,
-                    inputFormatters: widget.inputFormatters,
-                    focusNode: _focusNode,
-                    keyboardType: widget.keyboardType,
-                    maxLines: widget.maxLines,
-                    minLines: isSingleLine ? 1 : widget.maxLines,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.35,
-                    ),
-                    cursorColor: const Color(0xFF5B8CFF),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: widget.hintText,
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF697086),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
+                Text(
+                  widget.label,
+                  style: const TextStyle(
+                    color: Color(0xFFA0A7B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
                   ),
                 ),
-                if (_showClearButton) ...[
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: _clearText,
-                    child: const Icon(
-                      CupertinoIcons.xmark_circle_fill,
-                      color: Color(0xFF8E93A6),
-                      size: 18,
-                    ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: widget.controller,
+                  textCapitalization: widget.textCapitalization,
+                  inputFormatters: widget.inputFormatters,
+                  focusNode: _focusNode,
+                  keyboardType: widget.keyboardType,
+                  maxLines: widget.maxLines,
+                  minLines: isSingleLine ? 1 : widget.maxLines,
+                  cursorColor: _kPropertyAccent,
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
                   ),
-                ],
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: widget.hintText,
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF7D8496),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
               ],
             ),
+          ),
+          if (_showClearButton) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _clearText,
+              child: const Icon(
+                CupertinoIcons.xmark_circle_fill,
+                color: Color(0xFF8E93A6),
+                size: 18,
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }

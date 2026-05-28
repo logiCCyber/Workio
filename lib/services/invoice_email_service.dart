@@ -227,7 +227,7 @@ class InvoiceEmailService {
       companyEmail: _companyEmail(companySettings),
       companyPhone: _companyPhone(companySettings),
       companyAddress: _companyAddress(companySettings),
-      companyLogoUrl: CompanyLogoHelper.customLogoUrl(companySettings),
+      companyLogoUrl: CompanyLogoHelper.resolvedLogoUrl(companySettings),
     );
   }
 

@@ -1145,21 +1145,33 @@ class _AdminWorkerDetailsScreenState
   }
 
   String _timeOffRemainingText(Map<String, dynamic> row) {
+    final start = _parseTimeOffDate(row['start_date']);
     final end = _parseTimeOffDate(row['end_date']);
 
-    if (end == null) return 'No end date';
+    if (start == null || end == null) return 'No date';
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    if (today.isAfter(end)) return 'Completed';
+    if (today.isBefore(start)) {
+      final days = start.difference(today).inDays;
+
+      if (days == 0) return 'Starts today';
+      if (days == 1) return 'Starts tomorrow';
+
+      return 'Starts in $days days';
+    }
+
+    if (today.isAfter(end)) {
+      return 'Completed';
+    }
 
     final left = end.difference(today).inDays;
 
     if (left == 0) return 'Ends today';
-    if (left == 1) return '1 day left';
+    if (left == 1) return 'Ends tomorrow';
 
-    return '$left days left';
+    return 'Ends in $left days';
   }
 
   Future<void> _cancelWorkerTimeOff(Map<String, dynamic> row) async {

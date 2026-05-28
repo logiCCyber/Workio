@@ -41,6 +41,9 @@ class AiEstimateTextService {
     String? propertyAddress,
     String? propertyCity,
     List<String> historyHints = const [],
+    String? locationContext,      // ← НОВОЕ
+    String? objectContext,         // ← НОВОЕ
+    List<String> tradeHints = const [], // ← НОВОЕ
   }) async {
     if (items.isEmpty) {
       return AiGeneratedTextModel.empty();
@@ -79,6 +82,9 @@ class AiEstimateTextService {
           'propertyAddress': (propertyAddress ?? '').trim(),
           'propertyCity': (propertyCity ?? '').trim(),
           'historyHints': historyHints,
+          'locationContext': (locationContext ?? '').trim(),    // ← НОВОЕ
+          'objectContext': (objectContext ?? '').trim(),         // ← НОВОЕ
+          'tradeHints': tradeHints,                              // ← НОВОЕ
         },
       )
           .timeout(_timeout);
@@ -129,21 +135,18 @@ class AiEstimateTextService {
     var text = input.trim();
 
     // 1. Удаляем дублированный title из начала текста
+    // 1. Удаляем дублированный title из начала текста — универсальный pattern
     if (title != null && title.trim().isNotEmpty) {
       final cleanTitle = title.trim();
-      // Универсальный pattern: title + любой whitespace (включая \n, пробелы, переносы)
-      final pattern = RegExp(
-        '^' + RegExp.escape(cleanTitle) + r'\s+',
-        caseSensitive: false,
-      );
-      text = text.replaceFirst(pattern, '');
 
-// Также пробуем с точкой/двоеточием после title
-      final patternWithPunct = RegExp(
-        '^' + RegExp.escape(cleanTitle) + r'[.:]+\s*',
+      // Универсальный: title + ЛЮБОЙ whitespace (\n, пробел, табы)
+      // Ловит "Title\n", "Title ", "Title.\n", "Title:\n" — всё разом
+      final pattern = RegExp(
+        '^' + RegExp.escape(cleanTitle) + r'[.:\s]+',
         caseSensitive: false,
       );
-      text = text.replaceFirst(patternWithPunct, '');
+
+      text = text.replaceFirst(pattern, '');
     }
 
     // 2. Заменяем разговорные формы на формальные

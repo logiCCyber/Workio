@@ -139,7 +139,7 @@ serve(async (req) => {
             : "A worker has completed a shift in Workio.";
 
         const logoUrl =
-            "https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/images/mahmadiyarov.png";
+            "https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png";
 
         const workerName = String(worker.name ?? "").trim();
         const workerDisplayName =

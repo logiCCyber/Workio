@@ -3560,9 +3560,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
     String? subtitle,
     required Widget child,
     Widget? trailing,
+    Widget? footer,
   }) {
     return Container(
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFF242730),
         borderRadius: BorderRadius.circular(24),
@@ -3587,40 +3587,56 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Color(0xFFF4F6FA),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              color: Color(0xFFF4F6FA),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          if ((subtitle ?? '').trim().isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle!,
+                              style: const TextStyle(
+                                color: Color(0xFFA1A7B8),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                    if ((subtitle ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle!,
-                        style: const TextStyle(
-                          color: Color(0xFFA1A7B8),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                    if (trailing != null) trailing,
                   ],
                 ),
-              ),
-              if (trailing != null) trailing,
-            ],
+                const SizedBox(height: 16),
+                child,
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          child,
+          if (footer != null)
+            ClipRRect(
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(23),
+                bottomRight: Radius.circular(23),
+              ),
+              child: footer,
+            ),
         ],
       ),
     );
@@ -3995,55 +4011,51 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
               child: _items.isEmpty
                   ? const _InlineEmptyItemsState()
                   : Column(
-                children: [
-                  ...List.generate(
-                    _showAllItems
+                children: List.generate(
+                  _showAllItems
+                      ? _items.length
+                      : (_items.length > 2 ? 2 : _items.length),
+                      (index) {
+                    final item = _items[index];
+                    final visibleCount = _showAllItems
                         ? _items.length
-                        : (_items.length > 2 ? 2 : _items.length),
-                        (index) {
-                      final item = _items[index];
-                      final visibleCount = _showAllItems
-                          ? _items.length
-                          : (_items.length > 2 ? 2 : _items.length);
+                        : (_items.length > 2 ? 2 : _items.length);
 
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          bottom: index == visibleCount - 1 ? 0 : 10,
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: index == visibleCount - 1 ? 0 : 10,
+                      ),
+                      child: _EstimateItemTile(
+                        item: item,
+                        onEdit: () => _addOrEditItem(
+                          existingItem: item,
+                          index: index,
                         ),
-                        child: _EstimateItemTile(
-                          item: item,
-                          onEdit: () => _addOrEditItem(
-                            existingItem: item,
-                            index: index,
-                          ),
-                          onDelete: () => _removeItem(index),
-                        ),
-                      );
-                    },
-                  ),
-
-                ],
+                        onDelete: () => _removeItem(index),
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-            if (_items.length > 2) ...[
-              const SizedBox(height: 10),
-              Material(
+              footer: _items.length > 2
+                  ? Material(
                 color: Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
                 child: InkWell(
                   onTap: () {
                     setState(() {
                       _showAllItems = !_showAllItems;
                     });
                   },
-                  borderRadius: BorderRadius.circular(16),
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF20232D),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF303442)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: Color(0xFF343846),
+                          width: 1,
+                        ),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -4070,8 +4082,9 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                     ),
                   ),
                 ),
-              ),
-            ],
+              )
+                  : null,
+            ),
             const SizedBox(height: 14),
             _buildSectionCard(
               title: 'Totals',
@@ -4105,6 +4118,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   ),
                   const SizedBox(height: 16),
                   _summaryPanel(
+                    backgroundColor: const Color(0xFF242730),
                     children: [
                       _totalInfoRow(
                         icon: CupertinoIcons.sum,
@@ -4119,6 +4133,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                         value: EstimateFormatters.formatCurrency(totals.tax),
                         iconColor: const Color(0xFF38BDF8),
                       ),
+                      _summaryDivider(),
                       _totalInfoRow(
                         icon: CupertinoIcons.tag,
                         label: 'Discount',
@@ -4242,22 +4257,10 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                   _actionGroup(
                     title: 'Client',
                     subtitle: 'Send estimate by email',
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: _ActionButtonWide(
-                        icon: CupertinoIcons.paperplane,
-                        label: _isSendingEmail ? 'Sending...' : 'Send Estimate',
-                        onTap: _isSendingEmail ? null : _sendEstimate,
-                      ),
+                    child: _ActionButtonWide(
+                      icon: CupertinoIcons.paperplane,
+                      label: _isSendingEmail ? 'Sending...' : 'Send Estimate',
+                      onTap: _isSendingEmail ? null : _sendEstimate,
                     ),
                   ),
                 ],
@@ -4411,7 +4414,7 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                 onPressed: _isSaving ? null : _saveChanges,
                 child: _isSaving
                     ? const CupertinoActivityIndicator(color: Colors.white)
-                    : const Row(
+                    : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
@@ -4421,11 +4424,12 @@ class _EstimateDetailsScreenState extends State<EstimateDetailsScreen> {
                     ),
                     SizedBox(width: 8),
                     Text(
-                      'Save Changes',
-                      style: TextStyle(
-                        color: Colors.white,
+                      _isSaving ? 'Saving...' : 'Save Changes',
+                      style: const TextStyle(
+                        color: Color(0xFF1A1D25),
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
                       ),
                     ),
                   ],
@@ -6779,10 +6783,10 @@ class _AddEditEstimateItemPageState extends State<_AddEditEstimateItemPage> {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             CupertinoIcons.checkmark_circle_fill,
-                            color: Colors.white,
-                            size: 16,
+                            color: Color(0xFF1A1D25),
+                            size: 18,
                           ),
                           SizedBox(width: 6),
                           Text(

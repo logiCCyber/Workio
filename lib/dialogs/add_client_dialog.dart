@@ -5,6 +5,12 @@ import 'package:intl_phone_number_input/intl_phone_number_input.dart';
 import '../models/client_model.dart';
 import '../services/client_service.dart';
 
+const _kClientAccent = Color(0xFF38BDF8);
+const _kClientSheet = Color(0xFF1F232C);
+const _kClientInput = Color(0xFF1B2028);
+const _kClientInputBorder = Color(0xFF3A4050);
+const _kClientIcon = Color(0xFF3B82F6);
+
 Future<ClientModel?> showAddClientDialog(
     BuildContext context, {
       ClientModel? existingClient,
@@ -12,7 +18,7 @@ Future<ClientModel?> showAddClientDialog(
   return showModalBottomSheet<ClientModel>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: const Color(0xFF15161C),
+    backgroundColor: Colors.transparent,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -41,7 +47,6 @@ class _AddClientDialogContentState extends State<_AddClientDialogContent> {
   final TextEditingController _notesController = TextEditingController();
 
   bool _isSaving = false;
-  PhoneNumber _initialPhoneNumber = PhoneNumber(isoCode: 'CA');
   bool _isPhoneValid = true;
   String? _normalizedPhoneNumber;
 
@@ -64,40 +69,84 @@ class _AddClientDialogContentState extends State<_AddClientDialogContent> {
       _fullNameController.text = existing.fullName;
       _companyNameController.text = existing.companyName ?? '';
       _emailController.text = existing.email ?? '';
-      _phoneController.text = existing.phone ?? '';
+      final existingPhone = existing.phone ?? '';
+      _phoneController.text = _formatPhoneDisplay(existingPhone);
+      _normalizedPhoneNumber = _normalizePhoneForSave(existingPhone);
       _notesController.text = existing.notes ?? '';
     }
 
-    _hydrateInitialPhoneNumber();
+    _normalizedPhoneNumber =
+    _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim();
   }
 
-  Future<void> _hydrateInitialPhoneNumber() async {
-    final savedPhone = widget.existingClient?.phone?.trim() ?? '';
-    _normalizedPhoneNumber = savedPhone.isEmpty ? null : savedPhone;
+  Future<void> _handlePhoneChanged(String rawValue) async {
+    final formatted = _formatPhoneDisplay(rawValue);
 
-    if (savedPhone.isEmpty) return;
-
-    try {
-      final parsed = await PhoneNumber.getRegionInfoFromPhoneNumber(
-        savedPhone,
-        'CA',
+    if (_phoneController.text != formatted) {
+      _phoneController.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
       );
-
-      if (!mounted) return;
-
-      setState(() {
-        _initialPhoneNumber = parsed;
-      });
-    } catch (_) {
-      if (!mounted) return;
-
-      setState(() {
-        _initialPhoneNumber = PhoneNumber(
-          phoneNumber: savedPhone,
-          isoCode: 'CA',
-        );
-      });
     }
+
+    final normalized = _normalizePhoneForSave(formatted);
+    final digits = normalized.replaceAll(RegExp(r'[^0-9]'), '');
+
+    setState(() {
+      _normalizedPhoneNumber = normalized.isEmpty ? null : normalized;
+      _isPhoneValid = digits.isEmpty || digits.length >= 10;
+    });
+  }
+
+  String _normalizePhoneForSave(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.isEmpty) return '';
+
+    if (digits.length == 10) {
+      return '+1$digits';
+    }
+
+    if (digits.length == 11 && digits.startsWith('1')) {
+      return '+$digits';
+    }
+
+    if (raw.trim().startsWith('+')) {
+      return '+$digits';
+    }
+
+    return '+1$digits';
+  }
+
+  String _formatPhoneDisplay(String raw) {
+    final trimmed = raw.trim();
+    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.isEmpty) return '';
+
+    // Canada / USA format
+    final local = digits.length == 11 && digits.startsWith('1')
+        ? digits.substring(1)
+        : digits;
+
+    if (local.length <= 3) {
+      return '+1 $local';
+    }
+
+    if (local.length <= 6) {
+      return '+1 ${local.substring(0, 3)}-${local.substring(3)}';
+    }
+
+    if (local.length <= 10) {
+      return '+1 ${local.substring(0, 3)}-${local.substring(3, 6)}-${local.substring(6)}';
+    }
+
+    // other countries typed with +
+    if (trimmed.startsWith('+')) {
+      return '+$digits';
+    }
+
+    return '+$digits';
   }
 
   Future<void> _saveClient() async {
@@ -146,165 +195,155 @@ class _AddClientDialogContentState extends State<_AddClientDialogContent> {
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.existingClient == null ? 'New Client' : 'Edit Client';
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        20,
-        20,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 24,
+        12,
+        10,
+        12,
+        MediaQuery.of(context).viewInsets.bottom + 12,
       ),
       child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              widget.existingClient == null ? 'New Client' : 'Edit Client',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+          decoration: BoxDecoration(
+            color: _kClientSheet,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: _kClientInputBorder,
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.42),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
               ),
-            ),
-            const SizedBox(height: 18),
-            _PremiumTextField(
-              controller: _fullNameController,
-              label: 'Full Name',
-              hintText: 'John Smith',
-            ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _companyNameController,
-              label: 'Company Name',
-              hintText: 'Smith Renovation',
-            ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _emailController,
-              label: 'Email',
-              hintText: 'client@email.com',
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF101117),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFF23252E)),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.025),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
               ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Phone',
-                      style: TextStyle(
-                        color: Color(0xFF8E93A6),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minSize: 0,
+                    onPressed: () => Navigator.pop(context),
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF202530),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _kClientInputBorder),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.chevron_left,
+                        color: Color(0xFFF3F6FC),
+                        size: 24,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    InternationalPhoneNumberInput(
-                      initialValue: _initialPhoneNumber,
-                      textFieldController: _phoneController,
-                      selectorConfig: const SelectorConfig(
-                        selectorType: PhoneInputSelectorType.BOTTOM_SHEET,
-                        useEmoji: true,
-                        setSelectorButtonAsPrefixIcon: true,
-                      ),
-                      onInputChanged: (PhoneNumber number) {
-                        setState(() {
-                          _initialPhoneNumber = number;
-                          _normalizedPhoneNumber = number.phoneNumber;
-                        });
-                      },
-                      onInputValidated: (bool value) {
-                        if (!mounted) return;
-                        setState(() {
-                          _isPhoneValid = value;
-                        });
-                      },
-                      ignoreBlank: true,
-                      autoValidateMode: AutovalidateMode.disabled,
-                      formatInput: true,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: false,
-                      ),
-                      cursorColor: const Color(0xFF5B8CFF),
-                      selectorTextStyle: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textStyle: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35,
-                      ),
-                      inputBorder: InputBorder.none,
-                      inputDecoration: InputDecoration(
-                        isDense: true,
-                        hintText: 'Phone number',
-                        hintStyle: const TextStyle(
-                          color: Color(0xFF697086),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w400,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                        suffixIcon: _phoneController.text.trim().isNotEmpty
-                            ? GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _phoneController.clear();
-                              _normalizedPhoneNumber = null;
-                              _isPhoneValid = true;
-                              _initialPhoneNumber = PhoneNumber(isoCode: 'CA');
-                            });
-                          },
-                          child: const Icon(
-                            CupertinoIcons.xmark_circle_fill,
-                            color: Color(0xFF8E93A6),
-                            size: 18,
-                          ),
-                        )
-                            : null,
-                        suffixIconConstraints: const BoxConstraints(
-                          minWidth: 24,
-                          minHeight: 24,
-                        ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
                       ),
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 42),
+                ],
+              ),
+
+              const SizedBox(height: 18),
+
+              _PremiumTextField(
+                controller: _fullNameController,
+                icon: CupertinoIcons.person,
+                label: 'Full Name',
+                hintText: 'John Smith',
+              ),
+              const SizedBox(height: 12),
+
+              _PremiumTextField(
+                controller: _companyNameController,
+                icon: CupertinoIcons.building_2_fill,
+                label: 'Company Name',
+                hintText: 'Smith Renovation',
+              ),
+              const SizedBox(height: 12),
+
+              _PremiumTextField(
+                controller: _emailController,
+                icon: CupertinoIcons.envelope,
+                label: 'Email',
+                hintText: 'client@email.com',
+                keyboardType: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 12),
+
+              _PhoneInputCard(
+                phoneController: _phoneController,
+                isValid: _isPhoneValid,
+                onChanged: _handlePhoneChanged,
+                onClear: () {
+                  setState(() {
+                    _phoneController.clear();
+                    _normalizedPhoneNumber = null;
+                    _isPhoneValid = true;
+                  });
+                },
+              ),
+
+              const SizedBox(height: 12),
+
+              _PremiumTextField(
+                controller: _notesController,
+                icon: CupertinoIcons.doc_text,
+                label: 'Notes',
+                hintText: 'Preferred contact by email...',
+                maxLines: 4,
+              ),
+
+              const SizedBox(height: 18),
+
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: CupertinoButton(
+                  padding: EdgeInsets.zero,
+                  color: const Color(0xFF3B82F6),
+                  borderRadius: BorderRadius.circular(18),
+                  onPressed: _isSaving ? null : _saveClient,
+                  child: _isSaving
+                      ? const CupertinoActivityIndicator(color: Colors.white)
+                      : Text(
+                    widget.existingClient == null
+                        ? 'Save Client'
+                        : 'Save Changes',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            _PremiumTextField(
-              controller: _notesController,
-              label: 'Notes',
-              hintText: 'Preferred contact by email...',
-              maxLines: 4,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: CupertinoButton(
-                color: const Color(0xFF5B8CFF),
-                borderRadius: BorderRadius.circular(16),
-                onPressed: _isSaving ? null : _saveClient,
-                child: _isSaving
-                    ? const CupertinoActivityIndicator(color: Colors.white)
-                    : Text(
-                  widget.existingClient == null ? 'Save Client' : 'Save Changes',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -313,6 +352,7 @@ class _AddClientDialogContentState extends State<_AddClientDialogContent> {
 
 class _PremiumTextField extends StatefulWidget {
   final TextEditingController controller;
+  final IconData icon;
   final String label;
   final String hintText;
   final int maxLines;
@@ -320,6 +360,7 @@ class _PremiumTextField extends StatefulWidget {
 
   const _PremiumTextField({
     required this.controller,
+    required this.icon,
     required this.label,
     required this.hintText,
     this.maxLines = 1,
@@ -347,19 +388,15 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
   }
 
   @override
-  void didUpdateWidget(covariant _PremiumTextField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_refresh);
-      widget.controller.addListener(_refresh);
-    }
+  void dispose() {
+    widget.controller.removeListener(_refresh);
+    _focusNode.removeListener(_refresh);
+    _focusNode.dispose();
+    super.dispose();
   }
 
   void _refresh() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   void _clearText() {
@@ -368,83 +405,189 @@ class _PremiumTextFieldState extends State<_PremiumTextField> {
   }
 
   @override
-  void dispose() {
-    widget.controller.removeListener(_refresh);
-    _focusNode.removeListener(_refresh);
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final isSingleLine = widget.maxLines == 1;
 
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF101117),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF23252E)),
+      constraints: BoxConstraints(
+        minHeight: isSingleLine ? 78 : 126,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.label,
-              style: const TextStyle(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: _kClientInput,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: _kClientInputBorder,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment:
+        isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(top: isSingleLine ? 0 : 6),
+            child: Icon(
+              widget.icon,
+              color: _kClientIcon,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.label,
+                  style: const TextStyle(
+                    color: Color(0xFFA0A7B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: widget.controller,
+                  focusNode: _focusNode,
+                  keyboardType: widget.keyboardType,
+                  maxLines: widget.maxLines,
+                  minLines: isSingleLine ? 1 : widget.maxLines,
+                  cursorColor: _kClientAccent,
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: widget.hintText,
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF7D8496),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_showClearButton) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _clearText,
+              child: const Icon(
+                CupertinoIcons.xmark_circle_fill,
                 color: Color(0xFF8E93A6),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                size: 18,
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment:
-              isSingleLine ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PhoneInputCard extends StatelessWidget {
+  final TextEditingController phoneController;
+  final bool isValid;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  const _PhoneInputCard({
+    required this.phoneController,
+    required this.isValid,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(
+        minHeight: 78,
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: _kClientInput,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isValid ? _kClientInputBorder : const Color(0xFFFF6B6B),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Icon(
+            CupertinoIcons.phone_fill,
+            color: _kClientIcon,
+            size: 24,
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: _focusNode,
-                    keyboardType: widget.keyboardType,
-                    maxLines: widget.maxLines,
-                    minLines: isSingleLine ? 1 : widget.maxLines,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.35,
+                const Text(
+                  'Phone',
+                  style: TextStyle(
+                    color: Color(0xFFA0A7B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: phoneController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    signed: true,
+                    decimal: false,
+                  ),
+                  cursorColor: _kClientAccent,
+                  onChanged: onChanged,
+                  style: const TextStyle(
+                    color: Color(0xFFF3F6FC),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w500,
+                    height: 1.3,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Phone number',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF7D8496),
+                      fontSize: 17,
+                      fontWeight: FontWeight.w400,
                     ),
-                    cursorColor: const Color(0xFF5B8CFF),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: widget.hintText,
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF697086),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                    suffixIcon: phoneController.text.trim().isNotEmpty
+                        ? GestureDetector(
+                      onTap: onClear,
+                      child: const Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: Color(0xFF8E93A6),
+                        size: 18,
                       ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
+                    )
+                        : null,
+                    suffixIconConstraints: const BoxConstraints(
+                      minWidth: 24,
+                      minHeight: 24,
                     ),
                   ),
                 ),
-                if (_showClearButton) ...[
-                  const SizedBox(width: 10),
-                  GestureDetector(
-                    onTap: _clearText,
-                    child: const Icon(
-                      CupertinoIcons.xmark_circle_fill,
-                      color: Color(0xFF8E93A6),
-                      size: 18,
-                    ),
-                  ),
-                ],
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

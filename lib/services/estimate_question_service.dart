@@ -3,6 +3,7 @@ import '../models/ai_missing_field_model.dart';
 import '../models/ai_parsed_request_model.dart';
 import 'estimate_price_rules_service.dart';
 import '../models/estimate_price_rule_model.dart';
+import 'estimate_inference_service.dart';
 
 class EstimateQuestionService {
   EstimateQuestionService._();
@@ -37,6 +38,13 @@ class EstimateQuestionService {
 
     final serviceTypeOptions = await _loadServiceTypeOptions();
     final currentRule = selectedRule ?? await _loadMainRule(serviceType);
+    // === Фаза 1: Inference layer ===
+// AI сам отвечает на вопросы которые может определить из контекста.
+    final inferenceContext = EstimateInferenceService.analyze(
+      prompt: parsed.rawPrompt,
+      parsed: parsed,
+      selectedRule: currentRule,
+    );
 
     final ruleHasMaterialPricing = _ruleHasMaterialPricing(currentRule);
     final hasParsedMaterials = parsedMaterials.isNotEmpty;
@@ -68,6 +76,7 @@ class EstimateQuestionService {
       laborOnly: laborOnly,
       serviceTypeOptions: serviceTypeOptions,
       currentRule: currentRule,
+      inferenceContext: inferenceContext, // ← НОВОЕ
     );
 
     final confidence = _recalculateConfidence(
@@ -234,6 +243,7 @@ class EstimateQuestionService {
     required List<String> serviceTypeOptions,
     required dynamic currentRule,
     required bool? projectSizeRequired,
+    required InferenceContext inferenceContext, // ← НОВОЕ
   }) {
     final fields = <AiMissingFieldModel>[];
 
@@ -300,6 +310,7 @@ class EstimateQuestionService {
         rooms: rooms,
         materialsIncluded: materialsIncluded,
         laborOnly: laborOnly,
+        inferenceContext: inferenceContext, // ← НОВОЕ
       ),
     );
     return _uniqueMissingFields(fields);
@@ -598,6 +609,7 @@ class EstimateQuestionService {
     required int? rooms,
     required bool? materialsIncluded,
     required bool? laborOnly,
+    required InferenceContext inferenceContext,
   }) {
     if (rule == null) return const [];
 
@@ -614,7 +626,6 @@ class EstimateQuestionService {
       final answerType = (map['answerType'] ?? '').toString().trim();
       final rawQuestion = (map['question'] ?? '').toString().trim();
       final rawHint = (map['hint'] ?? '').toString().trim();
-      final isRequired = map['isRequired'] == true;
 
       final question = _applyFollowupTemplate(
         rawQuestion,
@@ -648,6 +659,7 @@ class EstimateQuestionService {
         materialsIncluded: materialsIncluded,
         laborOnly: laborOnly,
         parsedMaterials: parsedMaterials,
+        inferenceContext: inferenceContext,
       )) {
         continue;
       }
@@ -674,8 +686,14 @@ class EstimateQuestionService {
     required bool? materialsIncluded,
     required bool? laborOnly,
     required List<Map<String, dynamic>> parsedMaterials,
+    required InferenceContext inferenceContext, // ← НОВОЕ
   }) {
     final normalizedKey = key.trim().toLowerCase();
+
+    // === Фаза 1: AI уже знает ответ — вопрос пропускается ===
+    if (inferenceContext.assumedAnswers.containsKey(normalizedKey)) {
+      return true;
+    }
 
     if (normalizedKey == 'project_size' &&
         ((sqft ?? 0) > 0 || (rooms ?? 0) > 0)) {

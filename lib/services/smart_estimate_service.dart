@@ -10,6 +10,7 @@ import 'parse_estimate_mini_service.dart';
 import 'ai_estimate_text_service.dart';
 import '../models/estimate_price_rule_model.dart';
 import '../models/estimate_item_model.dart';
+import 'estimate_inference_service.dart';
 
 class _ActionQuantityPart {
   final String intent;
@@ -321,10 +322,13 @@ class SmartEstimateService {
 // 4. Иначе → unknown
     final hasMaterialItem = result.items.any(_isPromptMaterialItem);
 
-    final materialsMode = parsed.laborOnly == true
-        ? 'labor_only'
-        : hasMaterialItem
+// КРИТИЧНО: items — главный источник правды.
+// Если в items есть материал — значит included, точка.
+// Даже если parsed.laborOnly == true (парсер может ошибаться).
+    final materialsMode = hasMaterialItem
         ? 'included'
+        : parsed.laborOnly == true
+        ? 'labor_only'
         : parsed.materialsIncluded == true
         ? 'included'
         : 'unknown';
@@ -336,6 +340,13 @@ class SmartEstimateService {
       print('   - ${item.title} | \$${item.unitPrice}');
     }
 
+    // === Фаза 1: Inference context для AI ===
+    final inferenceContext = EstimateInferenceService.analyze(
+      prompt: prompt,
+      parsed: parsed,
+      selectedRule: selectedRule,
+    );
+
     try {
       return await AiEstimateTextService.generate(
         items: result.items,
@@ -345,6 +356,9 @@ class SmartEstimateService {
         hasRush: hasRush,
         materialsMode: materialsMode,
         propertyCity: propertyCity,
+        locationContext: inferenceContext.locationContext, // ← НОВОЕ
+        objectContext: inferenceContext.objectContext,     // ← НОВОЕ
+        tradeHints: inferenceContext.tradeHints,           // ← НОВОЕ
       );
     } catch (_) {
       // Тихий fallback: AI упал — оставляем то что построил билдер.

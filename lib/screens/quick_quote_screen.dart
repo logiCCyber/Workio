@@ -849,7 +849,7 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
       return 'replacement';
     }
 
-    if (RegExp(r'\b(repair|fix|troubleshoot|service|leak|broken|not working)\b').hasMatch(text)) {
+    if (RegExp(r'\b(repair|fix|troubleshoot|leak|broken|not working)\b').hasMatch(text)) {
       return 'repair';
     }
 
@@ -2391,20 +2391,47 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     final text = value
         .trim()
         .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9\s]+'), ' ')
+        .replaceAll(
+      RegExp(r'[^a-zа-яё0-9\s]+', unicode: true),
+      ' ',
+    )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
     if (text.isEmpty) return false;
 
     final noRush = RegExp(
-      r'\b(no rush|not urgent|not rush|not priority|standard timing|normal schedule|normal service|not expedited|no expedited|ne srochnaya|nesrochnaya|rabota ne srochnaya|ne srochno|bez srochnosti|obychnaya rabota|regular schedule)\b',
+      r'\b(no rush|not urgent|not rush|not priority|standard timing|normal schedule|normal service|not expedited|no expedited|ne srochnaya|nesrochnaya|rabota ne srochnaya|ne srochno|bez srochnosti|obychnaya rabota|regular schedule|не срочно|не срочная|без срочности|обычная работа)\b',
+      caseSensitive: false,
+      unicode: true,
     ).hasMatch(text);
 
     if (noRush) return false;
 
     return RegExp(
-      r'\b(urgent|rush|asap|same day|emergency|priority|expedited|srochno|srochnaya|rabota srochnaya|shoshilinch)\b',
+      r'\b(urgent|rush|asap|same day|emergency|priority|expedited|srochno|srochnaya|rabota srochnaya|shoshilinch|срочно|срочная|работа срочная|экстренно|приоритетно)\b',
+      caseSensitive: false,
+      unicode: true,
+    ).hasMatch(text);
+  }
+
+  bool _promptSaysMaterialsNotIncluded(String value) {
+    final text = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(
+      RegExp(r'[^a-zа-яё0-9\s]+', unicode: true),
+      ' ',
+    )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (text.isEmpty) return false;
+
+    return RegExp(
+      r'\b(materials not included|material not included|without materials|labor only|labour only|customer provides|customer supplied|bez materialov|materiali ne vklyucheni|materialy ne vklyucheny|material ne vkluchen|материалы не включены|без материалов)\b',
+      caseSensitive: false,
+      unicode: true,
     ).hasMatch(text);
   }
 
@@ -2892,6 +2919,16 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
       final rawJobs = data['jobs'] as List? ?? [];
       debugPrint('JOBS FROM AI: $rawJobs');
 
+      final cleanPromptText = (data['cleanPrompt'] ?? '').toString();
+
+      final globalRush =
+          _hasRushSignalInPrompt(rawPrompt) ||
+              _hasRushSignalInPrompt(cleanPromptText);
+
+      final materialsBlocked =
+          _promptSaysMaterialsNotIncluded(rawPrompt) ||
+              _promptSaysMaterialsNotIncluded(cleanPromptText);
+
       // Проверяем есть ли глобальный rush price
 // Если все jobs isUrgent=true но в промпте есть явная общая цена за визит
 // то убираем individual rush fees и добавляем один общий
@@ -2915,12 +2952,53 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
         globalVisitRushPrice = double.tryParse(visitRushMatch.group(1) ?? '');
       }
 
-// Также проверяем если AI вернул job с Visit Rush Fee
+// Проверяем если AI вернул job с Visit Rush Fee
       for (final job in rawJobs) {
         final ruleId = job['ruleId']?.toString().trim() ?? '';
         final desc = job['description']?.toString().toLowerCase() ?? '';
-        if (ruleId.isEmpty && desc.contains('visit rush fee')) {
-          globalVisitRushPrice = (job['laborUnitPrice'] as num?)?.toDouble();
+        final containsRushKeyword = desc.contains('visit rush fee') ||
+            desc.contains('rush fee') ||
+            desc.contains('visit fee');
+
+        if (ruleId.isEmpty && containsRushKeyword) {
+          final price = (job['laborUnitPrice'] as num?)?.toDouble() ?? 0.0;
+          // Если AI вернул цену — используем её
+          if (price > 0) {
+            globalVisitRushPrice = price;
+          }
+          // Если AI вернул rush job без цены — fallback: суммируем rushFixedRate всех правил
+          // которые помечены как isUrgent
+          else if (globalVisitRushPrice == null) {
+            double fallbackRush = 0;
+            for (final j in rawJobs) {
+              if (j['isUrgent'] != true) continue;
+              final rId = j['ruleId']?.toString().trim() ?? '';
+              if (rId.isEmpty) continue;
+              final r = rules.firstWhere(
+                    (e) => e.id == rId,
+                orElse: () => rules.first,
+              );
+              fallbackRush += (r.rushFixedRate ?? 0);
+            }
+            // Если хоть у одного правила есть rush — используем максимальный
+            if (fallbackRush > 0) {
+              double maxRush = 0;
+              for (final j in rawJobs) {
+                if (j['isUrgent'] != true) continue;
+                final rId = j['ruleId']?.toString().trim() ?? '';
+                if (rId.isEmpty) continue;
+                final r = rules.firstWhere(
+                      (e) => e.id == rId,
+                  orElse: () => rules.first,
+                );
+                final rushVal = r.rushFixedRate ?? 0;
+                if (rushVal > maxRush) maxRush = rushVal;
+              }
+              if (maxRush > 0) {
+                globalVisitRushPrice = maxRush;
+              }
+            }
+          }
         }
       }
 
@@ -2943,7 +3021,7 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
 
         final quantity = (job['quantity'] as num?)?.toDouble() ?? 1.0;
         final laborUnitPrice = (job['laborUnitPrice'] as num?)?.toDouble();
-        final isUrgent = job['isUrgent'] == true;
+        final isUrgent = job['isUrgent'] == true || globalRush;
         final unitPrice = laborUnitPrice ?? rule.baseRate;
 
         if (unitPrice <= 0) continue;
@@ -2953,12 +3031,25 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
           unitPrice: unitPrice,
         );
 
+        // === Smart title: используем description от AI как title, если он содержит action ===
+        // Например: rule.displayName = "Dishwasher Service", AI вернул "Install Dishwasher"
+        // → title должен быть "Install Dishwasher", а не "Dishwasher Service"
+        final aiDescription = job['description']?.toString().trim() ?? '';
+        final hasActionInDescription = RegExp(
+          r'\b(install|installation|replace|replacement|repair|repaired|fix|inspect|inspection|diagnose|diagnostic|remove|removal)\b',
+          caseSensitive: false,
+        ).hasMatch(aiDescription);
+
+        final finalTitle = hasActionInDescription && aiDescription.isNotEmpty
+            ? _capitalize(aiDescription)
+            : serviceLabel;
+
         iconNames[sortOrder] = rule.iconName ?? '';
         items.add(EstimateItemModel(
           id: '',
           estimateId: '',
-          title: serviceLabel,
-          description: job['description']?.toString() ?? '',
+          title: finalTitle,
+          description: aiDescription,
           unit: rule.unit,
           quantity: quantity,
           unitPrice: unitPrice,
@@ -2967,15 +3058,15 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
           createdAt: null,
         ));
 
-        // Rush fee
-        // Rush fee — только если нет глобального Visit Rush Fee
+        // Rush fee per job — только если нет глобального Visit Rush Fee
+        // И только если у правила настроен rushFixedRate
         if (isUrgent && (rule.rushFixedRate ?? 0) > 0 && globalVisitRushPrice == null) {
           final rushRate = rule.rushFixedRate!;
           items.add(EstimateItemModel(
             id: '',
             estimateId: '',
             title: '$serviceLabel Rush Fee',
-            description: 'Rush fee',
+            description: 'Expedited scheduling fee',
             unit: 'fixed',
             quantity: 1,
             unitPrice: rushRate,
@@ -2986,7 +3077,7 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
         }
 
         // Materials
-        final materials = job['materials'] as List? ?? [];
+        final materials = materialsBlocked ? const [] : (job['materials'] as List? ?? []);
         for (final mat in materials) {
           final matName = mat['name']?.toString().trim() ?? 'Materials';
           final matQty = (mat['quantity'] as num?)?.toDouble() ?? 1.0;
@@ -3106,6 +3197,12 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     } catch (_) {
       _showSnack('Failed to pick photo');
     }
+  }
+
+  String _capitalize(String value) {
+    final clean = value.trim();
+    if (clean.isEmpty) return clean;
+    return clean[0].toUpperCase() + clean.substring(1);
   }
 
   void _clearPhoto() {
@@ -3806,7 +3903,8 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
     final current = _result;
     if (current == null) return;
 
-    final updated = List<EstimateItemModel>.from(current.items)..removeAt(index);
+    final updated = List<EstimateItemModel>.from(current.items);
+    updated.removeAt(index);
 
     setState(() {
       _result = current.copyWith(items: updated);
@@ -3842,25 +3940,79 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
       var notesText = (result.notes ?? '').trim();
 
       try {
-        final hasRush = result.items.any((i) =>
-        i.title.toLowerCase().contains('rush') ||
-            i.title.toLowerCase().contains('visit fee'));
+        // === Определяем контекст для AI ===
+        final originalPrompt = _promptController.text.trim();
+        final lowerPrompt = originalPrompt.toLowerCase();
 
-        final hasMaterials = result.items
-            .any((i) => i.title.toLowerCase().contains('material'));
+        // Rush detection
+        final hasRush = RegExp(
+          r'\b(rush|urgent|asap|emergency|priority|expedited|srochno|srochnaya)\b',
+        ).hasMatch(lowerPrompt);
+
+        // Materials mode (источник правды — items)
+        final hasMaterialItem = result.items.any((i) {
+          final t = '${i.title} ${i.description} ${i.unit}'.toLowerCase();
+          return RegExp(r'\b(material|materials|part|parts|supply|supplies)\b').hasMatch(t);
+        });
+
+        final saidLaborOnly = RegExp(
+          r'\b(labor only|labour only|materials not included|materiali ne vklyucheni|ne vklyucheni)\b',
+        ).hasMatch(lowerPrompt);
+
+        String materialsMode;
+        if (hasMaterialItem) {
+          materialsMode = 'included';
+        } else if (saidLaborOnly) {
+          materialsMode = 'labor_only';
+        } else if (RegExp(r'\b(materials included|with materials)\b').hasMatch(lowerPrompt)) {
+          materialsMode = 'included';
+        } else {
+          materialsMode = 'unknown';
+        }
+
+        // Intent
+        String intent = 'service';
+        if (RegExp(r'\b(install|installation|mount|ustanovit)\b').hasMatch(lowerPrompt)) {
+          intent = 'install';
+        } else if (RegExp(r'\b(replace|replacement|swap|zamenit)\b').hasMatch(lowerPrompt)) {
+          intent = 'replace';
+        } else if (RegExp(r'\b(repair|fix|broken|pochinit|remont)\b').hasMatch(lowerPrompt)) {
+          intent = 'repair';
+        } else if (RegExp(r'\b(inspect|diagnose|check|proverit)\b').hasMatch(lowerPrompt)) {
+          intent = 'diagnostic';
+        }
+
+        // Service label из первого labor item
+        String serviceLabel = '';
+        for (final item in result.items) {
+          final t = item.title.toLowerCase();
+          if (RegExp(r'\b(material|rush|urgent)\b').hasMatch(t)) continue;
+          serviceLabel = item.title;
+          break;
+        }
+        if (serviceLabel.isEmpty && result.items.isNotEmpty) {
+          serviceLabel = result.items.first.title;
+        }
+
+        // Trade category из selected rule
+        final tradeCategory = _selectedPriceRule?.category ?? '';
 
         final response = await Supabase.instance.client.functions.invoke(
-          'generate-estimate-content',
+          'generate-estimate-content-v2',
           body: {
             'items': result.items.map((i) => {
               'title': i.title,
               'quantity': i.quantity,
               'unitPrice': i.unitPrice,
               'unit': i.unit,
-              'originalPrompt': _promptController.text.trim(),
+              'description': i.description,
             }).toList(),
+            'serviceLabel': serviceLabel,
+            'tradeCategory': tradeCategory,
+            'intent': intent,
             'hasRush': hasRush,
-            'hasMaterials': hasMaterials,
+            'materialsMode': materialsMode,
+            'originalPrompt': originalPrompt,
             'clientName': client.fullName,
             'propertyAddress': property.addressLine1,
             'propertyCity': property.city ?? '',
@@ -3868,12 +4020,58 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
         );
 
         final data = Map<String, dynamic>.from(response.data as Map);
-        final aiScope = (data['scope'] ?? '').toString().trim();
-        final aiNotes = (data['notes'] ?? '').toString().trim();
 
+        // === Правильный парсинг ответа v2 ===
+        final aiTitle = (data['title'] ?? '').toString().trim();
+        final aiScope = (data['scopeOfWork'] ?? '').toString().trim();
+        final aiNotes = (data['notes'] ?? '').toString().trim();
+        final aiTerms = (data['terms'] ?? '').toString().trim();
+
+        final inclusions = (data['inclusions'] as List?)
+            ?.map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList() ?? [];
+
+        final exclusions = (data['exclusions'] as List?)
+            ?.map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList() ?? [];
+
+        final assumptions = (data['assumptions'] as List?)
+            ?.map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList() ?? [];
+
+        if (aiTitle.isNotEmpty) title = aiTitle;
         if (aiScope.isNotEmpty) scopeText = aiScope;
-        if (aiNotes.isNotEmpty) notesText = aiNotes;
-      } catch (_) {}
+
+        // === Notes объединяем: notes + inclusions + exclusions + assumptions + terms ===
+        final notesParts = <String>[];
+
+        if (aiNotes.isNotEmpty) notesParts.add(aiNotes);
+
+        if (inclusions.isNotEmpty) {
+          notesParts.add('What\'s Included:\n${inclusions.map((e) => '- $e').join('\n')}');
+        }
+
+        if (exclusions.isNotEmpty) {
+          notesParts.add('What\'s Not Included:\n${exclusions.map((e) => '- $e').join('\n')}');
+        }
+
+        if (assumptions.isNotEmpty) {
+          notesParts.add('Assumptions:\n${assumptions.map((e) => '- $e').join('\n')}');
+        }
+
+        if (aiTerms.isNotEmpty) {
+          notesParts.add('Terms & Conditions:\n$aiTerms');
+        }
+
+        if (notesParts.isNotEmpty) {
+          notesText = notesParts.join('\n\n');
+        }
+      } catch (e) {
+        debugPrint('Convert AI text failed: $e');
+      }
 
       final estimate = EstimateModel(
         id: '',
@@ -3894,9 +4092,30 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
         updatedAt: null,
       );
 
+      // Нормализуем unit под DB constraint (только item/sqft/fixed)
+      final allowedUnits = {'item', 'sqft', 'fixed'};
+      final normalizedItems = result.items.map((item) {
+        final currentUnit = item.unit.trim().toLowerCase();
+        // load/each/hour/room/loads → item (это всё счётные единицы)
+        // всё остальное → fixed
+        String safeUnit;
+        if (allowedUnits.contains(currentUnit)) {
+          safeUnit = currentUnit;
+        } else if (currentUnit == 'load' || currentUnit == 'loads' ||
+            currentUnit == 'each' || currentUnit == 'hour' ||
+            currentUnit == 'hours' || currentUnit == 'room' ||
+            currentUnit == 'rooms' || currentUnit == 'unit' ||
+            currentUnit == 'units') {
+          safeUnit = 'item';
+        } else {
+          safeUnit = 'fixed';
+        }
+        return item.copyWith(unit: safeUnit);
+      }).toList();
+
       final created = await EstimateService.createEstimateWithItems(
         estimate: estimate,
-        items: result.items,
+        items: normalizedItems,
         taxRate: _taxRate,
         discountValue: 0,
         discountIsPercentage: false,
@@ -3914,9 +4133,11 @@ class _QuickQuoteScreenState extends State<QuickQuoteScreen> {
         ),
       );
 
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('🔴 CONVERT FAILED: $e');
+      debugPrint('🔴 STACK: $st');
       if (!mounted) return;
-      _showSnack('Failed to convert quote to estimate');
+      _showSnack('Failed to convert quote to estimate: $e');
     } finally {
       if (!mounted) return;
 

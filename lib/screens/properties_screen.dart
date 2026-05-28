@@ -76,7 +76,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
         _isLoading = false;
       });
 
-      _showSnack('Не удалось загрузить объекты');
+      _showSnack('Failed to load properties');
     }
   }
 
@@ -98,10 +98,10 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       if (!mounted) return;
 
       await _loadData();
-      _showSnack('Объект восстановлен');
+      _showSnack('Property restored');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Ошибка при восстановлении объекта');
+      _showSnack('Failed to restore property');
     }
   }
 
@@ -146,7 +146,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
 
   Future<void> _addProperty() async {
     if (_clients.isEmpty) {
-      _showSnack('Сначала создай хотя бы одного клиента');
+      _showSnack('Create at least one client first');
       return;
     }
 
@@ -161,7 +161,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     if (created == null) return;
 
     await _loadData();
-    _showSnack('Объект создан');
+    _showSnack('Property created');
   }
 
   Future<void> _editProperty(PropertyModel property) async {
@@ -174,16 +174,16 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     if (updated == null) return;
 
     await _loadData();
-    _showSnack('Объект обновлён');
+    _showSnack('Property updated');
   }
 
   Future<void> _deleteProperty(PropertyModel property) async {
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
       builder: (_) => CupertinoAlertDialog(
-        title: const Text('Удалить объект?'),
+        title: const Text('Delete property?'),
         content: Text(
-          'Объект "${property.addressLine1}" будет удалён.',
+          'Property "${property.addressLine1}" will be deleted.',
         ),
         actions: [
           CupertinoDialogAction(
@@ -207,7 +207,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       if (!mounted) return;
 
       await _loadData();
-      _showSnack('Объект удалён');
+      _showSnack('Property deleted');
     } catch (e) {
       if (!mounted) return;
 
@@ -216,16 +216,16 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       if (text.contains('estimates_property_id_fkey') ||
           text.contains('invoices_property_id_fkey')) {
         if (property.isArchived) {
-          _showSnack('Нельзя удалить объект: он используется в estimates или invoices');
+          _showSnack('Cannot delete property: it is used in estimates or invoices');
           return;
         }
 
         final archive = await showCupertinoDialog<bool>(
           context: context,
           builder: (_) => CupertinoAlertDialog(
-            title: const Text('Удаление невозможно'),
+            title: const Text('Cannot delete'),
             content: const Text(
-              'Объект уже используется в estimates или invoices. Архивировать вместо удаления?',
+              'This property is already used in estimates or invoices. Archive it instead of deleting?',
             ),
             actions: [
               CupertinoDialogAction(
@@ -246,13 +246,13 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
           if (!mounted) return;
 
           await _loadData();
-          _showSnack('Объект архивирован');
+          _showSnack('Property archived');
         }
 
         return;
       }
 
-      _showSnack('Ошибка при удалении объекта');
+      _showSnack('Failed to delete property');
     }
   }
 
@@ -277,34 +277,32 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 20,
-        title: const Text(
-          'Properties',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addProperty,
-        backgroundColor: const Color(0xFF5B8CFF),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
-        icon: const Icon(CupertinoIcons.add),
-        label: const Text(
-          'New Property',
-          style: TextStyle(fontWeight: FontWeight.w600),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(150),
+        child: _PropertiesTopBar(
+          searchController: _searchController,
+          showArchivedOnly: _showArchivedOnly,
+          propertiesCount: _filteredProperties.length,
+          onBack: () => Navigator.of(context).maybePop(),
+          onAddProperty: _addProperty,
+          onShowActive: () async {
+            if (!_showArchivedOnly) return;
+
+            setState(() {
+              _showArchivedOnly = false;
+            });
+
+            await _loadData();
+          },
+          onShowArchived: () async {
+            if (_showArchivedOnly) return;
+
+            setState(() {
+              _showArchivedOnly = true;
+            });
+
+            await _loadData();
+          },
         ),
       ),
       body: SafeArea(
@@ -315,53 +313,6 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
           backgroundColor: const Color(0xFF15161C),
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: _PremiumSearchField(
-                  controller: _searchController,
-                  hintText: _showArchivedOnly
-                      ? 'Поиск архивного объекта...'
-                      : 'Поиск объекта...',
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _PropertiesModeButton(
-                        label: 'Active',
-                        selected: !_showArchivedOnly,
-                        onTap: () async {
-                          if (!_showArchivedOnly) return;
-
-                          setState(() {
-                            _showArchivedOnly = false;
-                          });
-
-                          await _loadData();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _PropertiesModeButton(
-                        label: 'Archived',
-                        selected: _showArchivedOnly,
-                        onTap: () async {
-                          if (_showArchivedOnly) return;
-
-                          setState(() {
-                            _showArchivedOnly = true;
-                          });
-
-                          await _loadData();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               Expanded(
                 child: _isLoading
                     ? const Center(
@@ -369,31 +320,274 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                 )
                     : _filteredProperties.isEmpty
                     ? const _EmptyPropertiesState()
-                    : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-                  itemCount: _filteredProperties.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final property = _filteredProperties[index];
-                    final client = _clientsById[property.clientId];
+                    : ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 120),
+                  children: [
+                    _PropertiesListPanel(
+                      children: List.generate(_filteredProperties.length, (index) {
+                        final property = _filteredProperties[index];
+                        final client = _clientsById[property.clientId];
 
-                    return _PropertyCard(
-                      property: property,
-                      clientName: client?.fullName ?? 'Без клиента',
-                      onOpen: () => _openPropertyDetails(property),
-                      onEdit: () => _editProperty(property),
-                      onDelete: () => _deleteProperty(property),
-                      onRestore: property.isArchived
-                          ? () => _restoreProperty(property)
-                          : null,
-                    );
-                  },
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == _filteredProperties.length - 1 ? 0 : 12,
+                          ),
+                          child: _PropertyCard(
+                            property: property,
+                            clientName: client?.fullName ?? 'No client',
+                            onOpen: () => _openPropertyDetails(property),
+                            onEdit: () => _editProperty(property),
+                            onDelete: () => _deleteProperty(property),
+                            onRestore: property.isArchived
+                                ? () => _restoreProperty(property)
+                                : null,
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PropertiesTopBar extends StatelessWidget {
+  final TextEditingController searchController;
+  final bool showArchivedOnly;
+  final int propertiesCount;
+  final VoidCallback onBack;
+  final VoidCallback onAddProperty;
+  final Future<void> Function() onShowActive;
+  final Future<void> Function() onShowArchived;
+
+  const _PropertiesTopBar({
+    required this.searchController,
+    required this.showArchivedOnly,
+    required this.propertiesCount,
+    required this.onBack,
+    required this.onAddProperty,
+    required this.onShowActive,
+    required this.onShowArchived,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = showArchivedOnly
+        ? '$propertiesCount archived properties'
+        : '$propertiesCount active properties';
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+          decoration: BoxDecoration(
+            color: const Color(0xFF242730),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: const Color(0xFF343846)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.38),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.035),
+                blurRadius: 12,
+                spreadRadius: -6,
+                offset: const Offset(0, -3),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minSize: 0,
+                    onPressed: onBack,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2A2D36),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF3A3E4B)),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.chevron_left,
+                        color: Color(0xFFF3F6FC),
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Properties',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Color(0xFFF4F6FA),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.35,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFFA0A7B8),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PremiumSearchField(
+                      controller: searchController,
+                      hintText: showArchivedOnly
+                          ? 'Search archived...'
+                          : 'Search property...',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _PropertiesToolbarButton(
+                    icon: CupertinoIcons.house_fill,
+                    selected: !showArchivedOnly,
+                    onTap: () => onShowActive(),
+                  ),
+                  const SizedBox(width: 8),
+                  _PropertiesToolbarButton(
+                    icon: CupertinoIcons.archivebox_fill,
+                    selected: showArchivedOnly,
+                    onTap: () => onShowArchived(),
+                  ),
+                  const SizedBox(width: 8),
+                  _PropertiesToolbarButton(
+                    icon: CupertinoIcons.plus,
+                    selected: false,
+                    accent: true,
+                    onTap: onAddProperty,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PropertiesToolbarButton extends StatelessWidget {
+  final IconData icon;
+  final bool selected;
+  final bool accent;
+  final VoidCallback onTap;
+
+  const _PropertiesToolbarButton({
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    this.accent = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent || selected
+        ? const Color(0xFF38BDF8)
+        : const Color(0xFFB8C1D9);
+
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minSize: 0,
+      onPressed: onTap,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: const Color(0xFF202530),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFF3A4050),
+            width: 1.15,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.26),
+              blurRadius: 12,
+              offset: const Offset(0, 7),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.025),
+              blurRadius: 6,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Icon(
+          icon,
+          color: color,
+          size: accent ? 22 : 20,
+        ),
+      ),
+    );
+  }
+}
+
+class _PropertiesListPanel extends StatelessWidget {
+  final List<Widget> children;
+
+  const _PropertiesListPanel({
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF262C37),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: const Color(0xFF3D4555),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.28),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(children: children),
     );
   }
 }
@@ -457,34 +651,34 @@ class _PremiumSearchFieldState extends State<_PremiumSearchField> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 54,
+      height: 46,
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
-        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF202530),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF262832),
-          width: 1,
+          color: const Color(0xFF3A4050),
+          width: 1.15,
         ),
       ),
       child: TextField(
         controller: widget.controller,
         focusNode: _focusNode,
         style: const TextStyle(
-          color: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
+          color: Color(0xFFF3F6FC),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
         ),
-        cursorColor: const Color(0xFF5B8CFF),
+        cursorColor: const Color(0xFF38BDF8),
         decoration: InputDecoration(
           hintText: widget.hintText,
           hintStyle: const TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 15,
-            fontWeight: FontWeight.w400,
+            color: Color(0xFF9AA3B7),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
           prefixIcon: const Icon(
             CupertinoIcons.search,
-            color: Color(0xFF8E93A6),
+            color: Color(0xFFB8C1D9),
             size: 20,
           ),
           suffixIcon: _showClearButton
@@ -492,7 +686,7 @@ class _PremiumSearchFieldState extends State<_PremiumSearchField> {
             onTap: _clearText,
             child: const Icon(
               CupertinoIcons.xmark_circle_fill,
-              color: Color(0xFF8E93A6),
+              color: Color(0xFF9AA3B7),
               size: 18,
             ),
           )
@@ -502,7 +696,7 @@ class _PremiumSearchFieldState extends State<_PremiumSearchField> {
             minHeight: 24,
           ),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(vertical: 13),
         ),
       ),
     );
@@ -528,74 +722,105 @@ class _PropertyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final archived = property.isArchived;
     final type = (property.propertyType ?? '').trim();
     final sqft = property.squareFootage;
     final city = (property.city ?? '').trim();
     final province = (property.province ?? '').trim();
+    final postal = (property.postalCode ?? '').trim();
+    final address2 = (property.addressLine2 ?? '').trim();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        color: archived
+            ? const Color(0xFF1B2028)
+            : const Color(0xFF1E2430),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: archived
+              ? const Color(0xFF313847)
+              : const Color(0xFF384152),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.38),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.16),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.035),
+            blurRadius: 6,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            property.addressLine1,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
-            ),
-          ),
-          if (property.isArchived) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2D36),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFF3A3D46)),
-              ),
-              child: const Text(
-                'Archived',
-                style: TextStyle(
-                  color: Color(0xFFB6BCD0),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              _PropertyAvatar(archived: archived),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      property.addressLine1,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      clientName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFA0A7B8),
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
-          if ((property.addressLine2 ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              property.addressLine2!,
-              style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          _PropertyInfoRow(
-            icon: CupertinoIcons.person,
-            text: clientName,
+              const SizedBox(width: 10),
+              _PropertyStateChip(archived: archived),
+            ],
           ),
-          if (city.isNotEmpty || province.isNotEmpty) ...[
-            const SizedBox(height: 8),
+
+          if (address2.isNotEmpty) ...[
+            const SizedBox(height: 12),
             _PropertyInfoRow(
               icon: CupertinoIcons.location,
-              text: [city, province]
-                  .where((e) => e.trim().isNotEmpty)
-                  .join(', '),
+              text: address2,
             ),
           ],
+
+          if (city.isNotEmpty || province.isNotEmpty || postal.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _PropertyInfoRow(
+              icon: CupertinoIcons.map,
+              text: [
+                if (city.isNotEmpty) city,
+                if (province.isNotEmpty) province,
+                if (postal.isNotEmpty) postal,
+              ].join(', '),
+            ),
+          ],
+
           if (type.isNotEmpty || sqft > 0) ...[
             const SizedBox(height: 8),
             _PropertyInfoRow(
@@ -606,24 +831,32 @@ class _PropertyCard extends StatelessWidget {
               ].join(' • '),
             ),
           ],
+
           const SizedBox(height: 14),
+
           Row(
             children: [
               Expanded(
                 child: _CardActionButton(
                   icon: CupertinoIcons.eye,
                   label: 'Open',
+                  tone: const Color(0xFF7EA7FF),
+                  borderTone: const Color(0xFF3B5282),
+                  backgroundTone: const Color(0xFF182235),
                   onTap: onOpen,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _CardActionButton(
-                  icon: property.isArchived
+                  icon: archived
                       ? CupertinoIcons.arrow_uturn_left
                       : CupertinoIcons.pencil,
-                  label: property.isArchived ? 'Restore' : 'Edit',
-                  onTap: property.isArchived ? (onRestore ?? onOpen) : onEdit,
+                  label: archived ? 'Restore' : 'Edit',
+                  tone: const Color(0xFFD6DCE8),
+                  borderTone: const Color(0xFF444B59),
+                  backgroundTone: const Color(0xFF202530),
+                  onTap: archived ? (onRestore ?? onOpen) : onEdit,
                 ),
               ),
               const SizedBox(width: 10),
@@ -631,11 +864,111 @@ class _PropertyCard extends StatelessWidget {
                 child: _CardActionButton(
                   icon: CupertinoIcons.trash,
                   label: 'Delete',
+                  tone: const Color(0xFFFF6B6B),
+                  borderTone: const Color(0xFF704047),
+                  backgroundTone: const Color(0xFF2A1F25),
                   onTap: onDelete,
-                  color: const Color(0xFFE05A5A),
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PropertyAvatar extends StatelessWidget {
+  final bool archived;
+
+  const _PropertyAvatar({
+    required this.archived,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF202530),
+        border: Border.all(
+          color: archived
+              ? const Color(0xFF353B49)
+              : const Color(0xFF3A4050),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.32),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.035),
+            blurRadius: 7,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Icon(
+        archived ? CupertinoIcons.archivebox : CupertinoIcons.house_fill,
+        color: archived
+            ? const Color(0xFFA0A7B8)
+            : const Color(0xFFD6DCE8),
+        size: 22,
+      ),
+    );
+  }
+}
+
+class _PropertyStateChip extends StatelessWidget {
+  final bool archived;
+
+  const _PropertyStateChip({
+    required this.archived,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = archived
+        ? const Color(0xFFA0A7B8)
+        : const Color(0xFF72D88A);
+
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF20242D),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: archived
+              ? const Color(0xFF3A4050)
+              : const Color(0xFF315C3C),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            archived ? 'Archived' : 'Active',
+            style: TextStyle(
+              color: color,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
           ),
         ],
       ),
@@ -654,25 +987,56 @@ class _PropertyInfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          color: const Color(0xFFB6BCD0),
-          size: 16,
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF181C24),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF303645),
+          width: 1,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.025),
+            blurRadius: 7,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: const Color(0xFFB8C1D9),
+            size: 16,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFE8ECF4),
+                fontSize: 13.5,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-        ),
-      ],
+          const Icon(
+            CupertinoIcons.chevron_right,
+            color: Color(0xFF8E93A6),
+            size: 16,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -680,47 +1044,65 @@ class _PropertyInfoRow extends StatelessWidget {
 class _CardActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color tone;
+  final Color borderTone;
+  final Color backgroundTone;
   final VoidCallback onTap;
-  final Color? color;
 
   const _CardActionButton({
     required this.icon,
     required this.label,
+    required this.tone,
+    required this.borderTone,
+    required this.backgroundTone,
     required this.onTap,
-    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? const Color(0xFFB6BCD0);
-
-    return Material(
-      color: const Color(0xFF101117),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF23252E)),
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minSize: 0,
+      onPressed: onTap,
+      child: Container(
+        height: 42,
+        decoration: BoxDecoration(
+          color: backgroundTone,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: borderTone,
+            width: 1.15,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: effectiveColor, size: 18),
-              const SizedBox(width: 8),
-              Text(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.32),
+              blurRadius: 16,
+              offset: const Offset(0, 9),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.028),
+              blurRadius: 7,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: tone, size: 16),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
                 label,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: effectiveColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  color: tone,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -753,7 +1135,7 @@ class _ClientSelectionSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Выбери клиента',
+              'Select client',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 20,
@@ -766,7 +1148,7 @@ class _ClientSelectionSheet extends StatelessWidget {
               child: clients.isEmpty
                   ? const Center(
                 child: Text(
-                  'Пусто',
+                  'Empty',
                   style: TextStyle(
                     color: Color(0xFF8E93A6),
                     fontSize: 15,
@@ -858,7 +1240,7 @@ class _EmptyPropertiesState extends StatelessWidget {
               ),
               SizedBox(height: 18),
               Text(
-                'Пока нет объектов',
+                'No properties yet',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -868,7 +1250,7 @@ class _EmptyPropertiesState extends StatelessWidget {
               ),
               SizedBox(height: 10),
               Text(
-                'Создай первый объект и адреса начнут заполняться.',
+                'Create the first property and addresses will start appearing.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Color(0xFF8E93A6),
@@ -878,52 +1260,6 @@ class _EmptyPropertiesState extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PropertiesModeButton extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _PropertiesModeButton({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected
-          ? const Color(0xFF5B8CFF)
-          : const Color(0xFF15161C),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF5B8CFF)
-                  : const Color(0xFF262832),
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
           ),
         ),
       ),

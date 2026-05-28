@@ -2,10 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../models/ai_generated_text_model.dart';
 
-
 import 'dart:async';
+import 'dart:ui';
 
 import '../models/client_model.dart';
 import '../models/estimate_model.dart';
@@ -35,6 +36,24 @@ import 'estimate_details_screen.dart';
 
 import '../dialogs/add_client_dialog.dart';
 import '../dialogs/add_property_dialog.dart';
+
+const _kAiBg = Color(0xFF0B0F16);
+const _kAiPanel = Color(0xFF121821);
+const _kAiPanel2 = Color(0xFF161D27);
+const _kAiCard = Color(0xFF1D2430);
+const _kAiCard2 = Color(0xFF202734);
+const _kAiBorder = Color(0xFF2A3442);
+
+const _kAiText = Color(0xFFF3F6FC);
+const _kAiMuted = Color(0xFF9CA3AF);
+const _kAiDim = Color(0xFF717B8C);
+
+const _kAiPink = Color(0xFFFF4FD8);
+const _kAiPinkSoft = Color(0xFFFF7AE7);
+const _kAiPinkDark = Color(0xFF8A1D68);
+
+const _kAiCyan = Color(0xFF38BDF8);
+const _kAiGreen = Color(0xFF22C55E);
 
 class AiEstimateDraft {
   final String title;
@@ -905,6 +924,38 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
   String get _currencyCode {
     final value = _companySettings?.currencyCode.trim() ?? '';
     return value.isEmpty ? 'CAD' : value.toUpperCase();
+  }
+
+  String _formatTopTaxPercent(double value) {
+    final percent = value * 100;
+
+    if (percent == percent.roundToDouble()) {
+      return percent.toStringAsFixed(0);
+    }
+
+    return percent
+        .toStringAsFixed(2)
+        .replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  String get _topCompanyMeta {
+    return '$_currencyCode • $_taxLabel ${_formatTopTaxPercent(_taxRate)}%';
+  }
+
+  String _formatCompactPercent(double value) {
+    final percent = value * 100;
+
+    if (percent == percent.roundToDouble()) {
+      return percent.toStringAsFixed(0);
+    }
+
+    return percent
+        .toStringAsFixed(2)
+        .replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  String get _companyDefaultsCompact {
+    return '$_currencyCode • $_taxLabel ${_formatCompactPercent(_taxRate)}%';
   }
 
   Future<void> _loadPropertiesForClient(String clientId) async {
@@ -2117,7 +2168,7 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
 
   List<EstimateItemModel> _dedupeRushItems(List<EstimateItemModel> items) {
     final result = <EstimateItemModel>[];
-    final seenRushKeys = <String>{};
+    final seen = <String>{};
 
     String clean(String value) {
       return value
@@ -2128,27 +2179,57 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
           .trim();
     }
 
-    bool isRushItem(EstimateItemModel item) {
-      final text = clean('${item.title} ${item.description} ${item.unit}');
-      return RegExp(
-        r'\b(rush|urgent|priority|expedited)\b',
-      ).hasMatch(text);
+    double safeTotal(EstimateItemModel item) {
+      final calculated = EstimateCalculator.calculateLineTotal(
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      );
+
+      if (item.lineTotal > 0) {
+        return item.lineTotal;
+      }
+
+      return calculated;
     }
 
-    for (final item in items) {
-      if (!isRushItem(item)) {
-        result.add(item);
+    double safeUnitPrice(EstimateItemModel item, double total) {
+      if (item.quantity > 0 && total > 0) {
+        return total / item.quantity;
+      }
+
+      return item.unitPrice;
+    }
+
+    String itemKey(EstimateItemModel item) {
+      final total = safeTotal(item);
+      final title = clean(item.title);
+      final unit = clean(item.unit);
+      final qty = item.quantity.toStringAsFixed(4);
+      final price = safeUnitPrice(item, total).toStringAsFixed(2);
+
+      return '$title|$unit|$qty|$price|${total.toStringAsFixed(2)}';
+    }
+
+    for (final rawItem in items) {
+      final total = safeTotal(rawItem);
+      final unitPrice = safeUnitPrice(rawItem, total);
+
+      final normalized = rawItem.copyWith(
+        unitPrice: unitPrice,
+        lineTotal: EstimateCalculator.calculateLineTotal(
+          quantity: rawItem.quantity,
+          unitPrice: unitPrice,
+        ),
+      );
+
+      final key = itemKey(normalized);
+
+      if (seen.contains(key)) {
         continue;
       }
 
-      final key = '${clean(item.title)}_${item.unitPrice.toStringAsFixed(2)}';
-
-      if (seenRushKeys.contains(key)) {
-        continue;
-      }
-
-      seenRushKeys.add(key);
-      result.add(item);
+      seen.add(key);
+      result.add(normalized);
     }
 
     return result.asMap().entries.map((entry) {
@@ -3431,18 +3512,32 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     String? subtitle,
     required Widget child,
     Widget? trailing,
+    Color backgroundColor = const Color(0xFF1D2430),
+    Color borderColor = const Color(0xFF2A3442),
+    double radius = 24,
   }) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(
+          color: borderColor,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Column(
@@ -3450,31 +3545,35 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
+                      style: GoogleFonts.manrope(
+                        color: const Color(0xFFF4F6FA),
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.25,
                       ),
                     ),
                     if ((subtitle ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         subtitle!,
-                        style: const TextStyle(
-                          color: Color(0xFF8E93A6),
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFFA6ADBB),
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
+                          height: 1.35,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              if (trailing != null) trailing,
+              if (trailing != null) ...[
+                const SizedBox(width: 12),
+                trailing,
+              ],
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           child,
         ],
       ),
@@ -3580,139 +3679,166 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     }
 
     final confidencePercent = (result.confidence * 100).round();
-    final bestSuggestion = result.historyContext?.bestSuggestion;
     final visibleMissing = _visibleMissingFields(result);
-
-    final uniqueAssumptions = _dedupeListByKey(
-      result.assumptions,
-          (assumption) => _cleanDedupeKey(
-        '${assumption.label}|${assumption.value}|${assumption.reason ?? ''}',
-      ),
-    );
 
     final hasGeneratedItems = result.items.isNotEmpty;
     final hasOptionalDetails = hasGeneratedItems && visibleMissing.isNotEmpty;
 
-    String confidenceLabel;
+    final confidenceLabel = hasGeneratedItems
+        ? (hasOptionalDetails ? 'Draft Ready' : 'Ready')
+        : result.confidence >= 0.80
+        ? 'High'
+        : result.confidence >= 0.55
+        ? 'Medium'
+        : 'Needs Details';
 
-    if (hasGeneratedItems) {
-      confidenceLabel = hasOptionalDetails
-          ? 'Draft Ready • Details Optional'
-          : 'Draft Ready';
-    } else if (result.confidence >= 0.80) {
-      confidenceLabel = 'High';
-    } else if (result.confidence >= 0.55) {
-      confidenceLabel = 'Medium';
-    } else {
-      confidenceLabel = 'Needs Details';
+    Widget miniBox({
+      required IconData icon,
+      required Color iconColor,
+      required String label,
+      required String value,
+    }) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+        decoration: BoxDecoration(
+          color: const Color(0xFF181B23),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: const Color(0xFF303442),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: iconColor,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFA0A7B8),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFF4F6FA),
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
-    return _buildSectionCard(
-      title: 'Smart AI Insights',
-      subtitle: 'What AI understood and what it still needs',
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFF252934),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _PreviewInfoBlock(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Smart AI Insights',
+                  style: GoogleFonts.manrope(
+                    color: const Color(0xFFF4F6FA),
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.25,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Quick confidence and pricing check',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFFA0A7B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                miniBox(
+                  icon: CupertinoIcons.gauge,
+                  iconColor: const Color(0xFF22C55E),
                   label: 'Confidence',
                   value: '$confidencePercent% • $confidenceLabel',
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _PreviewInfoBlock(
+
+                const SizedBox(height: 10),
+
+                miniBox(
+                  icon: CupertinoIcons.money_dollar_circle_fill,
+                  iconColor: const Color(0xFF9B7FE8),
                   label: 'Pricing Source',
                   value: 'Price Rules only',
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          if (bestSuggestion != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _PreviewInfoBlock(
-                    label: 'Best Match',
-                    value: '${(bestSuggestion.score * 100).round()}% • ${bestSuggestion.title}',
-                    multiline: true,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PreviewInfoBlock(
-                    label: 'Last Similar Price',
-                    value: EstimateFormatters.formatCurrency(
-                      bestSuggestion.total,
+
+          if (visibleMissing.isNotEmpty)
+            GestureDetector(
+              onTap: _answerMissingQuestions,
+              child: Container(
+                height: 54,
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: Color(0xFF343846),
+                      width: 1,
                     ),
                   ),
                 ),
-              ],
-            ),
-          ],
-          if (uniqueAssumptions.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Assumptions',
-                style: TextStyle(
-                  color: Color(0xFFB6BCD0),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+                child: Center(
+                  child: Text(
+                    'Add Details (${visibleMissing.length})',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFCDB7FF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            Column(
-              children: List.generate(uniqueAssumptions.length, (index) {
-                final assumption = uniqueAssumptions[index];
-
-                final reason = (assumption.reason ?? '').trim();
-                final value = reason.isEmpty
-                    ? assumption.value
-                    : '${assumption.value}\n$reason';
-
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: index == uniqueAssumptions.length - 1 ? 0 : 10,
-                  ),
-                  child: _PreviewInfoBlock(
-                    label: assumption.label,
-                    value: value,
-                    multiline: true,
-                  ),
-                );
-              }),
-            ),
-          ],
-          if (visibleMissing.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            Text(
-              '${visibleMissing.length} optional details can improve this draft.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: CupertinoButton(
-                color: const Color(0xFF5B8CFF),
-                borderRadius: BorderRadius.circular(16),
-                onPressed: _answerMissingQuestions,
-                child: const Text(
-                  'Add Details',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -3879,48 +4005,803 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
     return '${lines.take(maxLines).join('\n')}\n...';
   }
 
+  Widget _buildModernAiHero() {
+    final clientName = (_selectedClient?.fullName ?? '').trim();
+    final propertyAddress = (_selectedProperty?.fullAddress ?? '').trim();
+
+    String statusText() {
+      final prompt = _promptController.text.trim();
+
+      if (_isResolvingManualRule) return 'Checking price rule';
+      if (prompt.isEmpty) return 'Describe the work';
+      if (_activePromptRule != null) return 'Ready to generate';
+
+      return 'Ready to generate';
+    }
+
+    Widget contextRow({
+      required IconData icon,
+      required Color iconColor,
+      required String label,
+      required String value,
+      required VoidCallback onTap,
+    }) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: iconColor,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF8E96AA),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFFF4F6FA),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  CupertinoIcons.chevron_right,
+                  color: Color(0xFF8E96AA),
+                  size: 15,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(32),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1D2330),
+            Color(0xFF161B25),
+            Color(0xFF211C32),
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white24,
+          width: 0.7,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.42),
+            blurRadius: 30,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  'What should we estimate?',
+                  style: GoogleFonts.manrope(
+                    color: const Color(0xFFF4F6FA),
+                    fontSize: 25,
+                    fontWeight: FontWeight.w900,
+                    height: 1.1,
+                    letterSpacing: -0.6,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      CupertinoIcons.sparkles,
+                      color: Color(0xFFCDB7FF),
+                      size: 14,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      statusText(),
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFFE7DAFF),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 7),
+
+          Text(
+            'Write the job once. Workio builds the draft, items, and total.',
+            style: GoogleFonts.inter(
+              color: const Color(0xFFA7AFC1),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: const Color(0xFF121720).withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Column(
+              children: [
+                contextRow(
+                  icon: CupertinoIcons.person_crop_circle_fill,
+                  iconColor: const Color(0xFF38BDF8),
+                  label: 'Client',
+                  value: clientName.isEmpty ? 'Select client' : clientName,
+                  onTap: _selectClient,
+                ),
+                Container(
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.07),
+                ),
+                contextRow(
+                  icon: CupertinoIcons.house_fill,
+                  iconColor: const Color(0xFFF59E0B),
+                  label: 'Property',
+                  value: propertyAddress.isEmpty
+                      ? 'Select property'
+                      : propertyAddress,
+                  onTap: _selectProperty,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F131B).withValues(alpha: 0.96),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 58, 18),
+                  child: TextField(
+                    controller: _promptController,
+                    focusNode: _promptFocusNode,
+                    minLines: 4,
+                    maxLines: 6,
+                    cursorColor: const Color(0xFFCDB7FF),
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFF4F6FA),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                      letterSpacing: -0.1,
+                    ),
+                    decoration: InputDecoration(
+                      isCollapsed: true,
+                      border: InputBorder.none,
+                      hintText: 'Install 3 outlets, urgent, labor only...',
+                      hintStyle: GoogleFonts.inter(
+                        color: const Color(0xFF747C90),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: GestureDetector(
+                    onTap: !_speechReady
+                        ? null
+                        : (_isListening ? _stopVoiceInput : _openVoicePromptSheet),
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: _isListening
+                              ? const Color(0xFFFF6B6B)
+                              : Colors.white.withValues(alpha: 0.10),
+                        ),
+                      ),
+                      child: Icon(
+                        _isListening
+                            ? CupertinoIcons.stop_fill
+                            : CupertinoIcons.mic_fill,
+                        color: _isListening
+                            ? const Color(0xFFFF6B6B)
+                            : const Color(0xFFC7CDDA),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          CupertinoButton(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            borderRadius: BorderRadius.circular(22),
+            color: const Color(0xFF8B5CF6),
+            onPressed: _isGenerating ? null : _generateDraft,
+            child: _isGenerating
+                ? const CupertinoActivityIndicator(color: Colors.white)
+                : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  CupertinoIcons.sparkles,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 9),
+                Text(
+                  'Generate Draft',
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultSnapshotCard() {
+    final result = _smartResult;
+    final draft = _draft;
+
+    if (result == null && draft == null) {
+      return const SizedBox.shrink();
+    }
+
+    final totals = _totals;
+    final confidence = result == null ? 0 : (result.confidence * 100).round();
+    final visibleMissing = _visibleMissingFields(result);
+    final itemsCount = draft?.items.length ?? result?.items.length ?? 0;
+
+    Widget statBox({
+      required IconData icon,
+      required String label,
+      required String value,
+      required Color color,
+    }) {
+      return Expanded(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 11),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(height: 9),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF9AA3B8),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  color: const Color(0xFFF4F6FA),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF242A38),
+            Color(0xFF171C27),
+            Color(0xFF211A31),
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white24,
+          width: 0.7,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.36),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.28),
+                  ),
+                ),
+                child: const Icon(
+                  CupertinoIcons.sparkles,
+                  color: Color(0xFFCDB7FF),
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Estimate Snapshot',
+                      style: GoogleFonts.manrope(
+                        color: const Color(0xFFF4F6FA),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'AI prepared a compact draft summary',
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFFA7AFC1),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          Text(
+            EstimateFormatters.formatCurrency(totals.total),
+            style: GoogleFonts.manrope(
+              color: const Color(0xFFF4F6FA),
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -1.0,
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          Text(
+            'Draft total • $_currencyCode',
+            style: GoogleFonts.inter(
+              color: const Color(0xFF9AA3B8),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Row(
+            children: [
+              statBox(
+                icon: Icons.auto_awesome_rounded,
+                label: 'Confidence',
+                value: result == null ? '—' : '$confidence%',
+                color: const Color(0xFF22C55E),
+              ),
+              const SizedBox(width: 10),
+              statBox(
+                icon: Icons.format_list_bulleted_rounded,
+                label: 'Items',
+                value: '$itemsCount',
+                color: const Color(0xFF38BDF8),
+              ),
+              const SizedBox(width: 10),
+              statBox(
+                icon: Icons.rule_rounded,
+                label: 'Pricing',
+                value: 'Rules',
+                color: const Color(0xFFCDB7FF),
+              ),
+            ],
+          ),
+
+          if (visibleMissing.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: _answerMissingQuestions,
+              child: Container(
+                height: 52,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    'Add Details (${visibleMissing.length})',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFE7DAFF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernTotalsAndSave() {
+    final totals = _totals;
+
+    Widget totalRow({
+      required IconData icon,
+      required String label,
+      required String value,
+      required Color color,
+      bool isTotal = false,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: color.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.inter(
+                  color: isTotal
+                      ? const Color(0xFFF4F6FA)
+                      : const Color(0xFF9AA3B8),
+                  fontSize: isTotal ? 15 : 13.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: GoogleFonts.manrope(
+                color: const Color(0xFFF4F6FA),
+                fontSize: isTotal ? 19 : 15,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.25,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF242A38),
+                Color(0xFF171C27),
+                Color(0xFF211A31),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white24,
+              width: 0.7,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.34),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF22C55E).withValues(alpha: 0.22),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.payments_rounded,
+                      color: Color(0xFF86EFAC),
+                      size: 21,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total Summary',
+                          style: GoogleFonts.manrope(
+                            color: const Color(0xFFF4F6FA),
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.35,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Final draft estimate amount',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFFA7AFC1),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 18),
+
+              Text(
+                EstimateFormatters.formatCurrency(totals.total),
+                style: GoogleFonts.manrope(
+                  color: const Color(0xFFF4F6FA),
+                  fontSize: 36,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1.0,
+                ),
+              ),
+
+              const SizedBox(height: 4),
+
+              Text(
+                'Total • $_currencyCode • $_taxLabel ${_formatTopTaxPercent(_taxRate)}%',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF9AA3B8),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111620).withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    totalRow(
+                      icon: Icons.calculate_rounded,
+                      label: 'Subtotal',
+                      value: EstimateFormatters.formatCurrency(totals.subtotal),
+                      color: const Color(0xFF38BDF8),
+                    ),
+                    Container(height: 1, color: Colors.white.withValues(alpha: 0.07)),
+                    totalRow(
+                      icon: Icons.percent_rounded,
+                      label: _taxLabel,
+                      value: EstimateFormatters.formatCurrency(totals.tax),
+                      color: const Color(0xFFCDB7FF),
+                    ),
+                    Container(height: 1, color: Colors.white.withValues(alpha: 0.07)),
+                    totalRow(
+                      icon: Icons.sell_rounded,
+                      label: 'Discount',
+                      value: '- ${EstimateFormatters.formatCurrency(totals.discount)}',
+                      color: const Color(0xFFFF6B6B),
+                    ),
+                    Container(height: 1, color: Colors.white.withValues(alpha: 0.09)),
+                    totalRow(
+                      icon: Icons.check_circle_rounded,
+                      label: 'Total',
+                      value: EstimateFormatters.formatCurrency(totals.total),
+                      color: const Color(0xFF22C55E),
+                      isTotal: true,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        if ((_smartResult?.generatedText?.terms ?? '').trim().isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _TermsCard(terms: _smartResult!.generatedText!.terms),
+        ],
+
+        const SizedBox(height: 18),
+
+        CupertinoButton(
+          color: const Color(0xFF8B5CF6),
+          borderRadius: BorderRadius.circular(20),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          onPressed: _isSaving ? null : _saveDraftEstimate,
+          child: _isSaving
+              ? const CupertinoActivityIndicator(color: Colors.white)
+              : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                CupertinoIcons.checkmark_circle_fill,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 9),
+              Text(
+                'Save Draft Estimate',
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    const background = Color(0xFF0B0B0F);
+    const background = _kAiBg;
     final totals = _totals;
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 20,
-        title: const Text(
-          'AI Estimate',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
-          ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(100),
+        child: _AiEstimateTopBar(
+          metaText: _topCompanyMeta,
+          onBack: () => Navigator.of(context).maybePop(),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CupertinoButton(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              color: const Color(0xFF5B8CFF),
-              borderRadius: BorderRadius.circular(14),
-              onPressed: _isSaving ? null : _saveDraftEstimate,
-              child: _isSaving
-                  ? const CupertinoActivityIndicator(color: Colors.white)
-                  : const Text(
-                'Save',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
       body: _isLoading
           ? const Center(
@@ -3931,321 +4812,12 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 30),
           children: [
-            _PremiumPickerField(
-              label: 'Client',
-              value: _selectedClient == null
-                  ? 'Select client'
-                  : _selectedClient!.fullName,
-              onTap: _selectClient,
-              showClearButton: _selectedClient != null,
-              onClear: () {
-                setState(() {
-                  _selectedClient = null;
-                  _selectedProperty = null;
-                  _properties = [];
-                  _clientHistory = [];
-                  _propertyHistory = [];
-                  _smartResult = null;
-                  _draft = null;
-                  _promptController.clear();
-                });
-              },
-              emptyIcon: CupertinoIcons.add,
-              onEmptyIconTap: _addNewClient,
-            ),
-            const SizedBox(height: 12),
-            _PremiumPickerField(
-              label: 'Property',
-              value: _selectedProperty == null
-                  ? 'Select property'
-                  : _selectedProperty!.fullAddress,
-              onTap: _selectProperty,
-              showClearButton: _selectedProperty != null,
-              onClear: () {
-                setState(() {
-                  _selectedProperty = null;
-                  _propertyHistory = [];
-                  _smartResult = null;
-                  _draft = null;
-                  _promptController.clear();
-                });
-              },
-              emptyIcon: CupertinoIcons.add,
-              onEmptyIconTap: _addNewProperty,
-            ),
-            const SizedBox(height: 14),
-            _buildSectionCard(
-              title: 'Recent History',
-              subtitle: 'Previous estimates for the client and property',
-              child: _isHistoryLoading
-                  ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: CupertinoActivityIndicator(radius: 14),
-                ),
-              )
-                  : Column(
-                children: [
-                  _HistorySection(
-                    title: 'Same Client',
-                    estimates: _clientHistory,
-                    onOpen: _openEstimateDetails,
-                    onUse: _usePreviousEstimate,
-                  ),
-                  const SizedBox(height: 14),
-                  _HistorySection(
-                    title: 'Same Property',
-                    estimates: _propertyHistory,
-                    onOpen: _openEstimateDetails,
-                    onUse: _usePreviousEstimate,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            _buildSectionCard(
-              title: 'Quick Start',
-              subtitle: 'Start with a ready-made template',
-              trailing: CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: _isTemplatesLoading ? null : _reloadTemplates,
-                child: _isTemplatesLoading
-                    ? const CupertinoActivityIndicator(
-                  color: Color(0xFF5B8CFF),
-                )
-                    : const Icon(
-                  CupertinoIcons.refresh,
-                  color: Color(0xFF5B8CFF),
-                  size: 22,
-                ),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ActionButtonWide(
-                          icon: CupertinoIcons.square_stack_3d_up,
-                          label: 'Use Template',
-                          onTap: _selectTemplate,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _ActionButtonWide(
-                          icon: CupertinoIcons.clear_circled,
-                          label: 'Clear Draft',
-                          onTap: _draft == null ? null : _clearDraft,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_templates.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _templates.take(4).map((template) {
-                          return _QuickPromptChip(
-                            label: template.name,
-                            onTap: () => _useTemplate(template),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            _buildSectionCard(
-              title: 'Company Defaults',
-              subtitle: 'Default tax and currency from company settings',
-              child: Column(
-                children: [
-                  _PreviewInfoBlock(
-                    label: 'Defaults',
-                    value: '$_taxLabel • ${(_taxRate * 100).toStringAsFixed(2)}% • $_currencyCode',
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            _buildSectionCard(
-              title: 'Describe the Work',
-              subtitle: 'Describe in plain language what needs to be done',
-              trailing: CupertinoButton(
-                padding: EdgeInsets.zero,
-                onPressed: _isGenerating ? null : _generateDraft,
-                child: _isGenerating
-                    ? const CupertinoActivityIndicator(
-                  color: Color(0xFF5B8CFF),
-                )
-                    : const Icon(
-                  CupertinoIcons.sparkles,
-                  color: Color(0xFF5B8CFF),
-                  size: 24,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _buildWorkioHint(),
-                      style: const TextStyle(
-                        color: Color(0xFF8E93A6),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _PremiumTextField(
-                    controller: _promptController,
-                    focusNode: _promptFocusNode,
-                    label: 'Prompt',
-                    hintText: 'Electrical repair, 2 outlets, labor only',
-                    maxLines: 6,
-                  ),
-                  const SizedBox(height: 10),
+            _buildModernAiHero(),
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _isListening
-                              ? (_voiceAppendMode
-                              ? 'Workio says: listening... I’ll append your words.'
-                              : 'Workio says: listening... I’ll replace the prompt.')
-                              : 'Workio says: tap the mic to dictate your prompt.',
-                          style: const TextStyle(
-                            color: Color(0xFF8E93A6),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w500,
-                            height: 1.35,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      CupertinoButton(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        color: _isListening
-                            ? const Color(0xFF7A1F1F)
-                            : const Color(0xFF101117),
-                        borderRadius: BorderRadius.circular(16),
-                        onPressed: !_speechReady
-                            ? null
-                            : (_isListening ? _stopVoiceInput : _openVoicePromptSheet),
-                        child: Icon(
-                          _isListening
-                              ? CupertinoIcons.stop_fill
-                              : CupertinoIcons.mic_fill,
-                          color: _isListening
-                              ? Colors.white
-                              : const Color(0xFFB6BCD0),
-                          size: 20,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_promptSuggestions.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Suggestions',
-                        style: TextStyle(
-                          color: Color(0xFFB6BCD0),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Column(
-                      children: _promptSuggestions.map((suggestion) {
-                        final subtitle = suggestion.matchText.trim().isEmpty
-                            ? suggestion.rule.serviceType
-                            : '${suggestion.rule.category} • ${suggestion.matchText}';
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: GestureDetector(
-                            onTap: () => _applyPromptSuggestion(suggestion),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF101117),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFF23252E)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    suggestion.label,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    subtitle,
-                                    style: const TextStyle(
-                                      color: Color(0xFF8E93A6),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Tip: mention the work, quantity, materials, and urgency for the best result.',
-                    style: TextStyle(
-                      color: Color(0xFF8E93A6),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: CupertinoButton(
-                      color: const Color(0xFF5B8CFF),
-                      borderRadius: BorderRadius.circular(16),
-                      onPressed: _isGenerating ? null : _generateDraft,
-                      child: _isGenerating
-                          ? const CupertinoActivityIndicator(color: Colors.white)
-                          : const Text(
-                        'Generate Draft',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 14),
             if (_draft == null) ...[
               if (_smartResult != null) ...[
-                _buildSmartInsightsCard(),
-                const SizedBox(height: 14),
-                _buildHistorySuggestionsCard(),
+                _buildResultSnapshotCard(),
                 const SizedBox(height: 14),
               ],
               _buildSectionCard(
@@ -4255,158 +4827,37 @@ class _AiEstimateScreenState extends State<AiEstimateScreen> {
               ),
             ] else ...[
               if (_smartResult != null) ...[
-                _buildSmartInsightsCard(),
-                const SizedBox(height: 14),
-                _buildHistorySuggestionsCard(),
+                _buildResultSnapshotCard(),
                 const SizedBox(height: 14),
               ],
-              _buildSectionCard(
-                title: 'Generated Header',
-                subtitle: 'AI prepared the main part of the estimate',
-                child: Column(
-                  children: [
-                    _PreviewInfoBlock(
-                      label: 'Title',
-                      value: _draft!.title,
-                    ),
-                    const SizedBox(height: 12),
-                    _PreviewInfoBlock(
-                      label: 'Scope',
-                      value: _shortPreviewText(_draft!.scope, maxLines: 5),
-                      multiline: true,
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: CupertinoButton(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        color: const Color(0xFF20232D),
-                        borderRadius: BorderRadius.circular(14),
-                        onPressed: () => _openFullTextPreview(
-                          title: 'Full Scope',
-                          text: _draft!.scope,
-                        ),
-                        child: const Text(
-                          'View full scope',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _PreviewInfoBlock(
-                      label: 'Notes',
-                      value: _shortPreviewText(_draft!.notes, maxLines: 5),
-                      multiline: true,
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: CupertinoButton(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        color: const Color(0xFF20232D),
-                        borderRadius: BorderRadius.circular(14),
-                        onPressed: () => _openFullTextPreview(
-                          title: 'Full Notes',
-                          text: _draft!.notes,
-                        ),
-                        child: const Text(
-                          'View full notes',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                  ],
+              _SmartDraftCompactCard(
+                draft: _draft!,
+                onViewScope: () => _openFullTextPreview(
+                  title: 'Full Scope',
+                  text: _draft!.scope,
+                ),
+                onViewNotes: () => _openFullTextPreview(
+                  title: 'Full Notes',
+                  text: _draft!.notes,
                 ),
               ),
               const SizedBox(height: 14),
-              // === Фаза 3: AI-сгенерированный профессиональный контент ===
+              // === Compact AI details: keep main screen short ===
               if (_smartResult?.hasRichContent == true) ...[
-                if (_smartResult!.generatedText!.inclusions.isNotEmpty) ...[
-                  _buildInclusionsCard(_smartResult!.generatedText!.inclusions),
-                  const SizedBox(height: 14),
-                ],
-                if (_smartResult!.generatedText!.exclusions.isNotEmpty) ...[
-                  _buildExclusionsCard(_smartResult!.generatedText!.exclusions),
-                  const SizedBox(height: 14),
-                ],
-                if (_smartResult!.generatedText!.assumptions.isNotEmpty) ...[
-                  _buildAssumptionsCard(_smartResult!.generatedText!.assumptions),
-                  const SizedBox(height: 14),
-                ],
-              ],
-              _buildSectionCard(
-                title: 'Generated Items',
-                subtitle: 'AI suggested estimate line items',
-                child: Column(
-                  children: List.generate(_draft!.items.length, (index) {
-                    final item = _draft!.items[index];
-
-                    return Padding(
-                      padding: EdgeInsets.only(
-                        bottom: index == _draft!.items.length - 1 ? 0 : 10,
-                      ),
-                      child: _EstimateItemTile(item: item),
-                    );
-                  }),
+                _AiDetailsCompactCard(
+                  inclusions: _smartResult!.generatedText!.inclusions,
+                  exclusions: _smartResult!.generatedText!.exclusions,
+                  assumptions: _smartResult!.generatedText!.assumptions,
                 ),
-              ),
-              const SizedBox(height: 14),
-              _buildSectionCard(
-                title: 'Totals',
-                subtitle: 'Totals for the draft estimate',
-                child: Column(
-                  children: [
-                    _PreviewInfoBlock(
-                      label: 'Company Defaults',
-                      value: '$_taxLabel • ${(_taxRate * 100).toStringAsFixed(2)}% • $_currencyCode',
-                    ),
-                    const SizedBox(height: 12),
-                    _SummaryLine(
-                      label: 'Subtotal',
-                      value: EstimateFormatters.formatCurrency(totals.subtotal),
-                    ),
-                    const SizedBox(height: 10),
-                    _SummaryLine(
-                      label: _taxLabel,
-                      value: EstimateFormatters.formatCurrency(totals.tax),
-                    ),
-                    const SizedBox(height: 10),
-                    _SummaryLine(
-                      label: 'Discount',
-                      value: '- ${EstimateFormatters.formatCurrency(totals.discount)}',
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(color: Color(0xFF262832), height: 1),
-                    const SizedBox(height: 12),
-                    _SummaryLine(
-                      label: 'Total',
-                      value: EstimateFormatters.formatCurrency(totals.total),
-                      isEmphasized: true,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              if ((_smartResult?.generatedText?.terms ?? '').trim().isNotEmpty) ...[
                 const SizedBox(height: 14),
-                _TermsCard(terms: _smartResult!.generatedText!.terms),
               ],
-              CupertinoButton(
-                color: const Color(0xFF5B8CFF),
-                borderRadius: BorderRadius.circular(18),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                onPressed: _isSaving ? null : _saveDraftEstimate,
-                child: _isSaving
-                    ? const CupertinoActivityIndicator(color: Colors.white)
-                    : const Text(
-                  'Save Draft Estimate',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+
+              _GeneratedItemsCompactCard(
+                items: _draft!.items,
               ),
+
+              const SizedBox(height: 14),
+              _buildModernTotalsAndSave(),
             ],
           ],
         ),
@@ -4669,6 +5120,8 @@ class _SmartQuestionsSheetState extends State<_SmartQuestionsSheet> {
       ),
     );
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -4943,6 +5396,8 @@ class _PremiumPickerField extends StatelessWidget {
   final bool showClearButton;
   final IconData? emptyIcon;
   final VoidCallback? onEmptyIconTap;
+  final IconData? leadingIcon;
+  final Color? leadingColor;
 
   const _PremiumPickerField({
     required this.label,
@@ -4952,6 +5407,8 @@ class _PremiumPickerField extends StatelessWidget {
     this.showClearButton = false,
     this.emptyIcon,
     this.onEmptyIconTap,
+    this.leadingIcon,
+    this.leadingColor,
   });
 
   @override
@@ -4959,73 +5416,114 @@ class _PremiumPickerField extends StatelessWidget {
     final isPlaceholder =
         value.startsWith('Select') || value.trim().isEmpty || value == '—';
 
+    final iconColor = leadingColor ?? _kAiPink;
+
     return Material(
-      color: const Color(0xFF101117),
-      borderRadius: BorderRadius.circular(18),
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
         onTap: onTap,
         child: Container(
+          constraints: const BoxConstraints(minHeight: 82),
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFF23252E)),
-          ),
+          color: Colors.transparent,
           child: Row(
             children: [
+              if (leadingIcon != null) ...[
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2D36),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(
+                      color: const Color(0xFF3A3E4B),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    leadingIcon,
+                    color: iconColor,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+
               Expanded(
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       label,
-                      style: const TextStyle(
-                        color: Color(0xFF8E93A6),
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFFA0A7B8),
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.1,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 7),
                     Text(
                       value,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: GoogleFonts.inter(
                         color: isPlaceholder
-                            ? const Color(0xFF697086)
-                            : Colors.white,
+                            ? const Color(0xFF8A92A6)
+                            : const Color(0xFFF4F6FA),
                         fontSize: 15,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: isPlaceholder ? FontWeight.w600 : FontWeight.w800,
                         height: 1.25,
                       ),
                     ),
                   ],
                 ),
               ),
+
               const SizedBox(width: 12),
+
               if (showClearButton && onClear != null)
                 GestureDetector(
                   onTap: onClear,
-                  child: const Icon(
-                    CupertinoIcons.xmark_circle_fill,
-                    color: Color(0xFF8E93A6),
-                    size: 18,
+                  child: const SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Center(
+                      child: Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: Color(0xFFA0A7B8),
+                        size: 20,
+                      ),
+                    ),
                   ),
                 )
               else if (emptyIcon != null && onEmptyIconTap != null)
                 GestureDetector(
                   onTap: onEmptyIconTap,
-                  child: Icon(
-                    emptyIcon,
-                    color: const Color(0xFF8E93A6),
-                    size: 18,
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Center(
+                      child: Icon(
+                        emptyIcon,
+                        color: _kAiPink,
+                        size: 23,
+                      ),
+                    ),
                   ),
                 )
               else
-                const Icon(
-                  CupertinoIcons.chevron_down,
-                  color: Color(0xFF8E93A6),
-                  size: 18,
+                const SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Center(
+                    child: Icon(
+                      CupertinoIcons.chevron_down,
+                      color: Color(0xFF8E93A6),
+                      size: 17,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -5431,6 +5929,319 @@ class _SummaryLine extends StatelessWidget {
   }
 }
 
+class _RecentHistoryPanel extends StatelessWidget {
+  final bool isLoading;
+  final List<EstimateModel> clientHistory;
+  final List<EstimateModel> propertyHistory;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<EstimateModel> onUse;
+
+  const _RecentHistoryPanel({
+    required this.isLoading,
+    required this.clientHistory,
+    required this.propertyHistory,
+    required this.onOpen,
+    required this.onUse,
+  });
+
+  int get _totalCount => clientHistory.length + propertyHistory.length;
+
+  int get _visibleCount {
+    var count = 0;
+    if (clientHistory.isNotEmpty) count++;
+    if (propertyHistory.isNotEmpty) count++;
+    return count;
+  }
+
+  int get _hiddenCount => (_totalCount - _visibleCount).clamp(0, 999);
+
+  void _openAllHistory(BuildContext context) {
+    if (_totalCount == 0) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF19171D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) {
+        return FractionallySizedBox(
+          heightFactor: 0.78,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              child: Column(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFC49A6C).withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Recent History',
+                      style: GoogleFonts.manrope(
+                        color: const Color(0xFFF4F0E8),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        _HistoryMiniSection(
+                          icon: CupertinoIcons.person_2_fill,
+                          title: 'Same Client',
+                          estimates: clientHistory,
+                          showOnlyLatest: false,
+                          onOpen: onOpen,
+                          onUse: onUse,
+                        ),
+                        const SizedBox(height: 14),
+                        _HistoryMiniSection(
+                          icon: CupertinoIcons.house_fill,
+                          title: 'Same Property',
+                          estimates: propertyHistory,
+                          showOnlyLatest: false,
+                          onOpen: onOpen,
+                          onUse: onUse,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+      decoration: BoxDecoration(
+        color: const Color(0xFF24202A),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF4A4453),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+          BoxShadow(
+            color: const Color(0xFFC49A6C).withValues(alpha: 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: isLoading
+          ? const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: CupertinoActivityIndicator(radius: 14),
+        ),
+      )
+          : Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Recent History',
+            style: GoogleFonts.manrope(
+              color: const Color(0xFFF4F0E8),
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.25,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Previous estimates for this client and property',
+            style: GoogleFonts.inter(
+              color: const Color(0xFFB4A99A),
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          _HistoryMiniSection(
+            icon: CupertinoIcons.person_2_fill,
+            title: 'Same Client',
+            estimates: clientHistory,
+            showOnlyLatest: true,
+            onOpen: onOpen,
+            onUse: onUse,
+          ),
+
+          const SizedBox(height: 14),
+
+          _HistoryMiniSection(
+            icon: CupertinoIcons.house_fill,
+            title: 'Same Property',
+            estimates: propertyHistory,
+            showOnlyLatest: true,
+            onOpen: onOpen,
+            onUse: onUse,
+          ),
+
+          const SizedBox(height: 16),
+
+          if (_hiddenCount > 0)
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _openAllHistory(context),
+                child: Container(
+                  height: 54,
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: Color(0xFF3E3946),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          CupertinoIcons.chevron_down,
+                          color: Color(0xFFC49A6C),
+                          size: 17,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Show all ($_totalCount)',
+                          style: GoogleFonts.inter(
+                            color: const Color(0xFFC49A6C),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            const SizedBox(height: 18),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryMiniSection extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final List<EstimateModel> estimates;
+  final bool showOnlyLatest;
+  final ValueChanged<String> onOpen;
+  final ValueChanged<EstimateModel> onUse;
+
+  const _HistoryMiniSection({
+    required this.icon,
+    required this.title,
+    required this.estimates,
+    required this.showOnlyLatest,
+    required this.onOpen,
+    required this.onUse,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = showOnlyLatest && estimates.length > 1
+        ? estimates.take(1).toList()
+        : estimates;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              icon,
+              color: const Color(0xFFC49A6C),
+              size: 15,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: GoogleFonts.inter(
+                color: const Color(0xFFD7D0C4),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.05,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (visible.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+            decoration: BoxDecoration(
+              color: const Color(0xFF17161D),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFF3A3540),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              'No previous estimates',
+              style: GoogleFonts.inter(
+                color: const Color(0xFFA8A0B1),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          )
+        else
+          Column(
+            children: List.generate(visible.length, (index) {
+              final estimate = visible[index];
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: index == visible.length - 1 ? 0 : 10,
+                ),
+                child: _HistoryEstimateTile(
+                  estimate: estimate,
+                  onTap: () => onOpen(estimate.id),
+                  onUse: () => onUse(estimate),
+                ),
+              );
+            }),
+          ),
+      ],
+    );
+  }
+}
+
 class _HistorySection extends StatelessWidget {
   final String title;
   final List<EstimateModel> estimates;
@@ -5639,6 +6450,123 @@ class _HistoryEstimateTile extends StatelessWidget {
   }
 }
 
+class _AiSectionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Widget child;
+  final Widget? trailing;
+
+  const _AiSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF242730),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.32),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            color: _kAiPink.withOpacity(0.06),
+            blurRadius: 24,
+            spreadRadius: -10,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFFA0A7B8),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _AiFormPanel extends StatelessWidget {
+  final List<Widget> children;
+
+  const _AiFormPanel({
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFF20242E),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: const Color(0xFF3A3E4B),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.26),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.025),
+            blurRadius: 8,
+            spreadRadius: -4,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
 class _HistoryActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -5761,6 +6689,1016 @@ class _PromptSuggestion {
     required this.matchText,
     required this.score,
   });
+}
+
+class _SmartDraftCompactCard extends StatelessWidget {
+  final AiEstimateDraft draft;
+  final VoidCallback onViewScope;
+  final VoidCallback onViewNotes;
+
+  const _SmartDraftCompactCard({
+    required this.draft,
+    required this.onViewScope,
+    required this.onViewNotes,
+  });
+
+  Widget _miniTextBlock({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    final clean = value.trim().isEmpty ? 'No text generated yet.' : value.trim();
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111620).withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.08),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.22),
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  color: const Color(0xFFCDB7FF),
+                  size: 17,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFF9AA3B8),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      clean,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFFF4F6FA),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                CupertinoIcons.chevron_right,
+                color: Color(0xFF8E96AA),
+                size: 15,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = draft.title.trim().isEmpty
+        ? 'AI Estimate Draft'
+        : draft.title.trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF222838),
+            Color(0xFF171C27),
+            Color(0xFF1F1A2E),
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white24,
+          width: 0.7,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.26),
+                  ),
+                ),
+                child: const Icon(
+                  CupertinoIcons.doc_text_fill,
+                  color: Color(0xFFCDB7FF),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Smart Draft',
+                      style: GoogleFonts.manrope(
+                        color: const Color(0xFFF4F6FA),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.35,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'AI prepared the estimate text',
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFFA7AFC1),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFF111620).withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.08),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Title',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF9AA3B8),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.manrope(
+                    color: const Color(0xFFF4F6FA),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    height: 1.22,
+                    letterSpacing: -0.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          _miniTextBlock(
+            icon: CupertinoIcons.text_alignleft,
+            label: 'Scope',
+            value: draft.scope,
+            onTap: onViewScope,
+          ),
+
+          const SizedBox(height: 10),
+
+          _miniTextBlock(
+            icon: CupertinoIcons.square_list,
+            label: 'Notes',
+            value: draft.notes,
+            onTap: onViewNotes,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiDetailsCompactCard extends StatelessWidget {
+  final List<String> inclusions;
+  final List<String> exclusions;
+  final List<String> assumptions;
+
+  const _AiDetailsCompactCard({
+    required this.inclusions,
+    required this.exclusions,
+    required this.assumptions,
+  });
+
+  int get _totalCount =>
+      inclusions.length + exclusions.length + assumptions.length;
+
+  void _openDetailsSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1B1F28),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      builder: (_) {
+        return FractionallySizedBox(
+          heightFactor: 0.82,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              child: Column(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3D4250),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  Row(
+                    children: [
+                      const Icon(
+                        CupertinoIcons.doc_text_search,
+                        color: Color(0xFF9B7FE8),
+                        size: 22,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'AI Details',
+                          style: GoogleFonts.manrope(
+                            color: const Color(0xFFF4F6FA),
+                            fontSize: 23,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  Expanded(
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        if (inclusions.isNotEmpty) ...[
+                          _AiDetailFullSection(
+                            title: 'Included',
+                            subtitle: 'Covered by this estimate',
+                            icon: CupertinoIcons.checkmark_circle_fill,
+                            iconColor: const Color(0xFF22C55E),
+                            values: inclusions,
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                        if (exclusions.isNotEmpty) ...[
+                          _AiDetailFullSection(
+                            title: 'Not Included',
+                            subtitle: 'Outside the estimate scope',
+                            icon: CupertinoIcons.xmark_circle_fill,
+                            iconColor: const Color(0xFFFF6B6B),
+                            values: exclusions,
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                        if (assumptions.isNotEmpty) ...[
+                          _AiDetailFullSection(
+                            title: 'Assumptions',
+                            subtitle: 'Conditions that keep pricing valid',
+                            icon: CupertinoIcons.info_circle_fill,
+                            iconColor: const Color(0xFFA0A7B8),
+                            values: assumptions,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_totalCount == 0) return const SizedBox.shrink();
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFF252934),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AI Details',
+                  style: GoogleFonts.manrope(
+                    color: const Color(0xFFF4F6FA),
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.25,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Included, exclusions, and assumptions',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFFA0A7B8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                _AiDetailSummaryRow(
+                  icon: CupertinoIcons.checkmark_circle_fill,
+                  iconColor: const Color(0xFF22C55E),
+                  label: 'Included',
+                  count: inclusions.length,
+                ),
+                const SizedBox(height: 10),
+                _AiDetailSummaryRow(
+                  icon: CupertinoIcons.xmark_circle_fill,
+                  iconColor: const Color(0xFFFF6B6B),
+                  label: 'Not included',
+                  count: exclusions.length,
+                ),
+                const SizedBox(height: 10),
+                _AiDetailSummaryRow(
+                  icon: CupertinoIcons.info_circle_fill,
+                  iconColor: const Color(0xFFA0A7B8),
+                  label: 'Assumptions',
+                  count: assumptions.length,
+                ),
+              ],
+            ),
+          ),
+
+          GestureDetector(
+            onTap: () => _openDetailsSheet(context),
+            child: Container(
+              height: 54,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Color(0xFF343846),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  'View all ($_totalCount)',
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFFCDB7FF),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiDetailSummaryRow extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final int count;
+
+  const _AiDetailSummaryRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.count,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+      decoration: BoxDecoration(
+        color: const Color(0xFF181B23),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF303442),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: iconColor,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.inter(
+                color: const Color(0xFFF4F6FA),
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            '$count',
+            style: GoogleFonts.inter(
+              color: const Color(0xFFA0A7B8),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiDetailFullSection extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color iconColor;
+  final List<String> values;
+
+  const _AiDetailFullSection({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.iconColor,
+    required this.values,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF252934),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFF343846),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.manrope(
+              color: const Color(0xFFF4F6FA),
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.2,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: GoogleFonts.inter(
+              color: const Color(0xFFA0A7B8),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ...List.generate(values.length, (index) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: index == values.length - 1 ? 0 : 10,
+              ),
+              child: _ChecklistRow(
+                text: values[index],
+                icon: icon,
+                iconColor: iconColor,
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _GeneratedItemsCompactCard extends StatelessWidget {
+  final List<EstimateItemModel> items;
+
+  const _GeneratedItemsCompactCard({
+    required this.items,
+  });
+
+  String _formatQty(dynamic value) {
+    if (value is num) {
+      if (value % 1 == 0) return value.toInt().toString();
+      return value.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+    }
+
+    return value.toString();
+  }
+
+  double _safeLineTotal(EstimateItemModel item) {
+    if (item.lineTotal > 0) return item.lineTotal;
+
+    return EstimateCalculator.calculateLineTotal(
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    );
+  }
+
+  Widget _itemTile(EstimateItemModel item) {
+    final description = (item.description ?? '').trim();
+    final lineTotal = _safeLineTotal(item);
+    final displayRate = item.quantity > 0
+        ? lineTotal / item.quantity
+        : item.unitPrice;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111620).withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                  ),
+                ),
+                child: const Icon(
+                  CupertinoIcons.cube_box_fill,
+                  color: Color(0xFF7DD3FC),
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title.trim().isEmpty ? 'Generated Item' : item.title.trim(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.manrope(
+                        color: const Color(0xFFF4F6FA),
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF9AA3B8),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              Text(
+                EstimateFormatters.formatCurrency(lineTotal),
+                style: GoogleFonts.manrope(
+                  color: const Color(0xFFF4F6FA),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.25,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.055),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.07),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _miniMeta(
+                    label: 'Qty',
+                    value: _formatQty(item.quantity),
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 28,
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+                Expanded(
+                  child: _miniMeta(
+                    label: 'Unit',
+                    value: item.unit,
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 28,
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+                Expanded(
+                  child: _miniMeta(
+                    label: 'Rate',
+                    value: EstimateFormatters.formatCurrency(displayRate),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniMeta({
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            color: const Color(0xFF8E96AA),
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.inter(
+            color: const Color(0xFFF4F6FA),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openAllItems(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF171C27),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      builder: (_) {
+        return FractionallySizedBox(
+          heightFactor: 0.82,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+              child: Column(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.format_list_bulleted_rounded,
+                          color: Color(0xFF7DD3FC),
+                          size: 21,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Generated Items',
+                          style: GoogleFonts.manrope(
+                            color: const Color(0xFFF4F6FA),
+                            fontSize: 23,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Expanded(
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == items.length - 1 ? 0 : 10,
+                          ),
+                          child: _itemTile(items[index]),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleItems = items.take(2).toList();
+    final hiddenCount = items.length - visibleItems.length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF222838),
+            Color(0xFF171C27),
+            Color(0xFF1A2230),
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white24,
+          width: 0.7,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.34),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.22),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.format_list_bulleted_rounded,
+                  color: Color(0xFF7DD3FC),
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Generated Items',
+                      style: GoogleFonts.manrope(
+                        color: const Color(0xFFF4F6FA),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.35,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${items.length} AI suggested line item${items.length == 1 ? '' : 's'}',
+                      style: GoogleFonts.inter(
+                        color: const Color(0xFFA7AFC1),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          if (items.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111620).withValues(alpha: 0.94),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Text(
+                'No generated items yet',
+                style: GoogleFonts.inter(
+                  color: const Color(0xFF9AA3B8),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          else
+            Column(
+              children: List.generate(visibleItems.length, (index) {
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: index == visibleItems.length - 1 ? 0 : 10,
+                  ),
+                  child: _itemTile(visibleItems[index]),
+                );
+              }),
+            ),
+
+          if (hiddenCount > 0) ...[
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: () => _openAllItems(context),
+              child: Container(
+                height: 52,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.09),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    'Show all (${items.length})',
+                    style: GoogleFonts.inter(
+                      color: const Color(0xFFCDB7FF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _ChecklistRow extends StatelessWidget {
@@ -5897,5 +7835,273 @@ class _TermsCardState extends State<_TermsCard> {
         ],
       ),
     );
+  }
+}
+
+class _AiEstimateTopBar extends StatelessWidget {
+  final String metaText;
+  final VoidCallback onBack;
+
+  const _AiEstimateTopBar({
+    required this.metaText,
+    required this.onBack,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              height: 82,
+              decoration: BoxDecoration(
+                color: const Color(0xFF222631),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: const Color(0xFF343A49),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.36),
+                    blurRadius: 26,
+                    offset: const Offset(0, 14),
+                  ),
+                  BoxShadow(
+                    color: _kAiPink.withOpacity(0.06),
+                    blurRadius: 22,
+                    offset: const Offset(0, 0),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minSize: 0,
+                    onPressed: onBack,
+                    child: Container(
+                      width: 74,
+                      height: double.infinity,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.018),
+                        border: Border(
+                          right: BorderSide(
+                            color: Colors.white.withOpacity(0.085),
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.chevron_left,
+                        color: Color(0xFFF4F6FC),
+                        size: 28,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 17),
+
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'AI Estimate',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.spaceGrotesk(
+                            color: const Color(0xFFF6F7FB),
+                            fontSize: 23,
+                            height: 1.0,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.7,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          metaText,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.manrope(
+                            color: Colors.white.withOpacity(0.50),
+                            fontSize: 13.5,
+                            height: 1.0,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.15,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  const Padding(
+                    padding: EdgeInsets.only(right: 18),
+                    child: _AnimatedAiSparkles(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedAiSparkles extends StatefulWidget {
+  const _AnimatedAiSparkles();
+
+  @override
+  State<_AnimatedAiSparkles> createState() => _AnimatedAiSparklesState();
+}
+
+class _AnimatedAiSparklesState extends State<_AnimatedAiSparkles>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 46,
+      height: 46,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = Curves.easeInOut.transform(_controller.value);
+
+          return CustomPaint(
+            painter: _AiRobotPainter(
+              eyePower: 0.55 + (t * 0.45),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AiRobotPainter extends CustomPainter {
+  final double eyePower;
+
+  const _AiRobotPainter({
+    required this.eyePower,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final robotPaint = Paint()
+      ..color = const Color(0xFFEDEFF7).withOpacity(0.88)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.1
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..isAntiAlias = true;
+
+    final eyePaint = Paint()
+      ..color = _kAiPink.withOpacity(eyePower)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    final softEyePaint = Paint()
+      ..color = _kAiPinkSoft.withOpacity(0.30 + eyePower * 0.25)
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    final body = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        size.width * 0.20,
+        size.height * 0.28,
+        size.width * 0.60,
+        size.height * 0.48,
+      ),
+      const Radius.circular(10),
+    );
+
+    // robot head
+    canvas.drawRRect(body, robotPaint);
+
+    // antenna
+    canvas.drawLine(
+      Offset(size.width * 0.50, size.height * 0.28),
+      Offset(size.width * 0.50, size.height * 0.17),
+      robotPaint,
+    );
+
+    canvas.drawCircle(
+      Offset(size.width * 0.50, size.height * 0.14),
+      2.6,
+      eyePaint,
+    );
+
+    // ears
+    canvas.drawLine(
+      Offset(size.width * 0.16, size.height * 0.46),
+      Offset(size.width * 0.20, size.height * 0.46),
+      robotPaint,
+    );
+
+    canvas.drawLine(
+      Offset(size.width * 0.80, size.height * 0.46),
+      Offset(size.width * 0.84, size.height * 0.46),
+      robotPaint,
+    );
+
+    // eyes
+    canvas.drawCircle(
+      Offset(size.width * 0.38, size.height * 0.48),
+      3.2,
+      eyePaint,
+    );
+
+    canvas.drawCircle(
+      Offset(size.width * 0.62, size.height * 0.48),
+      3.2,
+      eyePaint,
+    );
+
+    // subtle AI line
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          size.width * 0.36,
+          size.height * 0.62,
+          size.width * 0.28,
+          3.2,
+        ),
+        const Radius.circular(20),
+      ),
+      softEyePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _AiRobotPainter oldDelegate) {
+    return oldDelegate.eyePower != eyePower;
   }
 }

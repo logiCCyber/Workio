@@ -223,34 +223,32 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
     return Scaffold(
       backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 20,
-        title: const Text(
-          'Clients',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addClient,
-        backgroundColor: const Color(0xFF5B8CFF),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
-        icon: const Icon(CupertinoIcons.add),
-        label: const Text(
-          'New Client',
-          style: TextStyle(fontWeight: FontWeight.w600),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(150),
+        child: _ClientsTopBar(
+          searchController: _searchController,
+          showArchivedOnly: _showArchivedOnly,
+          clientsCount: _filteredClients.length,
+          onBack: () => Navigator.of(context).maybePop(),
+          onAddClient: _addClient,
+          onShowActive: () async {
+            if (!_showArchivedOnly) return;
+
+            setState(() {
+              _showArchivedOnly = false;
+            });
+
+            await _loadClients();
+          },
+          onShowArchived: () async {
+            if (_showArchivedOnly) return;
+
+            setState(() {
+              _showArchivedOnly = true;
+            });
+
+            await _loadClients();
+          },
         ),
       ),
       body: SafeArea(
@@ -261,49 +259,6 @@ class _ClientsScreenState extends State<ClientsScreen> {
           backgroundColor: const Color(0xFF15161C),
           child: Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: _PremiumSearchField(
-                  controller: _searchController,
-                  hintText: _showArchivedOnly
-                      ? 'Search archived client...'
-                      : 'Search client...',
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _ClientsModeButton(
-                        label: 'Active',
-                        selected: !_showArchivedOnly,
-                        onTap: () async {
-                          if (!_showArchivedOnly) return;
-                          setState(() {
-                            _showArchivedOnly = false;
-                          });
-                          await _loadClients();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _ClientsModeButton(
-                        label: 'Archived',
-                        selected: _showArchivedOnly,
-                        onTap: () async {
-                          if (_showArchivedOnly) return;
-                          setState(() {
-                            _showArchivedOnly = true;
-                          });
-                          await _loadClients();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               Expanded(
                 child: _isLoading
                     ? const Center(
@@ -311,23 +266,30 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 )
                     : _filteredClients.isEmpty
                     ? const _EmptyClientsState()
-                    : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-                  itemCount: _filteredClients.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final client = _filteredClients[index];
+                    : ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 120),
+                  children: [
+                    _ClientsListPanel(
+                      children: List.generate(_filteredClients.length, (index) {
+                        final client = _filteredClients[index];
 
-                    return _ClientCard(
-                      client: client,
-                      onOpen: () => _openClientDetails(client),
-                      onEdit: () => _editClient(client),
-                      onDelete: () => _deleteClient(client),
-                      onRestore: client.isArchived
-                          ? () => _restoreClient(client)
-                          : null,
-                    );
-                  },
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index == _filteredClients.length - 1 ? 0 : 12,
+                          ),
+                          child: _ClientCard(
+                            client: client,
+                            onOpen: () => _openClientDetails(client),
+                            onEdit: () => _editClient(client),
+                            onDelete: () => _deleteClient(client),
+                            onRestore: client.isArchived
+                                ? () => _restoreClient(client)
+                                : null,
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -338,23 +300,216 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 }
 
-class _PremiumSearchField extends StatefulWidget {
+class _ClientsTopBar extends StatelessWidget {
+  final TextEditingController searchController;
+  final bool showArchivedOnly;
+  final int clientsCount;
+  final VoidCallback onBack;
+  final VoidCallback onAddClient;
+  final Future<void> Function() onShowActive;
+  final Future<void> Function() onShowArchived;
+
+  const _ClientsTopBar({
+    required this.searchController,
+    required this.showArchivedOnly,
+    required this.clientsCount,
+    required this.onBack,
+    required this.onAddClient,
+    required this.onShowActive,
+    required this.onShowArchived,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = showArchivedOnly
+        ? '$clientsCount archived clients'
+        : '$clientsCount active clients';
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+          decoration: BoxDecoration(
+            color: const Color(0xFF242730),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: const Color(0xFF343846),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.38),
+                blurRadius: 28,
+                offset: const Offset(0, 16),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.035),
+                blurRadius: 12,
+                spreadRadius: -6,
+                offset: const Offset(0, -3),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    minSize: 0,
+                    onPressed: onBack,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2A2D36),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF3A3E4B),
+                          width: 1,
+                        ),
+                      ),
+                      child: const Icon(
+                        CupertinoIcons.chevron_left,
+                        color: Color(0xFFF3F6FC),
+                        size: 24,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Clients',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Color(0xFFF4F6FA),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.35,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFFA0A7B8),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _ClientsInlineSearchField(
+                      controller: searchController,
+                      hintText: showArchivedOnly
+                          ? 'Search archived...'
+                          : 'Search client...',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _ClientsToolbarButton(
+                    icon: CupertinoIcons.person_2_fill,
+                    selected: !showArchivedOnly,
+                    onTap: () => onShowActive(),
+                  ),
+                  const SizedBox(width: 8),
+                  _ClientsToolbarButton(
+                    icon: CupertinoIcons.archivebox_fill,
+                    selected: showArchivedOnly,
+                    onTap: () => onShowArchived(),
+                  ),
+                  const SizedBox(width: 8),
+                  _ClientsToolbarButton(
+                    icon: CupertinoIcons.plus,
+                    selected: false,
+                    accent: true,
+                    onTap: onAddClient,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClientsListPanel extends StatelessWidget {
+  final List<Widget> children;
+
+  const _ClientsListPanel({
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF262C37), // светлее родитель
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: const Color(0xFF3D4555),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.28),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: children,
+      ),
+    );
+  }
+}
+
+class _ClientsInlineSearchField extends StatefulWidget {
   final TextEditingController controller;
   final String hintText;
 
-  const _PremiumSearchField({
+  const _ClientsInlineSearchField({
     required this.controller,
     required this.hintText,
   });
 
   @override
-  State<_PremiumSearchField> createState() => _PremiumSearchFieldState();
+  State<_ClientsInlineSearchField> createState() =>
+      _ClientsInlineSearchFieldState();
 }
 
-class _PremiumSearchFieldState extends State<_PremiumSearchField> {
+class _ClientsInlineSearchFieldState extends State<_ClientsInlineSearchField> {
   late final FocusNode _focusNode;
 
-  bool get _showClearButton =>
+  bool get _showClear =>
       _focusNode.hasFocus && widget.controller.text.trim().isNotEmpty;
 
   @override
@@ -365,25 +520,8 @@ class _PremiumSearchFieldState extends State<_PremiumSearchField> {
     widget.controller.addListener(_refresh);
   }
 
-  @override
-  void didUpdateWidget(covariant _PremiumSearchField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_refresh);
-      widget.controller.addListener(_refresh);
-    }
-  }
-
   void _refresh() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  void _clearText() {
-    widget.controller.clear();
-    _focusNode.requestFocus();
+    if (mounted) setState(() {});
   }
 
   @override
@@ -397,52 +535,108 @@ class _PremiumSearchFieldState extends State<_PremiumSearchField> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 54,
+      height: 46,
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
-        borderRadius: BorderRadius.circular(18),
+        color: const Color(0xFF202530), // НЕ чёрный
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF262832),
-          width: 1,
+          color: const Color(0xFF3A4050),
+          width: 1.15,
         ),
       ),
       child: TextField(
         controller: widget.controller,
         focusNode: _focusNode,
+        cursorColor: const Color(0xFF38BDF8),
         style: const TextStyle(
-          color: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
+          color: Color(0xFFF3F6FC),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
         ),
-        cursorColor: const Color(0xFF5B8CFF),
         decoration: InputDecoration(
           hintText: widget.hintText,
           hintStyle: const TextStyle(
-            color: Color(0xFF8E93A6),
-            fontSize: 15,
-            fontWeight: FontWeight.w400,
+            color: Color(0xFF9AA3B7),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
           prefixIcon: const Icon(
             CupertinoIcons.search,
-            color: Color(0xFF8E93A6),
+            color: Color(0xFFB8C1D9),
             size: 20,
           ),
-          suffixIcon: _showClearButton
+          suffixIcon: _showClear
               ? GestureDetector(
-            onTap: _clearText,
+            onTap: () {
+              widget.controller.clear();
+              _focusNode.requestFocus();
+            },
             child: const Icon(
               CupertinoIcons.xmark_circle_fill,
-              color: Color(0xFF8E93A6),
+              color: Color(0xFF9AA3B7),
               size: 18,
             ),
           )
               : null,
-          suffixIconConstraints: const BoxConstraints(
-            minWidth: 24,
-            minHeight: 24,
-          ),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 13),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClientsToolbarButton extends StatelessWidget {
+  final IconData icon;
+  final bool selected;
+  final bool accent;
+  final VoidCallback onTap;
+
+  const _ClientsToolbarButton({
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    this.accent = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = accent || selected
+        ? const Color(0xFF38BDF8)
+        : const Color(0xFFB8C1D9);
+
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minSize: 0,
+      onPressed: onTap,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: const Color(0xFF202530), // НЕ чёрная кнопка
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFF3A4050),
+            width: 1.15,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.26),
+              blurRadius: 12,
+              offset: const Offset(0, 7),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.025),
+              blurRadius: 6,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Icon(
+          icon,
+          color: color,
+          size: accent ? 22 : 20,
         ),
       ),
     );
@@ -466,91 +660,133 @@ class _ClientCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final archived = client.isArchived;
     final company = (client.companyName ?? '').trim();
     final email = (client.email ?? '').trim();
     final phone = (client.phone ?? '').trim();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF15161C),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF262832)),
+        color: archived
+            ? const Color(0xFF1B2028)
+            : const Color(0xFF1E2430), // чуть темнее panel
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: archived
+              ? const Color(0xFF313847)
+              : const Color(0xFF384152),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.38),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.16),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.035),
+            blurRadius: 6,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            client.fullName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
-            ),
-          ),
-          if (client.isArchived) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2D36),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFF3A3D46)),
+          Row(
+            children: [
+              _ClientAvatar(
+                name: client.fullName,
+                archived: archived,
               ),
-              child: const Text(
-                'Archived',
-                style: TextStyle(
-                  color: Color(0xFFB6BCD0),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      client.fullName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFF4F6FA),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    if (company.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        company,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFA0A7B8),
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ),
-          ],
-          if (company.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              company,
-              style: const TextStyle(
-                color: Color(0xFF8E93A6),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+
+              const SizedBox(width: 10),
+              _ClientStateChip(archived: archived),
+            ],
+          ),
+
           if (email.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             _ClientInfoRow(
               icon: CupertinoIcons.mail,
               text: email,
+              archived: archived,
             ),
           ],
+
           if (phone.isNotEmpty) ...[
             const SizedBox(height: 8),
             _ClientInfoRow(
               icon: CupertinoIcons.phone,
               text: phone,
+              archived: archived,
             ),
           ],
-          const SizedBox(height: 14),
+
+          const SizedBox(height: 18),
+
           Row(
             children: [
               Expanded(
                 child: _CardActionButton(
                   icon: CupertinoIcons.eye,
                   label: 'Open',
+                  tone: const Color(0xFF7EA7FF),
+                  borderTone: const Color(0xFF3B5282),
+                  backgroundTone: const Color(0xFF182235),
                   onTap: onOpen,
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _CardActionButton(
-                  icon: client.isArchived
+                  icon: archived
                       ? CupertinoIcons.arrow_uturn_left
                       : CupertinoIcons.pencil,
-                  label: client.isArchived ? 'Restore' : 'Edit',
-                  onTap: client.isArchived ? (onRestore ?? onOpen) : onEdit,
+                  label: archived ? 'Restore' : 'Edit',
+                  tone: const Color(0xFFD6DCE8),
+                  borderTone: const Color(0xFF444B59),
+                  backgroundTone: const Color(0xFF202530),
+                  onTap: archived ? (onRestore ?? onOpen) : onEdit,
                 ),
               ),
               const SizedBox(width: 10),
@@ -558,8 +794,10 @@ class _ClientCard extends StatelessWidget {
                 child: _CardActionButton(
                   icon: CupertinoIcons.trash,
                   label: 'Delete',
+                  tone: const Color(0xFFFF6B6B),
+                  borderTone: const Color(0xFF704047),
+                  backgroundTone: const Color(0xFF2A1F25),
                   onTap: onDelete,
-                  color: const Color(0xFFE05A5A),
                 ),
               ),
             ],
@@ -570,36 +808,217 @@ class _ClientCard extends StatelessWidget {
   }
 }
 
-class _ClientInfoRow extends StatelessWidget {
-  final IconData icon;
-  final String text;
+class _ClientAvatar extends StatelessWidget {
+  final String name;
+  final bool archived;
 
-  const _ClientInfoRow({
-    required this.icon,
-    required this.text,
+  const _ClientAvatar({
+    required this.name,
+    required this.archived,
+  });
+
+  String get _initials {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+
+    if (parts.isEmpty) return 'CL';
+
+    if (parts.length == 1) {
+      final one = parts.first;
+      return one.length >= 2
+          ? one.substring(0, 2).toUpperCase()
+          : one.toUpperCase();
+    }
+
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: archived
+            ? const Color(0xFF222631)
+            : const Color(0xFF202530),
+        border: Border.all(
+          color: archived
+              ? const Color(0xFF353B49)
+              : const Color(0xFF3A4050),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.32),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.035),
+            blurRadius: 7,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Text(
+        _initials,
+        style: TextStyle(
+          color: archived
+              ? const Color(0xFFA0A7B8)
+              : const Color(0xFFD6DCE8),
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _ClientStateChip extends StatelessWidget {
+  final bool archived;
+
+  const _ClientStateChip({
+    required this.archived,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          icon,
-          color: const Color(0xFFB6BCD0),
-          size: 16,
+    final color = archived
+        ? const Color(0xFFA0A7B8)
+        : const Color(0xFF72D88A);
+
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF20242D),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: archived
+              ? const Color(0xFF3A4050)
+              : const Color(0xFF315C3C),
+          width: 1,
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.24),
+            blurRadius: 12,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
             ),
           ),
+          const SizedBox(width: 8),
+          Text(
+            archived ? 'Archived' : 'Active',
+            style: TextStyle(
+              color: color,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClientInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final bool archived;
+
+  const _ClientInfoRow({
+    required this.icon,
+    required this.text,
+    required this.archived,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF181C24),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF303645),
+          width: 1,
         ),
-      ],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.025),
+            blurRadius: 7,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFF222731),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFF383F4D),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: const Color(0xFFB8C1D9),
+              size: 15,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFFE8ECF4),
+                fontSize: 13.5,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Icon(
+            CupertinoIcons.chevron_right,
+            color: Color(0xFF8E93A6),
+            size: 16,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -607,47 +1026,70 @@ class _ClientInfoRow extends StatelessWidget {
 class _CardActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color tone;
+  final Color borderTone;
+  final Color backgroundTone;
   final VoidCallback onTap;
-  final Color? color;
 
   const _CardActionButton({
     required this.icon,
     required this.label,
+    required this.tone,
+    required this.borderTone,
+    required this.backgroundTone,
     required this.onTap,
-    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? const Color(0xFFB6BCD0);
-
-    return Material(
-      color: const Color(0xFF101117),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF23252E)),
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      minSize: 0,
+      onPressed: onTap,
+      child: Container(
+        height: 42,
+        decoration: BoxDecoration(
+          color: backgroundTone,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: borderTone,
+            width: 1.15,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: effectiveColor, size: 18),
-              const SizedBox(width: 8),
-              Text(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.32),
+              blurRadius: 16,
+              offset: const Offset(0, 9),
+            ),
+            BoxShadow(
+              color: Colors.white.withOpacity(0.028),
+              blurRadius: 7,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: tone,
+              size: 16,
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
                 label,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: effectiveColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  color: tone,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -699,52 +1141,6 @@ class _EmptyClientsState extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ClientsModeButton extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ClientsModeButton({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected
-          ? const Color(0xFF5B8CFF)
-          : const Color(0xFF15161C),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF5B8CFF)
-                  : const Color(0xFF262832),
-            ),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-            ),
           ),
         ),
       ),

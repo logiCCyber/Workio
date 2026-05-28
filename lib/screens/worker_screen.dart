@@ -57,6 +57,7 @@ class _WorkerScreenState extends State<WorkerScreen>
   Map<String, dynamic>? _activeShift;
   Map<String, dynamic>? _lastCompleted;
   Map<String, dynamic>? _activeTimeOff;
+  Map<String, dynamic>? _upcomingTimeOff;
   double _totalHours = 0;
   double _totalEarned = 0;
   bool _timeOffPosterShown = false;
@@ -238,6 +239,7 @@ class _WorkerScreenState extends State<WorkerScreen>
         _service.getWorkerProfile(),
         _service.getLastPayment(),
         _service.getActiveTimeOff(),
+        _service.getUpcomingTimeOff(),
       ]);
 
       final active = results[0] as Map<String, dynamic>?;
@@ -246,6 +248,7 @@ class _WorkerScreenState extends State<WorkerScreen>
       final worker = results[3] as Map<String, dynamic>?;
       final lastPayment = results[4] as Map<String, dynamic>?;
       final activeTimeOff = results[5] as Map<String, dynamic>?;
+      final upcomingTimeOff = results[6] as Map<String, dynamic>?;
 
       if (worker == null) {
         throw Exception('Worker profile not found');
@@ -270,6 +273,7 @@ class _WorkerScreenState extends State<WorkerScreen>
       _activeShift = active;
       _lastCompleted = last;
       _activeTimeOff = activeTimeOff;
+      _upcomingTimeOff = upcomingTimeOff;
       _totalHours = totals.totalHours;
       _totalEarned = totals.totalEarned;
 
@@ -1233,6 +1237,7 @@ class _WorkerScreenState extends State<WorkerScreen>
                       workerName: _workerName,
                       workerEmail: _userEmail,
                       accessMode: _accessMode,
+                      upcomingTimeOff: _upcomingTimeOff,
                       onTasksTap: _openWorkerTasks,
                       onMessagesTap: _openWorkerChat,
                       onPrimaryTap: onShift
@@ -1663,6 +1668,7 @@ class _HeaderCard extends StatelessWidget {
   final VoidCallback onLogout;
   final VoidCallback onMessagesTap;
   final VoidCallback onTasksTap;
+  final Map<String, dynamic>? upcomingTimeOff;
 
   const _HeaderCard({
     required this.onShift,
@@ -1679,6 +1685,7 @@ class _HeaderCard extends StatelessWidget {
     required this.onMessagesTap,
     required this.hourlyRate,
     required this.onTasksTap,
+    required this.upcomingTimeOff,
   });
 
   String get _accessValue {
@@ -1747,6 +1754,64 @@ class _HeaderCard extends StatelessWidget {
         ? hourlyRate.toStringAsFixed(2)
         : hourlyRate.toStringAsFixed(0);
     return '\$$rate/h';
+  }
+
+  String _timeOffLabel(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'sick_leave':
+        return 'Sick leave';
+      case 'personal':
+        return 'Personal day';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'company_closed':
+        return 'Company closed';
+      case 'vacation':
+      default:
+        return 'Vacation';
+    }
+  }
+
+  IconData _timeOffIcon(Object? raw) {
+    final type = (raw ?? '').toString().trim().toLowerCase();
+
+    switch (type) {
+      case 'vacation':
+        return Icons.wb_sunny_rounded;
+      case 'sick_leave':
+        return Icons.healing_rounded;
+      case 'personal':
+        return Icons.event_available_rounded;
+      case 'unavailable':
+        return Icons.block_rounded;
+      case 'company_closed':
+        return Icons.business_rounded;
+      default:
+        return Icons.event_busy_rounded;
+    }
+  }
+
+  String _fmtUpcomingDate(Object? raw) {
+    final dt = DateTime.tryParse((raw ?? '').toString());
+    if (dt == null) return '';
+    return DateFormat.MMMd().format(dt.toLocal());
+  }
+
+  String get _upcomingTimeOffValue {
+    final row = upcomingTimeOff;
+    if (row == null) return '';
+
+    var label = _timeOffLabel(row['type']);
+    final date = _fmtUpcomingDate(row['start_date']);
+
+    if (label == 'Personal day') label = 'Personal';
+    if (label == 'Sick leave') label = 'Sick';
+
+    if (date.isEmpty) return label;
+
+    return '$label • $date';
   }
 
   @override
@@ -1933,6 +1998,22 @@ class _HeaderCard extends StatelessWidget {
                     valueColor: const Color(0xFF66A8FF),
                   ),
                 ),
+
+                if (upcomingTimeOff != null) ...[
+                  const SizedBox(height: 7),
+                  const _HeaderDivider(),
+                  const SizedBox(height: 7),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 35),
+                    child: _HeaderInfoLine(
+                      icon: _timeOffIcon(upcomingTimeOff?['type']),
+                      iconColor: Colors.white.withOpacity(0.72),
+                      label: 'Upcoming',
+                      value: _upcomingTimeOffValue,
+                      valueColor: Colors.white.withOpacity(0.86),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 7),
                 const _HeaderDivider(),
               ],
