@@ -156,13 +156,44 @@ class AdminHomeScreen extends StatelessWidget {
                     ),
                   ),
 
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.auto_awesome_rounded, color: Colors.white70),
-                    title: const Text('AI Estimate'),
-                    onTap: () => _openEstimateSystemScreen(
-                      context,
-                      const AiEstimateScreen(),
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08), // light grey disabled block
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                        width: 1,
+                      ),
+                    ),
+                    child: ListTile(
+                      dense: true,
+                      enabled: false,
+                      leading: Icon(
+                        Icons.lock_clock_rounded,
+                        color: Colors.white.withOpacity(0.38),
+                      ),
+                      title: Text(
+                        'AI Estimate',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.42),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Temporarily unavailable',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.30),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: Icon(
+                        Icons.lock_rounded,
+                        color: Colors.white.withOpacity(0.30),
+                        size: 17,
+                      ),
+                      onTap: null,
                     ),
                   ),
 
