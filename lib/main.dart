@@ -240,9 +240,10 @@ Future<void> main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const iosInit = DarwinInitializationSettings();
 
   await localNotifications.initialize(
-    const InitializationSettings(android: androidInit),
+    const InitializationSettings(android: androidInit, iOS: iosInit),
     onDidReceiveNotificationResponse: _handleLocalNotificationTap,
   );
 
