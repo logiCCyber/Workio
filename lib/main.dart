@@ -229,13 +229,31 @@ void _handleLocalNotificationTap(NotificationResponse response) {
 }
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: 'AIzaSyCzUzab6_2rw6uaolAGaHoYxj5E41pPq5M',
+      appId: '1:453233972370:ios:24491cd22d32fcae79424b',
+      messagingSenderId: '453233972370',
+      projectId: 'workio-157fc',
+      storageBucket: 'workio-157fc.firebasestorage.app',
+      iosBundleId: 'com.workio.app',
+    ),
+  );
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: 'AIzaSyCzUzab6_2rw6uaolAGaHoYxj5E41pPq5M',
+      appId: '1:453233972370:ios:24491cd22d32fcae79424b',
+      messagingSenderId: '453233972370',
+      projectId: 'workio-157fc',
+      storageBucket: 'workio-157fc.firebasestorage.app',
+      iosBundleId: 'com.workio.app',
+    ),
+  );
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
