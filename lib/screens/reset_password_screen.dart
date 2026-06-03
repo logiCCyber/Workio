@@ -13,7 +13,7 @@ class ResetPasswordScreen extends StatefulWidget {
 }
 
 const String kLogoUrl =
-    'https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/images/workio.png';
+    'https://entdcoidqpvtuepdxnyw.supabase.co/storage/v1/object/public/images/workio.png';
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   // ===== colors =====

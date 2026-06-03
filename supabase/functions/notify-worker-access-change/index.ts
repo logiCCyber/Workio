@@ -350,7 +350,7 @@ serve(async (req) => {
       workerEmail: email,
       mode: new_mode,
       companyName: "Workio",
-      logoUrl: "https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png",
+      logoUrl: "https://entdcoidqpvtuepdxnyw.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png",
     });
    
     const subject = subjectByMode(new_mode);
