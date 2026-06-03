@@ -1,0 +1,9 @@
+Workio evalution
+
+1: smart chat
+2: smart panel AI v glavnom ekrane gde budet vse podskazxivat
+3: AI estimate ochen umniy i ochen sovremeniy
+4: budet i web versia osobeno dlya buhgaltera
+5: uluchsheniy tasks panel ochen umniy
+6: dlya vocance delat history uchet koroche
+7: microphone dlya chata dobavit

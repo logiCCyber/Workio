@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:convert';
+import 'firebase_options.dart';
 
 import 'screens/admin_chat_screen.dart';
 import 'screens/worker_chat_screen.dart';
@@ -230,14 +231,7 @@ void _handleLocalNotificationTap(NotificationResponse response) {
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: 'AIzaSyCzUzab6_2rw6uaolAGaHoYxj5E41pPq5M',
-      appId: '1:453233972370:ios:24491cd22d32fcae79424b',
-      messagingSenderId: '453233972370',
-      projectId: 'workio-157fc',
-      storageBucket: 'workio-157fc.firebasestorage.app',
-      iosBundleId: 'com.workio.app',
-    ),
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 }
 
@@ -245,14 +239,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(
-    options: const FirebaseOptions(
-      apiKey: 'AIzaSyCzUzab6_2rw6uaolAGaHoYxj5E41pPq5M',
-      appId: '1:453233972370:ios:24491cd22d32fcae79424b',
-      messagingSenderId: '453233972370',
-      projectId: 'workio-157fc',
-      storageBucket: 'workio-157fc.firebasestorage.app',
-      iosBundleId: 'com.workio.app',
-    ),
+    options: DefaultFirebaseOptions.currentPlatform,
   );
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
