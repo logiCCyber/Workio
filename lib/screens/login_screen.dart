@@ -158,6 +158,20 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = res.user;
       if (user == null) throw 'No user';
 
+      // Сначала проверяем admin_users
+      final adminRow = await supabase
+          .from('admin_users')
+          .select('email')
+          .eq('email', email)
+          .maybeSingle();
+
+      if (adminRow != null) {
+        if (!mounted) return;
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminPanel()));
+        return;
+      }
+
+      // Потом проверяем workers
       final profile = await _fetchWorkerProfile(user.id);
       if (profile == null) {
         await supabase.auth.signOut();
@@ -165,7 +179,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      final role = (profile['role'] as String?) ?? 'worker';
       final accessMode = (profile['access_mode'] as String?) ?? 'active';
 
       if (accessMode == 'suspended') {
@@ -175,12 +188,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-
-      if (role == 'admin') {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminPanel()));
-        return;
-      }
-
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => WorkerScreen(accessMode: accessMode)),
