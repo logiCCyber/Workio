@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 
 class PushTokenService {
   final _db = Supabase.instance.client;
@@ -67,7 +68,7 @@ class PushTokenService {
         'user_auth_id': userAuthId,
         'role': role,
         'token': token,
-        'platform': 'android',
+        'platform': Platform.isIOS ? 'ios' : 'android',
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'user_auth_id,role,token');
       debugPrint('PUSH TOKEN SAVED OK');
