@@ -14,6 +14,7 @@ import 'package:cross_file/cross_file.dart';
 import '../services/message_service.dart';
 import 'chat_image_viewer_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/chat_state.dart';
 
 class WorkerChatScreen extends StatefulWidget {
   final bool isViewOnly;
@@ -225,7 +226,9 @@ class _WorkerChatScreenState extends State<WorkerChatScreen> {
 
   @override
   void dispose() {
+    ChatState.activeThreadId = null; // ← добавь это
     _typingTimer?.cancel();
+    // ... остальное
 
     final channel = _rtChannel;
     _rtChannel = null;
@@ -250,6 +253,8 @@ class _WorkerChatScreenState extends State<WorkerChatScreen> {
         _threadId = (thread['id'] ?? '').toString();
         _loading = false;
       });
+
+      ChatState.activeThreadId = _threadId; // ← добавь сюда
 
       await _initRealtime();
 

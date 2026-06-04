@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/chat_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -227,6 +228,7 @@ class _AdminChatScreenState extends State<AdminChatScreen> {
   @override
   void initState() {
     super.initState();
+    ChatState.activeThreadId = widget.threadId; // ← добавь это
     _initRealtime();
     _initAppPresenceWatcher();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -236,7 +238,9 @@ class _AdminChatScreenState extends State<AdminChatScreen> {
 
   @override
   void dispose() {
+    ChatState.activeThreadId = null; // ← добавь это
     _typingTimer?.cancel();
+    // ... остальное без изменений
 
     final channel = _rtChannel;
     _rtChannel = null;

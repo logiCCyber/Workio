@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'app_push_service.dart';
+import 'chat_state.dart';
 
 class MessageService {
   MessageService._();
@@ -73,6 +74,10 @@ class MessageService {
       final thread = await _fetchThreadPushInfo(threadId);
       debugPrint('CHAT PUSH THREAD = $thread');
       if (thread == null) return;
+      if (ChatState.isThreadOpen(threadId)) {
+        debugPrint('CHAT PUSH SKIPPED — thread is open');
+        return;
+      }
 
       final cleanSenderRole = senderRole.trim().toLowerCase();
 
