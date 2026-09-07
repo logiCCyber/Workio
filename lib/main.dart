@@ -293,8 +293,8 @@ Future<void> main() async {
   });
 
   await Supabase.initialize(
-    url: 'https://entdcoidqpvtuepdxnyw.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVudGRjb2lkcXB2dHVlcGR4bnl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0MTkwNTYsImV4cCI6MjA5NTk5NTA1Nn0.hFIR30ge_51WyNZiujqUwZNLdhgB36xEPnjDIQRoraA',
+    url: 'https://mnycxmpofeajhjecsvhk.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ueWN4bXBvZmVhamhqZWNzdmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUwNjA3MjgsImV4cCI6MjA4MDYzNjcyOH0.XTcZlVfmeB6nJBoAkzbhtDjQpUQ7ifxzKfKXDlDM_DU',
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
     ),

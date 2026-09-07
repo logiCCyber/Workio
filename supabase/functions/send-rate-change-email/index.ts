@@ -72,7 +72,7 @@ serve(async (req) => {
                   <tr>
                     <td valign="middle">
                       <img
-                        src="https://entdcoidqpvtuepdxnyw.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png"
+                        src="https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png"
                         alt="Workio"
                         height="46"
                         style="display:block;object-fit:contain;"

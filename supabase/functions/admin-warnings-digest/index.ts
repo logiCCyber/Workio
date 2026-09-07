@@ -158,7 +158,7 @@ serve(async (req) => {
     const { adminEmail, generatedAtIso, critical, warnings } = params;
 
     const logoUrl =
-        "https://entdcoidqpvtuepdxnyw.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png";
+        "https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png";
 
     const year = new Date().getFullYear();
 

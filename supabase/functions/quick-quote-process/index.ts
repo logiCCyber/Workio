@@ -38,7 +38,6 @@ serve(async (req) => {
         const priceRules = Array.isArray(body?.priceRules) ? body.priceRules : [];
 
         if (!rawPrompt) throw new Error("prompt is required");
-        if (!priceRules.length) throw new Error("priceRules is required");
 
         const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
         if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is missing");
@@ -59,6 +58,8 @@ serve(async (req) => {
                 : [],
         }));
 
+        const hasRules = compactRules.length > 0;
+
         const schema = {
             name: "quick_quote_result",
             schema: {
@@ -78,6 +79,8 @@ serve(async (req) => {
                                 laborUnitPrice: { type: ["number", "null"] },
                                 isUrgent: { type: "boolean" },
                                 materialsIncluded: { type: "boolean" },
+                                isMarketRate: { type: "boolean" },
+                                marketRateNote: { type: "string" },
                                 materials: {
                                     type: "array",
                                     items: {
@@ -100,6 +103,8 @@ serve(async (req) => {
                                 "laborUnitPrice",
                                 "isUrgent",
                                 "materialsIncluded",
+                                "isMarketRate",
+                                "marketRateNote",
                                 "materials",
                             ],
                         },
@@ -111,51 +116,66 @@ serve(async (req) => {
         };
 
         const systemPrompt = `
-You are a universal quick quote engine for Workio.
+You are a universal quick quote engine for Workio — a construction and home services company management app.
 
 Your job:
 1. Translate and normalize the admin prompt into clear English.
 2. Split the prompt into separate jobs if it contains multiple tasks.
 3. For each job, find the best matching Price Rule from the provided list.
-4. Extract quantity, labor price override, urgency, and materials for each job.
+4. If NO matching Price Rule exists — use your knowledge of North American market rates and set isMarketRate=true.
+5. Extract quantity, labor price override, urgency, and materials for each job.
 
-Rules:
+Language rules:
 - Understand any language: English, Russian, Russian transliteration, Uzbek, French, or mixed.
 - Translate action words correctly: zamenit/pomenyat = replace, ustanovit = install, pochinit = repair.
+
+Price Rule matching:
 - Match each job to exactly one Price Rule using aliases and aiKeywords.
 - Use negativeKeywords to exclude wrong rules.
-- If no rule matches a job, set ruleId = null for that job.
-- quantity: extract the number that is clearly associated with the service object in the prompt. Examples: "2 outlets" = 2, "1200 sqft" = 1200, "2 loads" = 2. Default 1 only if truly not specified.
-- laborUnitPrice: set if the prompt states a price for the service itself. CRITICAL distinction:
-  - "po $X", "по $X", "$X each", "$X per item", "po $X kazhdiy" → unit price per item, set laborUnitPrice = X
-  - "za $X", "за $X", "for $X total" (without "vse/все") → TOTAL price for all units, set laborUnitPrice = X / quantity (round to 2 decimals)
-  - "za vse $X", "за все $X", "$X za vse" + urgency present → this is a Visit Rush Fee, NOT a labor override. See the Visit Rush Fee rule below.
-  - Example: "3 shtuki za $200" → quantity=3, laborUnitPrice=66.67
-  - Example: "3 shtuki po $200" → quantity=3, laborUnitPrice=200
-  - IMPORTANT: "za $X" is the TOTAL labor price only. Never subtract materials from it. Labor and materials are always independent.
-- materials: only add if prompt explicitly says "materials included" or "materiali vklyucheny" WITH a price. If prompt says only a service price per item without mentioning materials, do NOT add materials.
-- If the prompt says "materiali vklyucheny tolko X za $Y", set laborUnitPrice=null and put the price in materials only for that specific item.
-- isUrgent: true if prompt says urgent, rush, srochno, same day, asap, shoshilinch, etc. Set isUrgent=false and do NOT create any rush fee job if prompt says: "ne srochnaya", "ne srochno", "not urgent", "no rush", "bez srochnosti".
-- materialsIncluded: true only if prompt explicitly says materials included for this job.
-- materials: parse only if prompt explicitly lists material items with prices. Do NOT invent materials.
-  - "po $X kazhdiy", "po $X", "$X each", "$X per item" → material unit price per item. Set quantity = same as job quantity, unitPrice = X, lineTotal = quantity × X.
-  - "za $X", single price without "po/each/kazhdiy" (e.g. "rakovina 200$") → total materials price. Set quantity=1, unitPrice=X, lineTotal=X.
-  - Example: "razetki po $30 kazhdiy", job qty=3 → materials quantity=3, unitPrice=30, lineTotal=90.
-  - Example: "materiali $200" (no "po") → quantity=1, unitPrice=200, lineTotal=200.
-- If urgency applies to all jobs, set isUrgent=true for every job.
-- Never skip or merge jobs. Count all action verbs in the prompt and return exactly that many jobs.
-- Each unique object mentioned with an action verb must become its own separate job. If one action verb applies to multiple objects connected by "and", "i", "и", or comma, create a separate job for each object.
-- When matching jobs to Price Rules, prefer the rule whose aliases or aiKeywords contain the specific object from the prompt. Do not match by room name or location.
-- If the prompt mentions urgency (srochnaya, rush, urgent, etc.) AND a total price with "za vse", "за все", "for everything", "for all", "total for visit" — that price is the Visit Rush Fee ONLY. Create one job: ruleId=null, description="Visit Rush Fee", quantity=1, laborUnitPrice=that price. All other jobs keep their Price Rule base rates, do NOT override them.
-- If no urgency is mentioned but there's a single total price "za vse" — that price is the total labor override, divide by number of jobs.
-- Never calculate totals or taxes.
-- Return strict JSON only.
+- If no rule matches a job, set ruleId = null AND set isMarketRate = true.
 
-Available Price Rules:
-${JSON.stringify(compactRules, null, 2)}
+CRITICAL — Market Rate Fallback (when ruleId = null):
+- NEVER return laborUnitPrice = null when ruleId = null.
+- You MUST estimate a realistic North American market rate for the service.
+- Set laborUnitPrice = your estimated market rate per unit.
+- Set isMarketRate = true.
+- Set marketRateNote = short note explaining the rate, e.g. "Market rate estimate — no price rule found. You can save this to Price Rules."
+- Examples of market rates:
+  - Outlet replacement: $85-120 per outlet
+  - Sink installation: $200-350 fixed
+  - Toilet installation: $150-250 fixed
+  - Dishwasher installation: $150-300 fixed
+  - Dryer replacement: $100-200 fixed
+  - Washer replacement: $100-200 fixed
+  - Painting per sqft: $1.50-3.00/sqft
+  - Flooring per sqft: $3.00-8.00/sqft
+  - Drywall per sqft: $1.50-3.00/sqft
+  - General handyman: $75-120/hour
+  - Plumbing service call: $150-250
+  - Electrical service call: $150-250
+
+Quantity rules:
+- quantity: extract the number clearly associated with the service object. Examples: "2 outlets" = 2, "1200 sqft" = 1200. Default 1 only if truly not specified.
+
+Price override rules:
+- laborUnitPrice: set if the prompt states a price for the service itself.
+  - "po $X", "$X each", "$X per item" → unit price per item, laborUnitPrice = X
+  - "za $X", "for $X total" (without "vse") → TOTAL price, laborUnitPrice = X / quantity
+  - "za vse $X" + urgency → Visit Rush Fee, not labor override
+- materials: only add if prompt explicitly states material price. Never invent materials.
+- isUrgent: true if prompt says urgent, rush, srochno, same day, asap.
+- materialsIncluded: true only if prompt explicitly says materials included.
+- isMarketRate: true if no price rule matched and you used market rate. false if price rule matched.
+- marketRateNote: non-empty only when isMarketRate=true.
+
+Visit Rush Fee rule:
+- If urgency + total price "za vse" → one job: ruleId=null, description="Visit Rush Fee", quantity=1, laborUnitPrice=that price, isMarketRate=false, marketRateNote="".
+
+Never calculate totals or taxes.
+Return strict JSON only.
+
+${hasRules ? `Available Price Rules:\n${JSON.stringify(compactRules, null, 2)}` : 'No Price Rules available — use market rates for all jobs.'}
 `.trim();
-
-        const userPrompt = `Admin prompt:\n${rawPrompt}`;
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
@@ -167,7 +187,7 @@ ${JSON.stringify(compactRules, null, 2)}
                 model: "gpt-4o",
                 messages: [
                     { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt },
+                    { role: "user", content: `Admin prompt:\n${rawPrompt}` },
                 ],
                 response_format: {
                     type: "json_schema",
@@ -193,7 +213,6 @@ ${JSON.stringify(compactRules, null, 2)}
         }
 
         const parsed = JSON.parse(content);
-
         const ruleIds = new Set(compactRules.map((r: any) => r.ruleId));
 
         const jobs = Array.isArray(parsed.jobs)
@@ -204,6 +223,8 @@ ${JSON.stringify(compactRules, null, 2)}
                 laborUnitPrice: toNumberOrNull(job.laborUnitPrice),
                 isUrgent: job.isUrgent === true,
                 materialsIncluded: job.materialsIncluded === true,
+                isMarketRate: job.isMarketRate === true,
+                marketRateNote: cleanString(job.marketRateNote),
                 materials: Array.isArray(job.materials)
                     ? job.materials.map((m: any) => ({
                         name: cleanString(m.name),

@@ -206,7 +206,7 @@ serve(async (req) => {
 
         const year = new Date().getFullYear();
         const logoUrl =
-            "https://entdcoidqpvtuepdxnyw.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png";
+            "https://mnycxmpofeajhjecsvhk.supabase.co/storage/v1/object/public/company-assets/defaults/default_logo.png";
 
         const html = `<!doctype html>
 <html style="margin:0;padding:0;background:#0B0D12;">
